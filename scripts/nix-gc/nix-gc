@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+
+PROFILE="/nix/var/nix/profiles/system"
+
+if ! sudo nix-env --profile "$PROFILE" --delete-generations +3; then
+    echo "[error] failed to delete old generations" >&2
+    exit 1
+fi
+
+if ! sudo nix-collect-garbage; then
+    echo "[error] garbage collection failed" >&2
+    exit 1
+fi
+
+exit 0
