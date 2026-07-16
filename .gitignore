@@ -11,6 +11,7 @@
 !overlays/
 !scripts/
 !templates/
+!users/
 !__tooling__/
 
 !.github
