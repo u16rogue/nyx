@@ -2,7 +2,14 @@
     inputs = {
         nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
         flake-parts.url = "github:hercules-ci/flake-parts";
-        wrappers.url = "github:lassulus/wrappers";
+        wrappers = {
+            url = "github:lassulus/wrappers";
+            inputs.nixpkgs.follows = "nixpkgs";
+        };
+        nixpak= {
+            url = "github:nixpak/nixpak";
+            inputs.nixpkgs.follows = "nixpkgs";
+        };
     };
 
     outputs = inputs@{ self, nixpkgs, ... }: inputs.flake-parts.lib.mkFlake { inherit inputs; } ({ config, ... }: {
@@ -14,7 +21,11 @@
         imports = [];
 
         systems = [ "x86_64-linux" ];
-        perSystem = { self', config, pkgs, ... }: {
+        perSystem = { self', config, pkgs, ... }: let overlays = import ./overlays/default.nix { inherit nixpkgs pkgs inputs; }; in {
+            packages = {
+                nushell = overlays.nushell;
+            };
+
             devShells.default = pkgs.mkShellNoCC {
                 packages = [];
                 shellHook = /*bash*/ ''
@@ -27,5 +38,3 @@
         };
     });
 }
-
-# TODO:

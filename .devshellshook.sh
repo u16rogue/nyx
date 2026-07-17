@@ -199,13 +199,13 @@ BWRAP_ARGS+=(--ro-bind "$EMU_GROUP" /etc/group)
 
 # ====================================================================================================
 # Setup devshell and ensure it cant be changed inside the sandbox
-BWRAP_ARGS+=( \
-    --ro-bind "$PWD/flake.nix" "$PWD/flake.nix"                 \
-    --ro-bind "$PWD/flake.lock" "$PWD/flake.lock"               \
-    --ro-bind "$PWD/.devshellshook.sh" "$PWD/.devshellshook.sh" \
-    --ro-bind "$PWD/.devshellspkgs.ls" "$PWD/.devshellspkgs.ls" \
-    --ro-bind "$PWD/.zellij.kdl" "$PWD/.zellij.kdl" \
-)
+#BWRAP_ARGS+=( \
+#    --ro-bind "$PWD/flake.nix" "$PWD/flake.nix"                 \
+#    --ro-bind "$PWD/flake.lock" "$PWD/flake.lock"               \
+#    --ro-bind "$PWD/.devshellshook.sh" "$PWD/.devshellshook.sh" \
+#    --ro-bind "$PWD/.devshellspkgs.ls" "$PWD/.devshellspkgs.ls" \
+#    --ro-bind "$PWD/.zellij.kdl" "$PWD/.zellij.kdl" \
+#)
 
 # ====================================================================================================
 # Setup development and nix env's

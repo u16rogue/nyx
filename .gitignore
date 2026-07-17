@@ -6,12 +6,11 @@
 !.zellij.kdl
 !flake.lock
 !flake.nix
-!hosts/
 !legacy/
+!nixos/
 !overlays/
 !scripts/
 !templates/
-!users/
 !__tooling__/
 
 !.github
