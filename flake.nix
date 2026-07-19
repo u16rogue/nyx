@@ -6,7 +6,7 @@
             url = "github:lassulus/wrappers";
             inputs.nixpkgs.follows = "nixpkgs";
         };
-        nixpak= {
+        nixpak = {
             url = "github:nixpak/nixpak";
             inputs.nixpkgs.follows = "nixpkgs";
         };
@@ -21,10 +21,10 @@
         imports = [];
 
         systems = [ "x86_64-linux" ];
-        perSystem = { self', config, pkgs, ... }: let overlays = import ./overlays/default.nix { inherit nixpkgs pkgs inputs; }; in {
-            packages = {
-                nushell = overlays.nushell;
-            };
+        perSystem = { self', config, pkgs, ... }: let
+            packages = import ./packages/default.nix { inherit nixpkgs pkgs inputs; };
+        in {
+            inherit packages;
 
             devShells.default = pkgs.mkShellNoCC {
                 packages = [];
@@ -32,6 +32,8 @@
                     export NIX_FRAGMENT="default"
                     if [[ -f "$PWD/.devshellshook.sh" ]]; then
                         source "$PWD/.devshellshook.sh"
+                    elif command -v "sbx-shell" &> /dev/null; then
+                        exec sbx-shell
                     fi
                 '';
             };
