@@ -2,5 +2,5 @@
 .*
 !.gitignore
 !default.nix
-!mistylake/
-!mistyriver/
+!mistylake.nix
+!mistyriver.nix

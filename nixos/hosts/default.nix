@@ -1,9 +1,16 @@
-{ nixpkgs, ... }: let
-    lib = nixpkgs.lib;
-in lib.pipe (builtins.readDir ./.) [
-    (lib.filterAttrs (name: value: value == "directory"))
-    (lib.mapAttrs (name: value: {
-        path = ./. + "/${name}"; # sloppa told me this is the right thing to do
-        description = ""; # just to satisfy nix flake check
-    }))
-]
+{ lib, ... }: {
+    imports = lib.pipe (builtins.readDir ./.) [
+        (lib.filterAttrs (name: value:
+            value == "regular"
+            && name != "default.nix"
+            && builtins.match ".*\\.nix" name != null))
+        builtins.attrNames
+        (builtins.map (name: ./. + "/${name}"))
+    ];
+
+    # Add option to add `keys.hosts.<hostname> = "public key...";`
+    options.keys.hosts = lib.mkOption {
+        type = lib.types.attrsOf lib.types.str;
+        default = {};
+    };
+}

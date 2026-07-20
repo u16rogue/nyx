@@ -13,14 +13,13 @@
     };
 
     outputs = inputs@{ self, nixpkgs, ... }: inputs.flake-parts.lib.mkFlake { inherit inputs; } ({ config, ... }: {
-        flake = {
-            description = "nix stuff";
-            templates = import ./templates/default.nix { inherit nixpkgs; };
-        };
+        flake.description = "nix stuff";
 
         imports = [
             inputs.flake-parts.flakeModules.modules
+            ./templates
             ./packages
+            ./nixos/hosts
         ];
 
         systems = [ "x86_64-linux" ];

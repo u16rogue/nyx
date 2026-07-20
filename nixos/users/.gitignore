@@ -2,4 +2,4 @@
 .*
 !.gitignore
 !default.nix
-!user/
+!user.nix
