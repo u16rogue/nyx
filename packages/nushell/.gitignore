@@ -2,4 +2,5 @@
 .*
 !.gitignore
 !config.nu
+!flake-part.nix
 !package.nix

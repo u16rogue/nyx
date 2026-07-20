@@ -18,14 +18,13 @@
             templates = import ./templates/default.nix { inherit nixpkgs; };
         };
 
-        imports = [];
+        imports = [
+            inputs.flake-parts.flakeModules.modules
+            ./packages
+        ];
 
         systems = [ "x86_64-linux" ];
-        perSystem = { self', config, pkgs, ... }: let
-            packages = import ./packages/default.nix { inherit nixpkgs pkgs inputs; };
-        in {
-            inherit packages;
-
+        perSystem = { self', config, pkgs, ... }: {
             devShells.default = pkgs.mkShellNoCC {
                 packages = [];
                 shellHook = /*bash*/ ''
