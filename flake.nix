@@ -18,7 +18,8 @@
         imports = [
             inputs.flake-parts.flakeModules.modules
             ./templates
-            ./packages
+            ./overrides
+            ./scripts
             ./nixos/hosts
         ];
 

@@ -8,7 +8,7 @@
 !flake.nix
 !legacy/
 !nixos/
-!packages/
+!overrides/
 !scripts/
 !templates/
 !__tooling__/

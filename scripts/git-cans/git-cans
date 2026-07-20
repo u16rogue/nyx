@@ -94,6 +94,7 @@ fi
 
 echo "git-cans: signing $unsigned_count unsigned commit(s) by $author_email newer than signed cutoff $cutoff_short."
 
+# shellcheck disable=SC2016
 exec_cmd='set -eu; head_email="$(git log -1 --format=%ae HEAD)"; head_sig="$(git log -1 --format="%G?" HEAD)"; if [ "$head_email" = "$GIT_CANS_AUTHOR_EMAIL" ] && [ "$head_sig" = "N" ]; then git commit --amend --no-edit -S; fi'
 
 export GIT_CANS_AUTHOR_EMAIL="$author_email"
