@@ -1,0 +1,6 @@
+**
+.*
+!.gitignore
+!config.fish
+!flake-part.nix
+!package.nix
