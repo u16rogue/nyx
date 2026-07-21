@@ -1,0 +1,6 @@
+**
+.*
+!.gitignore
+!flake-part.nix
+!nix-gc
+!package.nix

@@ -3,16 +3,9 @@
 !.gitignore
 !default.nix
 !git-cans/
-!git-cans/**
 !mkignore/
-!mkignore/**
 !nix-develop/
-!nix-develop/**
 !nix-gc/
-!nix-gc/**
 !nix-sync-lock-from-nixos/
-!nix-sync-lock-from-nixos/**
 !nix-pkgvercmp/
-!nix-pkgvercmp/**
 !tmuxss/
-!tmuxss/**
