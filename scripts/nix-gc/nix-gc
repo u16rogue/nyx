@@ -2,12 +2,17 @@
 
 PROFILE="/nix/var/nix/profiles/system"
 
-if ! sudo nix-env --profile "$PROFILE" --delete-generations +3; then
+if [[ $EUID -ne 0 ]]; then
+    echo "[error] nix-gc must be run as root; rerun with: sudo nix-gc" >&2
+    exit 1
+fi
+
+if ! nix-env --profile "$PROFILE" --delete-generations +3; then
     echo "[error] failed to delete old generations" >&2
     exit 1
 fi
 
-if ! sudo nix-collect-garbage; then
+if ! nix-collect-garbage; then
     echo "[error] garbage collection failed" >&2
     exit 1
 fi

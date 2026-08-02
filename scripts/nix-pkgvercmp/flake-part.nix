@@ -1,5 +1,5 @@
 { ... }: {
     perSystem = { pkgs, ... }: {
-        packages.nix-pkgvercmp = import ./package.nix { inherit pkgs; };
+        packages.nix-pkgvercmp = pkgs.callPackage ./package.nix {};
     };
 }

@@ -1,5 +1,5 @@
 { ... }: {
     perSystem = { pkgs, ... }: {
-        packages.nix-develop = import ./package.nix { inherit pkgs; };
+        packages.nix-develop = pkgs.callPackage ./package.nix {};
     };
 }

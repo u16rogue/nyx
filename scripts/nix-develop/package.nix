@@ -1,7 +1,5 @@
-{ pkgs, ... }: pkgs.writeShellApplication {
+{ writeShellApplication, coreutils, ... }: writeShellApplication {
     name = "nix-develop";
-    runtimeInputs = [
-        pkgs.coreutils
-    ];
+    runtimeInputs = [ coreutils ];
     text = builtins.readFile ./nix-develop;
 }

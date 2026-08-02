@@ -1,8 +1,5 @@
-{ pkgs, ... }: pkgs.writeShellApplication {
+{ writeShellApplication, coreutils, jq, ... }: writeShellApplication {
     name = "nix-pkgvercmp";
-    runtimeInputs = [
-        pkgs.coreutils
-        pkgs.jq
-    ];
+    runtimeInputs = [ coreutils jq ];
     text = builtins.readFile ./nix-pkgvercmp;
 }

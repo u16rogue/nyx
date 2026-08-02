@@ -1,5 +1,5 @@
 { ... }: {
     perSystem = { pkgs, ... }: {
-        packages.mkignore = import ./package.nix { inherit pkgs; };
+        packages.mkignore = pkgs.callPackage ./package.nix {};
     };
 }

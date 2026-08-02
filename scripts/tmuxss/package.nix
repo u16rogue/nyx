@@ -1,7 +1,5 @@
-{ pkgs, ... }: pkgs.writeShellApplication {
+{ coreutils, writeShellApplication, ... }: writeShellApplication {
     name = "tmuxss";
-    runtimeInputs = [
-        pkgs.coreutils
-    ];
+    runtimeInputs = [ coreutils ];
     text = builtins.readFile ./tmuxss;
 }

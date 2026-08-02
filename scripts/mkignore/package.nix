@@ -1,8 +1,5 @@
-{ pkgs, ... }: pkgs.writeShellApplication {
+{ writeShellApplication, coreutils, findutils, ... }: writeShellApplication {
     name = "mkignore";
-    runtimeInputs = [
-        pkgs.coreutils
-        pkgs.findutils
-    ];
+    runtimeInputs = [ coreutils findutils ];
     text = builtins.readFile ./mkignore;
 }

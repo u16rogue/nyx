@@ -1,5 +1,5 @@
-{ pkgs, ... }: pkgs.writeShellApplication {
+{ writeShellApplication, ... }: writeShellApplication {
     name = "git-cans";
-    runtimeInputs = [ ];
+    runtimeInputs = [];
     text = builtins.readFile ./git-cans;
 }

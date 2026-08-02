@@ -1,8 +1,5 @@
-{ pkgs, ... }: pkgs.writeShellApplication {
+{ writeShellApplication, ... }: writeShellApplication {
     name = "nix-gc";
-    runtimeInputs = [
-        pkgs.nix
-        pkgs.sudo
-    ];
+    runtimeInputs = [];
     text = builtins.readFile ./nix-gc;
 }

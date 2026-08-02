@@ -1,5 +1,5 @@
 { ... }: {
     perSystem = { pkgs, ... }: {
-        packages.tmuxss = import ./package.nix { inherit pkgs; };
+        packages.tmuxss = pkgs.callPackage ./package.nix {};
     };
 }

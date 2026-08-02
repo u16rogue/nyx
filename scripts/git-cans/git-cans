@@ -6,6 +6,11 @@
 
 set -euo pipefail
 
+if ! command -v "git" &> /dev/null; then
+    echo "git-cans: no git" >&2
+    exit 1
+fi
+
 if ! inside_work_tree="$(git rev-parse --is-inside-work-tree 2>/dev/null)"; then
     echo "git-cans: not inside a Git work tree." >&2
     exit 1

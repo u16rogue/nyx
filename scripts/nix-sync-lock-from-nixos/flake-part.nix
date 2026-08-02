@@ -1,5 +1,5 @@
 { ... }: {
     perSystem = { pkgs, ... }: {
-        packages.nix-sync-lock-from-nixos = import ./package.nix { inherit pkgs; };
+        packages.nix-sync-lock-from-nixos = pkgs.callPackage ./package.nix {};
     };
 }
