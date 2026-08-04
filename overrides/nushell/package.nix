@@ -1,7 +1,7 @@
-{ inputs, pkgs, ... }: inputs.wrappers.lib.wrapPackage {
+{ wrapPackage, pkgs, nushell, ... }: wrapPackage {
     inherit pkgs;
-    package = pkgs.nushell;
+    package = nushell;
     flags = {
-        "--config" = builtins.toString (pkgs.writeText "config.nu" (builtins.readFile ./config.nu));
+        "--config" = ./config.nu;
     };
 }

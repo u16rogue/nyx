@@ -1,7 +1,7 @@
 { inputs, ... }: {
     perSystem = { pkgs, ... }: {
-        packages.nushell = import ./package.nix {
-            inherit inputs pkgs;
+        packages.nushell = pkgs.callPackage ./package.nix {
+            wrapPackage = inputs.wrappers.lib.wrapPackage;
         };
     };
 }

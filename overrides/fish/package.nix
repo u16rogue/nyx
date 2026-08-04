@@ -1,7 +1,7 @@
-{ inputs, pkgs, ... }: inputs.wrappers.lib.wrapPackage {
+{ pkgs, fish, writeText, wrapPackage, ... }: wrapPackage {
     inherit pkgs;
-    package = pkgs.fish;
+    package = fish;
     flags = {
-        "--init-command" = "source ${pkgs.writeText "config.fish" (builtins.readFile ./config.fish)}";
+        "--init-command" = "source ${writeText "config.fish" (builtins.readFile ./config.fish)}";
     };
 }

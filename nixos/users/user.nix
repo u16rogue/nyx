@@ -1,7 +1,7 @@
 { self, ... }: let
     username = "user";
 in {
-    flake.modules.nixos.users.${username} = { pkgs, ... }: let
+    flake.modules.nixos."users.${username}" = { pkgs, ... }: let
         mypkgs = self.packages.${pkgs.system};
     in {
         users.users.${username} = {
