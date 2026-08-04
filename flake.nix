@@ -20,7 +20,7 @@
             ./templates
             ./overrides
             ./scripts
-            ./nixos/hosts
+            ./nixos
         ];
 
         systems = [ "x86_64-linux" ];
