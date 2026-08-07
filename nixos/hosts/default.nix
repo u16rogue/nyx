@@ -8,13 +8,11 @@
         (builtins.map (name: ./. + "/${name}"))
     ];
 
-    # Allow nyx nixos hosts to define their ssh keys
-    # via `nyx.nixos.hosts.<hostname>.keys = { pub = "<pubkey>"; prv = "<sym encrypted armor>"}`
     options.nyx.nixos.hosts = lib.mkOption {
         description = "Nyx nixos hosts";
 
         type = lib.types.attrsOf (lib.types.submodule {
-            # --
+            # -- Host SSH ED25519 Keys --
             options.keys = lib.mkOption {
                 description = "SSH host keys used for ssh and secrets management.";
                 type = lib.types.submodule {

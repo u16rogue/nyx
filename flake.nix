@@ -13,7 +13,7 @@
     };
 
     outputs = inputs@{ self, nixpkgs, ... }: inputs.flake-parts.lib.mkFlake { inherit inputs; } ({ config, ... }: {
-        flake.description = "nix stuff";
+        flake.description = "nix slop";
 
         imports = [
             inputs.flake-parts.flakeModules.modules
