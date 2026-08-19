@@ -6,6 +6,7 @@
 !mkignore/
 !nix-develop/
 !nix-gc/
-!nix-sync-lock-from-nixos/
 !nix-pkgvercmp/
+!nix-sync-lock-from-nixos/
+!nyx/
 !tmuxss/

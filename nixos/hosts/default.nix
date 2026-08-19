@@ -23,7 +23,7 @@
                     };
                     options.prv = lib.mkOption {
                         type = lib.types.nullOr lib.types.str;
-                        description = "Optional armored encrypted backup of the host private key. Can be used to apply it on the host or as a backup.";
+                        description = "Optional armored encrypted backup of the host private key. Can be used to apply it on the host or as a backup. Use the `nyx` utility for this one.";
                         example = ''
                             -----BEGIN AGE ENCRYPTED FILE-----
                             ...

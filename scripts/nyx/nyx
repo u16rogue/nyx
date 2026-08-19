@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+
+# This is mostly an "internal" helper script
+
+printHelp() {
+    echo \
+"--------------------------------------------------------------------------------
+                      nyx [mode] - Internal nix utility for nyx
+--------------------------------------------------------------------------------
+[mode]:
+    rebuild-switch
+        todo
+    host-prk-enc
+        Extract the hosts private key to be symmetricly encrypted and encoded
+        for the purpose of adding it as a \`nyx.nixos.hosts.<hostname>.keys.priv\`
+        entry. The result is printed to the stdout. The password can be set via
+        env \`NYX_PRK_GET_KEY\` otherwise the user will be prompted for one.
+    help
+        Print this." >&2
+}
+
+[[ -z "${1:-}" || "$1" == "help" || "$1" == "-h" || "$1" == "--help" ]] && { printHelp; exit 0; } # print help if no param or help mode and exit early
+
+
+printErr() {
+    echo "[err] $1" >&2
+}
+
+hasCommand() {
+    command -v "$1" &> /dev/null
+}
+
+assertCommand() {
+    if ! hasCommand "$1"; then
+        printErr "command '$1' not found."
+        exit 1
+    fi
+}
+
+assertCommands() {
+    local commandName
+    local hasMissing=0
+
+    for commandName in "$@"; do
+        if ! hasCommand "$commandName"; then
+            printErr "command '$commandName' not found."
+            hasMissing=1
+        fi
+    done
+
+    [[ "$hasMissing" -eq 0 ]] || exit 1
+}
+
+assertCommand "nix"
+
+modeHostPrkEnc() {
+    assertCommands "nix" "rage"
+    local key_path="/etc/ssh/ssh_host_ed25519_key"
+    if [[ ! -f "$key_path" ]]; then
+        printErr "no host key"
+        exit 1
+    fi
+
+    if [[ -r "$key_path" ]]; then
+        rage -p -a -e < "$key_path"
+    else
+        sudo rage -p -a -e "$key_path"
+    fi
+    exit 0
+}
+
+case "${1:-}" in
+    host-prk-enc) modeHostPrkEnc "${@:2}";;
+    *)
+        # help mode is handled early.
+        printErr "invalid mode '$1'"
+        exit 1
+    ;;
+esac
+
+printErr "fallthrough"
+exit 1 # fallthrough case
