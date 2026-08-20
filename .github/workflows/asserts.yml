@@ -18,9 +18,33 @@ jobs:
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@v14
 
-      - name: Run asserts
+      - name: Flake check
+        continue-on-error: true
+        id: flake-check
+        run: nix flake check --all-systems
+
+      - name: Assert state
+        continue-on-error: true
+        id: assert-state
+        run: bash _nyx/assert_state
+
+      - name: Assert templates
+        continue-on-error: true
+        id: assert-templates
+        run: bash _nyx/assert_templates
+
+      - name: Assert host keys
+        continue-on-error: true
+        id: assert-host-keys
+        run: bash _nyx/assert_host_keys
+
+      - name: Aggregate results
+        if: always()
         run: |
-          nix flake check --all-systems
-          bash __tooling__/assert_state
-          bash __tooling__/assert_templates
-          bash __tooling__/assert_host_keys
+          if [[ "${{ steps.flake-check.outcome }}" != "success" ]] || \
+             [[ "${{ steps.assert-state.outcome }}" != "success" ]] || \
+             [[ "${{ steps.assert-templates.outcome }}" != "success" ]] || \
+             [[ "${{ steps.assert-host-keys.outcome }}" != "success" ]]; then
+              echo "::error::one or more asserts failed" >&2
+              exit 1
+          fi

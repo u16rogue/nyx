@@ -11,7 +11,7 @@
 !overrides/
 !scripts/
 !templates/
-!__tooling__/
+!_nyx/
 
 !.github
 !.github/**
