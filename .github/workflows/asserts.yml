@@ -23,3 +23,4 @@ jobs:
           nix flake check --all-systems
           bash __tooling__/assert_state
           bash __tooling__/assert_templates
+          bash __tooling__/assert_host_keys

@@ -26,32 +26,26 @@ printErr() {
     echo "[err] $1" >&2
 }
 
-hasCommand() {
-    command -v "$1" &> /dev/null
-}
-
-assertCommand() {
-    if ! hasCommand "$1"; then
-        printErr "command '$1' not found."
-        exit 1
-    fi
-}
-
 assertCommands() {
-    local commandName
-    local hasMissing=0
+    local command_name
+    local has_missing=0
 
-    for commandName in "$@"; do
-        if ! hasCommand "$commandName"; then
-            printErr "command '$commandName' not found."
-            hasMissing=1
+    for command_name in "$@"; do
+        if ! command -v "$command_name" &> /dev/null; then
+            printErr "command '$command_name' not found."
+            has_missing=1
         fi
     done
 
-    [[ "$hasMissing" -eq 0 ]] || exit 1
+    [[ "$has_missing" -eq 0 ]] || exit 1
 }
 
-assertCommand "nix"
+#assertInNyxCwd() {
+#    if [[]]; then
+#    fi
+#}
+
+assertCommands "nix"
 
 modeHostPrkEnc() {
     assertCommands "nix" "rage"
@@ -68,6 +62,9 @@ modeHostPrkEnc() {
     fi
     exit 0
 }
+
+#modeHostKeysMatchCheck() {
+#}
 
 case "${1:-}" in
     host-prk-enc) modeHostPrkEnc "${@:2}";;

@@ -1,0 +1,173 @@
+#!/usr/bin/env bash
+
+# THIS WAS WRITTEN BY A CLANKER
+
+# Asserts that every nixos host has valid `nyx.nixos.hosts.<hostname>.keys`
+# entries:
+#   * every `flake.nixosConfigurations.<hostname>` has a matching
+#     `nyx.nixos.hosts.<hostname>` entry and vice versa
+#   * `keys.pub` is a well formed ssh-ed25519 public key
+#   * `keys.prv` is present; when not null it must be an age armored
+#     encrypted file (as produced by `nyx host-prk-enc`)
+
+FLAG_FAIL=0
+COUNT_OK=0
+COUNT_ERR=0
+COUNT_WARN=0
+PROJECT_DIR="$(realpath "$(dirname "$(realpath "${BASH_SOURCE[0]}")")/..")"
+
+report_err() {
+    echo "[err] $1" >&2
+    FLAG_FAIL=1
+    COUNT_ERR=$((COUNT_ERR + 1))
+}
+
+report_warn() {
+    echo "[warn] $1"
+    COUNT_WARN=$((COUNT_WARN + 1))
+}
+
+if ! command -v jq >/dev/null 2>&1; then
+    echo "[err] jq is required to assert host keys." >&2
+    exit 1
+fi
+
+HOSTS_JSON=
+CONFIGS_JSON=
+
+if ! HOSTS_JSON="$(nix eval --json --no-write-lock-file --option warn-dirty false "$PROJECT_DIR#nyx.nixos.hosts")"; then
+    echo "[err] failed to evaluate nyx.nixos.hosts." >&2
+    exit 1
+fi
+
+if ! CONFIGS_JSON="$(nix eval --json --no-write-lock-file --option warn-dirty false "$PROJECT_DIR#nixosConfigurations" --apply 'builtins.attrNames')"; then
+    echo "[err] failed to evaluate flake.nixosConfigurations." >&2
+    exit 1
+fi
+
+# An ssh-ed25519 public key is a 51 byte wire blob:
+# uint32 length + "ssh-ed25519" + uint32 length + 32 byte key.
+# The base64 encoding of that blob always starts with this prefix.
+ED25519_B64_PREFIX="AAAAC3NzaC1lZDI1NTE5"
+ED25519_BLOB_BYTES=51
+
+assert_pub_key() {
+    local host="$1"
+    local pub="$2"
+    local b64=
+    local decoded_bytes=
+
+    if [[ -z "$pub" ]]; then
+        report_err "host '$host' keys.pub is empty."
+        return
+    fi
+
+    if [[ ! "$pub" =~ ^ssh-ed25519\ [A-Za-z0-9+/]+={0,3}(\ .*)?$ ]]; then
+        report_err "host '$host' keys.pub is not a valid ssh-ed25519 public key entry."
+        return
+    fi
+
+    b64="${pub#ssh-ed25519 }"
+    b64="${b64%% *}"
+
+    if [[ "$b64" != "$ED25519_B64_PREFIX"* ]]; then
+        report_err "host '$host' keys.pub does not contain an ssh-ed25519 wire blob."
+        return
+    fi
+
+    if ! decoded_bytes="$(base64 --decode <<< "$b64" 2>/dev/null | wc --bytes)"; then
+        report_err "host '$host' keys.pub is not valid base64."
+        return
+    fi
+
+    if [[ "$decoded_bytes" -ne "$ED25519_BLOB_BYTES" ]]; then
+        report_err "host '$host' keys.pub decodes to $decoded_bytes bytes, expected $ED25519_BLOB_BYTES."
+        return
+    fi
+
+    COUNT_OK=$((COUNT_OK + 1))
+}
+
+assert_prv_key() {
+    local host="$1"
+    local prv_json="$2"
+    local prv=
+    local first_line=
+    local last_line=
+    local body=
+
+    if [[ "$prv_json" == "null" ]]; then
+        report_warn "host '$host' keys.prv is null, no private key backup entry."
+        return
+    fi
+
+    prv="$(jq -r '.' <<< "$prv_json")"
+
+    first_line="$(grep -m 1 . <<< "$prv")"
+    last_line="$(tac <<< "$prv" | grep -m 1 .)"
+
+    if [[ "$first_line" != "-----BEGIN AGE ENCRYPTED FILE-----" || "$last_line" != "-----END AGE ENCRYPTED FILE-----" ]]; then
+        report_err "host '$host' keys.prv is not an age armored encrypted file."
+        return
+    fi
+
+    body="$(sed -n '/^-----BEGIN AGE ENCRYPTED FILE-----$/,/^-----END AGE ENCRYPTED FILE-----$/p' <<< "$prv" | grep -v -- '^-----')"
+
+    if [[ -z "$body" ]] || ! base64 --decode <<< "$body" > /dev/null 2>&1; then
+        report_err "host '$host' keys.prv armor body is not valid base64."
+        return
+    fi
+
+    if ! base64 --decode <<< "$body" 2>/dev/null | head --bytes 21 | grep -aq "age-encryption.org/v1"; then
+        report_err "host '$host' keys.prv does not decode to an age v1 payload."
+        return
+    fi
+
+    COUNT_OK=$((COUNT_OK + 1))
+}
+
+ALL_HOSTS="$({
+    jq -r 'keys[]' <<< "$HOSTS_JSON"
+    jq -r '.[]' <<< "$CONFIGS_JSON"
+} | sort -u)"
+
+if [[ -z "$ALL_HOSTS" ]]; then
+    echo "[info] no nixos hosts found, nothing to assert."
+    exit 0
+fi
+
+while IFS= read -r host; do
+    [[ -z "$host" ]] && continue
+
+    in_nyx=0
+    in_cfg=0
+    jq -e --arg h "$host" 'has($h)' <<< "$HOSTS_JSON" > /dev/null && in_nyx=1
+    jq -e --arg h "$host" 'index($h) != null' <<< "$CONFIGS_JSON" > /dev/null && in_cfg=1
+
+    if [[ "$in_nyx" -eq 0 ]]; then
+        report_err "host '$host' has a nixosConfigurations entry but no nyx.nixos.hosts.$host keys entry."
+        continue
+    fi
+
+    if [[ "$in_cfg" -eq 0 ]]; then
+        report_err "host '$host' has a nyx.nixos.hosts entry but no nixosConfigurations.$host entry."
+    fi
+
+    if ! jq -e --arg h "$host" '.[$h].keys | has("pub")' <<< "$HOSTS_JSON" > /dev/null; then
+        report_err "host '$host' is missing the keys.pub entry."
+    else
+        assert_pub_key "$host" "$(jq -r --arg h "$host" '.[$h].keys.pub' <<< "$HOSTS_JSON")"
+    fi
+
+    if ! jq -e --arg h "$host" '.[$h].keys | has("prv")' <<< "$HOSTS_JSON" > /dev/null; then
+        report_err "host '$host' is missing the keys.prv entry."
+    else
+        assert_prv_key "$host" "$(jq -c --arg h "$host" '.[$h].keys.prv' <<< "$HOSTS_JSON")"
+    fi
+done <<< "$ALL_HOSTS"
+
+echo "[info] final result: $COUNT_OK ok, $COUNT_WARN warnings, $COUNT_ERR errors"
+
+if [[ "$FLAG_FAIL" != "0" ]]; then
+    exit 1
+fi

@@ -3,4 +3,5 @@
 !.gitignore
 !assert_state
 !assert_templates
+!assert_host_keys
 !sync_template_nixpkgs
