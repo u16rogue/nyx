@@ -1,5 +1,5 @@
-{ writeShellApplication, coreutils, rage, ... }: writeShellApplication {
-    name = "nix-pkgvercmp";
-    runtimeInputs = [ coreutils rage ];
+{ writeShellApplication, coreutils, rage, jq, ... }: writeShellApplication {
+    name = "nyx";
+    runtimeInputs = [ coreutils rage jq ];
     text = builtins.readFile ./nyx;
 }

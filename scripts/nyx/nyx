@@ -13,8 +13,16 @@ printHelp() {
     host-prk-enc
         Extract the hosts private key to be symmetricly encrypted and encoded
         for the purpose of adding it as a \`nyx.nixos.hosts.<hostname>.keys.priv\`
-        entry. The result is printed to the stdout. The password can be set via
-        env \`NYX_PRK_GET_KEY\` otherwise the user will be prompted for one.
+        entry. The result is printed to the stdout. The user will be prompted
+        for one.
+    host-keys-match-check [hostname]
+        Check the current hosts ssh keys against the host entry configured in
+        nyx.
+        * hostname [optional] - overrides the detected hostname
+    host-nyx-validate-sk [hostname]
+        Check that the encrypted nyx private key entry matches the stored
+        hash in \`nyx.nixos.hosts.<hostname>.keys.prv\`.
+        * hostname [optional] - overrides the detected hostname
     help
         Print this." >&2
 }
@@ -40,12 +48,19 @@ assertCommands() {
     [[ "$has_missing" -eq 0 ]] || exit 1
 }
 
-#assertInNyxCwd() {
-#    if [[]]; then
-#    fi
-#}
+assertInNyxCwd() {
+    if [[ ! -f "flake.nix" ]]; then
+        printErr "assertion failed must be ran within nix root directory"
+        exit 1
+    fi
+}
 
-assertCommands "nix"
+trimStr() {
+    local s="$1"
+    s="${s#"${s%%[![:space:]]*}"}"
+    s="${s%"${s##*[![:space:]]}"}"
+    printf '%s' "$s"
+}
 
 modeHostPrkEnc() {
     assertCommands "nix" "rage"
@@ -63,11 +78,158 @@ modeHostPrkEnc() {
     exit 0
 }
 
-#modeHostKeysMatchCheck() {
-#}
+modeHostKeysMatchCheck() {
+    assertCommands "nix" "sha256sum"
+    assertInNyxCwd
+
+    local host_name="${1:-}"
+    if [[ -z "$host_name" ]]; then
+        if [[ -r /etc/hostname ]]; then
+            host_name="$(< /etc/hostname)"
+        elif [[ -r /proc/sys/kernel/hostname ]]; then
+            host_name="$(< /proc/sys/kernel/hostname)"
+        fi
+    fi
+
+    if [[ -z "$host_name" ]]; then
+        printErr "cant resolve hostname"
+        exit 1
+    fi
+
+    local sk_path="/etc/ssh/ssh_host_ed25519_key"
+    local pk_path="${sk_path}.pub"
+
+    local has_err=0
+    local nyx_pub nyx_prv_hash host_pub host_prv_hash
+
+    # --- nyx values ---
+    if ! nyx_pub="$(nix eval --raw ".#nyx.nixos.hosts.\"$host_name\".keys.pub" 2>/dev/null)"; then
+        nyx_pub="<err: no nyx keys.pub entry for '$host_name'>"
+        has_err=1
+    else
+        nyx_pub="$(trimStr "$nyx_pub")"
+    fi
+    if ! nyx_prv_hash="$(nix eval --raw ".#nyx.nixos.hosts.\"$host_name\".keys.prv.sha256" 2>/dev/null)"; then
+        nyx_prv_hash="<err: no nyx keys.prv.sha256 entry for '$host_name'>"
+        has_err=1
+    else
+        nyx_prv_hash="$(trimStr "$nyx_prv_hash")"
+    fi
+
+    # --- host values ---
+    if [[ ! -f "$pk_path" ]]; then
+        host_pub="<err: no host public key at '$pk_path'>"
+        has_err=1
+    else
+        host_pub="$(trimStr "$(< "$pk_path")")"
+    fi
+
+    if [[ ! -f "$sk_path" ]]; then
+        host_prv_hash="<err: no host private key at '$sk_path'>"
+        has_err=1
+    elif [[ -r "$sk_path" ]]; then
+        host_prv_hash="$(sha256sum -- "$sk_path")"
+        host_prv_hash="$(trimStr "${host_prv_hash%% *}")"
+    elif ! command -v sudo &> /dev/null; then
+        host_prv_hash="<err: key unreadable and sudo not found>"
+        has_err=1
+    elif ! sudo -v; then
+        host_prv_hash="<err: auth failed>"
+        has_err=1
+    elif ! host_prv_hash="$(sudo -n sha256sum -- "$sk_path" 2>/dev/null)"; then
+        host_prv_hash="<err: failed to hash '$sk_path'>"
+        has_err=1
+    else
+        host_prv_hash="$(trimStr "${host_prv_hash%% *}")"
+    fi
+
+    # --- compare (public keys by type+body, comments may differ) ---
+    local status="match"
+    local kt kb _
+    local nyx_pub_norm host_pub_norm
+    read -r kt kb _ <<< "$nyx_pub"
+    nyx_pub_norm="$kt $kb"
+    read -r kt kb _ <<< "$host_pub"
+    host_pub_norm="$kt $kb"
+
+    [[ "$nyx_pub_norm" == "$host_pub_norm" ]] || status="mismatch"
+    [[ "$nyx_prv_hash" == "$host_prv_hash" ]] || status="mismatch"
+    [[ "$has_err" -eq 0 ]] || status="mismatch"
+
+    printf 'public.:\n  nyx..: %s\n  host.: %s\nprivate:\n  nyx..: %s\n  host.: %s\nstatus.: %s\n' \
+        "$nyx_pub" "$host_pub" "$nyx_prv_hash" "$host_prv_hash" "$status"
+
+    if [[ "$status" == "match" ]]; then
+        exit 0
+    else
+        exit 1
+    fi
+}
+
+modeHostNyxValidateSk() {
+    assertCommands "nix" "sha256sum" "rage"
+    assertInNyxCwd
+
+    local host_name="${1:-}"
+    if [[ -z "$host_name" ]]; then
+        if [[ -r /etc/hostname ]]; then
+            host_name="$(< /etc/hostname)"
+        elif [[ -r /proc/sys/kernel/hostname ]]; then
+            host_name="$(< /proc/sys/kernel/hostname)"
+        fi
+    fi
+
+    if [[ -z "$host_name" ]]; then
+        printErr "cant resolve hostname"
+        exit 1
+    fi
+
+    local has_err=0
+    local nyx_age nyx_stored_hash decrypted_hash
+
+    if ! nyx_age="$(nix eval --raw ".#nyx.nixos.hosts.\"$host_name\".keys.prv.age" 2>/dev/null)"; then
+        nyx_age="<err: no nyx keys.prv.age entry for '$host_name'>"
+        has_err=1
+    fi
+    if ! nyx_stored_hash="$(nix eval --raw ".#nyx.nixos.hosts.\"$host_name\".keys.prv.sha256" 2>/dev/null)"; then
+        nyx_stored_hash="<err: no nyx keys.prv.sha256 entry for '$host_name'>"
+        has_err=1
+    else
+        nyx_stored_hash="$(trimStr "$nyx_stored_hash")"
+    fi
+
+    # rage reads ciphertext from stdin, prompts for the passphrase on the tty
+    if [[ "$has_err" -eq 0 ]]; then
+        local decrypted
+        if ! decrypted="$(printf '%s\n' "$nyx_age" | rage -d)"; then
+            decrypted_hash="<err: decrypt failed>"
+            has_err=1
+        else
+            decrypted_hash="$(printf '%s\n' "$decrypted" | sha256sum)"
+            decrypted_hash="$(trimStr "${decrypted_hash%% *}")"
+        fi
+    else
+        decrypted_hash="<err: decrypt skipped>"
+    fi
+
+    local status="match"
+    [[ "$decrypted_hash" == "$nyx_stored_hash" ]] || status="mismatch"
+    [[ "$has_err" -eq 0 ]] || status="mismatch"
+
+    printf 'private:\n  nyx.......: %s\n  decrypted.: %s\nstatus: %s\n' \
+        "$nyx_stored_hash" "$decrypted_hash" "$status"
+
+    if [[ "$status" == "match" ]]; then
+        exit 0
+    else
+        exit 1
+    fi
+}
 
 case "${1:-}" in
     host-prk-enc) modeHostPrkEnc "${@:2}";;
+    host-keys-match-check) modeHostKeysMatchCheck "${@:2}";;
+    host-nyx-validate-sk) modeHostNyxValidateSk "${@:2}";;
     *)
         # help mode is handled early.
         printErr "invalid mode '$1'"
