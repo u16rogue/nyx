@@ -22,13 +22,23 @@
                         example = "ssh-ed25519 AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA+bbbbbbbbbbbbb root@host";
                     };
                     options.prv = lib.mkOption {
-                        type = lib.types.nullOr lib.types.str;
-                        description = "Optional armored encrypted backup of the host private key. Can be used to apply it on the host or as a backup. Use the `nyx` utility for this one.";
-                        example = ''
-                            -----BEGIN AGE ENCRYPTED FILE-----
-                            ...
-                            -----END AGE ENCRYPTED FILE-----
-                        '';
+                        description = "Encrypted backup of the host private key with its hash for verification.";
+                        type = lib.types.submodule {
+                            options.age = lib.mkOption {
+                                type = lib.types.str;
+                                description = "Armored encrypted backup of the host private key. Can be used to apply it on the host or as a backup.";
+                                example = ''
+                                    -----BEGIN AGE ENCRYPTED FILE-----
+                                    ...
+                                    -----END AGE ENCRYPTED FILE-----
+                                '';
+                            };
+                            options.sha256 = lib.mkOption {
+                                type = lib.types.str;
+                                description = "SHA256 hash of the hosts private key.";
+                                example = "9d1398d0544800a282ec897ad35d0fe10376b02bc5b76dcb2754477433c62504";
+                            };
+                        };
                     };
                 };
             };
@@ -40,7 +50,14 @@
             computer = {
                 keys = {
                     pub = "ssh-ed25519 AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA+bbbbbbbbbbbbb root@host";
-                    prv = null;
+                    prv = {
+                        age = ''
+                            -----BEGIN AGE ENCRYPTED FILE-----
+                            ...
+                            -----END AGE ENCRYPTED FILE-----
+                        '';
+                        sha256 = "9d1398d0544800a282ec897ad35d0fe10376b02bc5b76dcb2754477433c62504";
+                    };
                 };
             };
         };
