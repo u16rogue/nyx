@@ -1,6 +1,5 @@
 **
 .*
 !.gitignore
-!flake-part.nix
 !package.nix
 !tmuxss

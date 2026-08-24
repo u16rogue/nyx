@@ -1,6 +1,5 @@
 **
 .*
 !.gitignore
-!flake-part.nix
 !nix-develop
 !package.nix
