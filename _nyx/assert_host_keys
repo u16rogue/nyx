@@ -7,8 +7,8 @@
 #   * every `flake.nixosConfigurations.<hostname>` has a matching
 #     `nyx.nixos.hosts.<hostname>` entry and vice versa
 #   * `keys.pub` is a well formed ssh-ed25519 public key
-#   * `keys.prv` is present; when not null it must be an age armored
-#     encrypted file (as produced by `nyx host-prk-enc`)
+#   * `keys.prv.age` is an age armored encrypted file (as produced by
+#     `nyx host-prk-enc`) and `keys.prv.sha256` is a SHA-256 digest
 
 FLAG_FAIL=0
 COUNT_OK=0
@@ -91,35 +91,44 @@ assert_pub_key() {
 assert_prv_key() {
     local host="$1"
     local prv_json="$2"
-    local prv=
+    local age=
+    local sha256=
     local first_line=
     local last_line=
     local body=
 
-    if [[ "$prv_json" == "null" ]]; then
-        report_warn "host '$host' keys.prv is null, no private key backup entry."
+    if ! age="$(jq -er '.age' <<< "$prv_json")"; then
+        report_err "host '$host' is missing keys.prv.age."
         return
     fi
 
-    prv="$(jq -r '.' <<< "$prv_json")"
+    if ! sha256="$(jq -er '.sha256' <<< "$prv_json")"; then
+        report_err "host '$host' is missing keys.prv.sha256."
+        return
+    fi
 
-    first_line="$(grep -m 1 . <<< "$prv")"
-    last_line="$(tac <<< "$prv" | grep -m 1 .)"
+    if [[ ! "$sha256" =~ ^[a-f0-9]{64}$ ]]; then
+        report_err "host '$host' keys.prv.sha256 is not a lowercase SHA-256 digest."
+        return
+    fi
+
+    first_line="$(grep -m 1 . <<< "$age")"
+    last_line="$(tac <<< "$age" | grep -m 1 .)"
 
     if [[ "$first_line" != "-----BEGIN AGE ENCRYPTED FILE-----" || "$last_line" != "-----END AGE ENCRYPTED FILE-----" ]]; then
-        report_err "host '$host' keys.prv is not an age armored encrypted file."
+        report_err "host '$host' keys.prv.age is not an age armored encrypted file."
         return
     fi
 
-    body="$(sed -n '/^-----BEGIN AGE ENCRYPTED FILE-----$/,/^-----END AGE ENCRYPTED FILE-----$/p' <<< "$prv" | grep -v -- '^-----')"
+    body="$(sed -n '/^-----BEGIN AGE ENCRYPTED FILE-----$/,/^-----END AGE ENCRYPTED FILE-----$/p' <<< "$age" | grep -v -- '^-----')"
 
     if [[ -z "$body" ]] || ! base64 --decode <<< "$body" > /dev/null 2>&1; then
-        report_err "host '$host' keys.prv armor body is not valid base64."
+        report_err "host '$host' keys.prv.age armor body is not valid base64."
         return
     fi
 
     if ! base64 --decode <<< "$body" 2>/dev/null | head --bytes 21 | grep -aq "age-encryption.org/v1"; then
-        report_err "host '$host' keys.prv does not decode to an age v1 payload."
+        report_err "host '$host' keys.prv.age does not decode to an age v1 payload."
         return
     fi
 
