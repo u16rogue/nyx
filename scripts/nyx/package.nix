@@ -1,5 +1,5 @@
-{ writeShellApplication, coreutils, rage, jq, ... }: writeShellApplication {
+{ writeShellApplication, coreutils, rage, ... }: writeShellApplication {
     name = "nyx";
-    runtimeInputs = [ coreutils rage jq ];
+    runtimeInputs = [ coreutils rage ];
     text = builtins.readFile ./nyx;
 }
