@@ -6,8 +6,8 @@ name: Asserts
   pull_request:
 
 jobs:
-  asserts:
-    name: Run asserts
+  flake-check:
+    name: Flake check
     runs-on: ubuntu-latest
 
     steps:
@@ -18,46 +18,46 @@ jobs:
         uses: DeterminateSystems/nix-installer-action@v14
 
       - name: Flake check
-        continue-on-error: true
-        id: flake-check
         run: nix flake check --all-systems
 
+  assert-state:
+    name: Assert state
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v14
+
       - name: Assert state
-        continue-on-error: true
-        id: assert-state
         run: bash _nyx/assert_state
 
+  assert-templates:
+    name: Assert templates
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v14
+
       - name: Assert templates
-        continue-on-error: true
-        id: assert-templates
         run: bash _nyx/assert_templates
 
-      - name: Assert host keys
-        continue-on-error: true
-        id: assert-host-keys
-        run: bash _nyx/assert_host_keys
+  assert-host-keys:
+    name: Assert host keys
+    runs-on: ubuntu-latest
 
-      - name: Aggregate results
-        if: always()
-        run: |
-          no_fail=1
-          [[ "${{ steps.flake-check.outcome }}" != "success" ]] && {
-            no_fail=0;
-            echo "::error::flake check failed" >&2;
-          }
-          [[ "${{ steps.assert-state.outcome }}" != "success" ]] && {
-            no_fail=0;
-            echo "::error::state check failed" >&2;
-          }
-          [[ "${{ steps.assert-templates.outcome }}" != "success" ]] && {
-            no_fail=0;
-            echo "::error::templates check failed" >&2;
-          }
-          [[ "${{ steps.assert-host-keys.outcome }}" != "success" ]] && {
-            no_fail=0;
-            echo "::error::host key entries check failed" >&2;
-          }
-          if [[ "$no_fail" != "1" ]]; then
-            echo "::error::one or more asserts failed" >&2
-            exit 1
-          fi
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v14
+
+      - name: Assert host keys
+        run: bash _nyx/assert_host_keys
