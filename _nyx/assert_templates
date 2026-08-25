@@ -18,14 +18,15 @@ compare_diff() {
     local same_count=0
     local diff_count=0
 
-    if [[ "$#" -lt 2 ]]; then
-        echo "[err] compare_diff needs at least two paths." >&2
+    if [[ "$#" -lt 1 ]]; then
+        echo "[err] compare_diff needs at least one path." >&2
         FLAG_FAIL=1
         return
     fi
 
     if [[ ! -f "$first_path" ]]; then
         echo "[diff] $first_path is missing."
+        diff_count=$((diff_count + 1))
     fi
 
     shift
@@ -52,31 +53,73 @@ compare_diff() {
     fi
 }
 
-extract_nixpkgs_lock() {
+extract_lock_entry() {
     local lock_path="$1"
+    local input_path="$2"
 
-    jq -r '
+    jq -r --arg input_path "$input_path" '
+        def fail($message): ["err", "?", $message];
+
         . as $lock
-        | if ($lock.root // null) == null then
-            ["err", "?", "missing .root"]
-          elif ($lock.root | type) != "string" then
-            ["err", "?", "missing root node"]
+        | if ($lock.root | type) != "string" then
+            fail("missing string .root")
+          elif ($lock.nodes[$lock.root] | type) != "object" then
+            fail("missing root node " + $lock.root)
           else
-            $lock.root as $root_key
-            | if ($lock.nodes[$root_key] // null) == null then
-                ["err", "?", "missing root node"]
-              elif ($lock.nodes[$root_key].inputs.nixpkgs // null) == null then
-                ["err", "?", "missing root input nixpkgs"]
-              else
-                $lock.nodes[$root_key].inputs.nixpkgs as $input_key
-                | if ($input_key | type) != "string" then
-                    ["err", ($input_key | tostring), "missing selected nixpkgs node"]
-                  elif ($lock.nodes[$input_key] // null) == null then
-                    ["err", $input_key, "missing selected nixpkgs node"]
-                  elif ($lock.nodes[$input_key].locked.rev // null) == null then
-                    ["err", $input_key, "missing selected nixpkgs locked.rev"]
+            {
+                node: $lock.root,
+                pending: ($input_path | split("/")),
+                follows: [],
+                error: null
+            }
+            | until(
+                (.error != null or (.pending | length) == 0);
+                . as $state
+                | $state.pending[0] as $next
+                | if ($next | type) == "object" then
+                    $next.follow as $follow
+                    | if $state.follows[-1] != $follow then
+                        { node: $state.node, pending: $state.pending, follows: $state.follows, error: "invalid follows state" }
+                      else
+                        { node: $state.node, pending: $state.pending[1:], follows: $state.follows[0:-1], error: null }
+                      end
+                  elif ($next | type) != "string" then
+                    { node: $state.node, pending: $state.pending, follows: $state.follows, error: "invalid input path" }
+                  elif ($lock.nodes[$state.node] | type) != "object" then
+                    { node: $state.node, pending: $state.pending, follows: $state.follows, error: "missing node " + $state.node }
+                  elif ($lock.nodes[$state.node].inputs | type) != "object" then
+                    { node: $state.node, pending: $state.pending, follows: $state.follows, error: "missing inputs on node " + $state.node }
                   else
-                    ["ok", $input_key, $lock.nodes[$input_key].locked.rev]
+                    $next as $input
+                    | $lock.nodes[$state.node].inputs[$input] as $reference
+                    | if ($reference | type) == "string" then
+                        { node: $reference, pending: $state.pending[1:], follows: $state.follows, error: null }
+                      elif ($reference | type) == "array"
+                        and ($reference | length) > 0
+                        and ($reference | all(.[]; type == "string" and length > 0)) then
+                        { node: $state.node, input: $input } as $follow
+                        | if ($state.follows | index($follow)) != null then
+                            { node: $state.node, pending: $state.pending, follows: $state.follows, error: "cyclic follows input " + $input + " on node " + $state.node }
+                          else
+                            { node: $lock.root, pending: ($reference + [{ follow: $follow }] + $state.pending[1:]), follows: ($state.follows + [$follow]), error: null }
+                          end
+                      else
+                        { node: $state.node, pending: $state.pending, follows: $state.follows, error: "missing string or follows input " + $input + " on node " + $state.node }
+                      end
+                  end
+            ) as $result
+            | if $result.error != null then
+                fail($result.error)
+              elif ($lock.nodes[$result.node] | type) != "object" then
+                ["err", $result.node, "missing selected node"]
+              elif ($lock.nodes[$result.node].locked | type) != "object" then
+                ["err", $result.node, "missing locked source"]
+              else
+                ($lock.nodes[$result.node].locked | del(.lastModified, .revCount)) as $identity
+                | if ($identity.type | type) == "string" and ($identity.type | length) > 0 then
+                    ["ok", $result.node, ($identity | tojson)]
+                  else
+                    ["err", $result.node, "locked source is missing type"]
                   end
               end
           end
@@ -84,85 +127,84 @@ extract_nixpkgs_lock() {
     ' "$lock_path"
 }
 
-compare_lockfile() {
+compare_lockfiles() {
     local first_path="$1"
     local current_path=
     local current_output=
     local current_status=
     local current_input=
-    local current_rev=
+    local current_identity=
     local current_message=
     local reference_output=
     local reference_status=
-    local reference_rev=
+    local reference_identity=
     local reference_input=
     local reference_message=
     local same_count=0
     local diff_count=0
     local err_count=0
 
-    if [[ "$#" -lt 2 ]]; then
-        echo "[err] compare_lockfile needs at least two paths." >&2
+    if [[ "$#" -lt 1 ]]; then
+        echo "[err] compare_lockfiles needs at least one path." >&2
         FLAG_FAIL=1
         return
     fi
 
     if ! command -v jq >/dev/null 2>&1; then
-        echo "[err] jq is required to compare nixpkgs lock entries." >&2
+        echo "[err] jq is required to compare template lock entries." >&2
         COUNT_DIFF=$((COUNT_DIFF + 1))
         FLAG_FAIL=1
         return
     fi
 
-    if [[ ! -f "$first_path" ]]; then
-        echo "[diff] $first_path is missing."
-        diff_count=$((diff_count + 1))
-    elif ! reference_output="$(extract_nixpkgs_lock "$first_path")"; then
-        echo "[err] failed to extract root nixpkgs input from $first_path." >&2
-        err_count=$((err_count + 1))
-    elif [[ -z "$reference_output" ]]; then
-        echo "[err] $first_path has no root nixpkgs input." >&2
-        err_count=$((err_count + 1))
-    else
-        IFS=$'\t' read -r reference_status reference_input reference_rev <<< "$reference_output"
+    for input_path in nixpkgs flake-parts flake-parts/nixpkgs-lib; do
+        if [[ ! -f "$first_path" ]]; then
+            echo "[diff] $first_path is missing."
+            diff_count=$((diff_count + 1))
+            continue
+        elif ! reference_output="$(extract_lock_entry "$first_path" "$input_path")"; then
+            echo "[err] failed to extract $input_path from $first_path." >&2
+            err_count=$((err_count + 1))
+            continue
+        elif [[ -z "$reference_output" ]]; then
+            echo "[err] $first_path has no $input_path lock entry." >&2
+            err_count=$((err_count + 1))
+            continue
+        fi
 
+        IFS=$'\t' read -r reference_status reference_input reference_identity <<< "$reference_output"
         if [[ "$reference_status" != "ok" ]]; then
-            reference_message="$reference_rev"
-            echo "[err] nixpkgs $first_path#$reference_input $reference_message." >&2
+            reference_message="$reference_identity"
+            echo "[err] $input_path $first_path#$reference_input $reference_message." >&2
             err_count=$((err_count + 1))
+            continue
         fi
-    fi
 
-    shift
-    for current_path in "$@"; do
-        if [[ ! -f "$current_path" ]]; then
-            echo "[diff] $current_path is missing."
-            diff_count=$((diff_count + 1))
-        elif [[ ! -f "$first_path" ]]; then
-            echo "[diff] $current_path cannot be compared because $first_path is missing."
-            diff_count=$((diff_count + 1))
-        elif ! current_output="$(extract_nixpkgs_lock "$current_path")"; then
-            echo "[err] failed to extract root nixpkgs input from $current_path." >&2
-            err_count=$((err_count + 1))
-        elif [[ -z "$current_output" ]]; then
-            echo "[err] $current_path has no root nixpkgs input." >&2
-            err_count=$((err_count + 1))
-        else
-            IFS=$'\t' read -r current_status current_input current_rev <<< "$current_output"
-
-            if [[ "$current_status" != "ok" ]]; then
-                current_message="$current_rev"
-                echo "[err] nixpkgs $current_path#$current_input $current_message." >&2
-                err_count=$((err_count + 1))
-            elif [[ "$reference_status" != "ok" ]]; then
-                continue
-            elif [[ "$current_rev" == "$reference_rev" ]]; then
-                same_count=$((same_count + 1))
-            else
-                echo "[diff] nixpkgs $current_path#$current_input rev=$current_rev != $first_path#$reference_input rev=$reference_rev"
+        for current_path in "${@:2}"; do
+            if [[ ! -f "$current_path" ]]; then
+                echo "[diff] $current_path is missing."
                 diff_count=$((diff_count + 1))
+            elif ! current_output="$(extract_lock_entry "$current_path" "$input_path")"; then
+                echo "[err] failed to extract $input_path from $current_path." >&2
+                err_count=$((err_count + 1))
+            elif [[ -z "$current_output" ]]; then
+                echo "[err] $current_path has no $input_path lock entry." >&2
+                err_count=$((err_count + 1))
+            else
+                IFS=$'\t' read -r current_status current_input current_identity <<< "$current_output"
+
+                if [[ "$current_status" != "ok" ]]; then
+                    current_message="$current_identity"
+                    echo "[err] $input_path $current_path#$current_input $current_message." >&2
+                    err_count=$((err_count + 1))
+                elif [[ "$current_identity" == "$reference_identity" ]]; then
+                    same_count=$((same_count + 1))
+                else
+                    echo "[diff] $input_path $current_path#$current_input != $first_path#$reference_input"
+                    diff_count=$((diff_count + 1))
+                fi
             fi
-        fi
+        done
     done
 
     COUNT_SAME=$((COUNT_SAME + same_count))
@@ -194,22 +236,18 @@ TEMPLATE_PATHS=()
 
 collect_template_paths ".devshellshook.sh" TEMPLATE_PATHS
 compare_diff \
-    "$PROJECT_DIR/.devshellshook.sh" \
     "${TEMPLATE_PATHS[@]}"
 
 collect_template_paths ".devshellspkgs.ls" TEMPLATE_PATHS
 compare_diff \
-    "$PROJECT_DIR/.devshellspkgs.ls" \
     "${TEMPLATE_PATHS[@]}"
 
 collect_template_paths ".zellij.kdl" TEMPLATE_PATHS
 compare_diff \
-    "$PROJECT_DIR/.zellij.kdl" \
     "${TEMPLATE_PATHS[@]}"
 
 collect_template_paths "flake.lock" TEMPLATE_PATHS
-compare_lockfile \
-    "$PROJECT_DIR/flake.lock" \
+compare_lockfiles \
     "${TEMPLATE_PATHS[@]}"
 
 echo "[info] final result: $COUNT_SAME same, $COUNT_DIFF different"

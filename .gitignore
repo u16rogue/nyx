@@ -1,9 +1,6 @@
 **
 .*
 !.gitignore
-!.devshellshook.sh
-!.devshellspkgs.ls
-!.zellij.kdl
 !flake.lock
 !flake.nix
 !legacy/
