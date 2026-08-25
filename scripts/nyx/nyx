@@ -23,6 +23,11 @@ printHelp() {
         Check that the encrypted nyx private key entry matches the stored
         hash in \`nyx.nixos.hosts.<hostname>.keys.prv\`.
         * hostname [optional] - overrides the detected hostname
+    host-apply-keys [path] [hostname]
+        Applies the registered nyx host keys to the provided path for a given
+        hostname
+        * path [optional] - defaults to \`/etc/ssh\`
+        * hostname [optional] - overrides the detected hostname
     help
         Print this." >&2
 }
@@ -226,10 +231,73 @@ modeHostNyxValidateSk() {
     fi
 }
 
+modeHostApplyKeys() {
+    assertCommands "nix" "rage"
+    assertInNyxCwd
+
+    local path_output="${1:-"/etc/ssh"}"
+    if [[ ! -d "$path_output" ]]; then
+        printErr "invalid output path"
+        exit 1
+    fi
+
+    local path_sk="$path_output/ssh_host_ed25519_key"
+    local path_pk="${path_sk}.pub"
+    local has_err=0
+
+    for kpath in "$path_sk" "$path_pk"; do
+        if [[ -f "$kpath" ]]; then
+            printErr "$kpath already exists."
+            has_err=1
+        fi
+    done
+    [[ "$has_err" -ne 0 ]] && exit 1
+
+    local host_name="${2:-}"
+    if [[ -z "$host_name" ]]; then
+        if [[ -r /etc/hostname ]]; then
+            host_name="$(< /etc/hostname)"
+        elif [[ -r /proc/sys/kernel/hostname ]]; then
+            host_name="$(< /proc/sys/kernel/hostname)"
+        else
+            printErr "could not resolve hostname. provide it as a parameter instead"
+            exit 1
+        fi
+    fi
+
+    if ! host_pk="$(nix eval --raw ".#nyx.nixos.hosts.\"$host_name\".keys.pub" 2>/dev/null)"; then
+        printErr "cannot retrieve public nyx host key entry for hostname"
+        exit 1
+    fi
+
+    if ! host_sk_age="$(nix eval --raw ".#nyx.nixos.hosts.\"$host_name\".keys.prv.age" 2>/dev/null)"; then
+        printErr "cannot retrieve private nyx host key entry for hostname"
+        exit 1
+    fi
+
+    if ! host_sk="$(printf '%s\n' "$host_sk_age" | rage -d)"; then
+        printErr "failed to decrypt sk age entry"
+        exit 1
+    fi
+
+    if ! printf "%s" "$host_pk" > "$path_pk"; then
+        printErr "failed to write pk"
+        exit 1
+    fi
+
+    if ! printf "%s" "$host_sk" > "$path_sk"; then
+        printErr "failed to write sk"
+        exit 1
+    fi
+
+    exit 0
+}
+
 case "${1:-}" in
     host-prk-enc) modeHostPrkEnc "${@:2}";;
     host-keys-match-check) modeHostKeysMatchCheck "${@:2}";;
     host-nyx-validate-sk) modeHostNyxValidateSk "${@:2}";;
+    host-apply-keys) modeHostApplyKeys "${@:2}";;
     *)
         # help mode is handled early.
         printErr "invalid mode '$1'"
