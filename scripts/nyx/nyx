@@ -8,8 +8,8 @@ printHelp() {
                       nyx [mode] - Internal nix utility for nyx
 --------------------------------------------------------------------------------
 [mode]:
-    rebuild-switch
-        todo
+    host-keygen
+        Generate an Ed25519 OpenSSH host keypair in nyx attr form.
     host-prk-enc
         Extract the hosts private key to be symmetricly encrypted and encoded
         for the purpose of adding it as a \`nyx.nixos.hosts.<hostname>.keys.priv\`
@@ -65,6 +65,46 @@ trimStr() {
     s="${s#"${s%%[![:space:]]*}"}"
     s="${s%"${s##*[![:space:]]}"}"
     printf '%s' "$s"
+}
+
+modeHostKeygen() {
+    # clanker wrote this. temp files are eh. will re-write this to all be done "in memory"
+    assertCommands "ssh-keygen" "rage" "sha256sum" "mktemp" "rm"
+
+    local temp_dir key_path public_key age_key private_key_hash
+    if ! temp_dir="$(mktemp -d)"; then
+        printErr "failed to create temporary directory"
+        exit 1
+    fi
+
+    trap 'rm -rf -- "$temp_dir"' EXIT
+    trap 'exit 1' HUP INT TERM
+
+    key_path="$temp_dir/ssh_host_ed25519_key"
+    if ! ssh-keygen -q -t ed25519 -N "" -C "" -f "$key_path" > /dev/null; then
+        printErr "failed to generate host key"
+        exit 1
+    fi
+
+    if [[ ! -r "${key_path}.pub" ]]; then
+        printErr "failed to read generated public key"
+        exit 1
+    fi
+    public_key="$(< "${key_path}.pub")"
+
+    if ! age_key="$(rage -p -a -e < "$key_path")"; then
+        printErr "failed to encrypt sk"
+        exit 1
+    fi
+    if ! private_key_hash="$(sha256sum -- "$key_path")"; then
+        printErr "failed to hash sk"
+        exit 1
+    fi
+    private_key_hash="${private_key_hash%% *}"
+
+    printf "pub = \"%s\"; prv = { age = ''\n%s\n''; sha256 = \"%s\"; };\n" \
+        "$public_key" "$age_key" "$private_key_hash"
+    exit "$?"
 }
 
 modeHostPrkEnc() {
@@ -312,6 +352,7 @@ modeHostApplyKeys() {
 }
 
 case "${1:-}" in
+    host-keygen) modeHostKeygen "${@:2}";;
     host-prk-enc) modeHostPrkEnc "${@:2}";;
     host-keys-match-check) modeHostKeysMatchCheck "${@:2}";;
     host-nyx-validate-sk) modeHostNyxValidateSk "${@:2}";;
@@ -322,6 +363,3 @@ case "${1:-}" in
         exit 1
     ;;
 esac
-
-printErr "fallthrough"
-exit 1 # fallthrough case
