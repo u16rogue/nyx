@@ -68,18 +68,36 @@ trimStr() {
 }
 
 modeHostPrkEnc() {
-    assertCommands "nix" "rage"
+    assertCommands "nix" "rage" "sha256sum"
     local key_path="/etc/ssh/ssh_host_ed25519_key"
     if [[ ! -f "$key_path" ]]; then
         printErr "no host key"
         exit 1
     fi
 
+    local age_key private_key_hash
     if [[ -r "$key_path" ]]; then
-        rage -p -a -e < "$key_path"
+        if ! age_key=$(rage -p -a -e < "$key_path"); then
+            printErr "failed to encrypt sk"
+            exit 1
+        fi
+        if ! private_key_hash=$(sha256sum -- "$key_path"); then
+            printErr "failed to hash sk"
+            exit 1
+        fi
     else
-        sudo rage -p -a -e "$key_path"
+        if ! age_key=$(sudo sh -c 'rage -p -a -e < "$1"' sh "$key_path"); then
+            printErr "failed to encrypt sk"
+            exit 1
+        fi
+        if ! private_key_hash=$(sudo sha256sum -- "$key_path"); then
+            printErr "failed to hash sk"
+            exit 1
+        fi
     fi
+
+    private_key_hash="${private_key_hash%% *}"
+    printf "age = ''\n%s\n'';\nsha256 = \"%s\";\n" "$age_key" "$private_key_hash"
     exit 0
 }
 
