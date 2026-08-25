@@ -86,9 +86,9 @@ extract_lock_entry() {
                   elif ($next | type) != "string" then
                     { node: $state.node, pending: $state.pending, follows: $state.follows, error: "invalid input path" }
                   elif ($lock.nodes[$state.node] | type) != "object" then
-                    { node: $state.node, pending: $state.pending, follows: $state.follows, error: "missing node " + $state.node }
+                    { node: $state.node, pending: $state.pending, follows: $state.follows, error: ("missing node " + $state.node) }
                   elif ($lock.nodes[$state.node].inputs | type) != "object" then
-                    { node: $state.node, pending: $state.pending, follows: $state.follows, error: "missing inputs on node " + $state.node }
+                    { node: $state.node, pending: $state.pending, follows: $state.follows, error: ("missing inputs on node " + $state.node) }
                   else
                     $next as $input
                     | $lock.nodes[$state.node].inputs[$input] as $reference
@@ -99,12 +99,12 @@ extract_lock_entry() {
                         and ($reference | all(.[]; type == "string" and length > 0)) then
                         { node: $state.node, input: $input } as $follow
                         | if ($state.follows | index($follow)) != null then
-                            { node: $state.node, pending: $state.pending, follows: $state.follows, error: "cyclic follows input " + $input + " on node " + $state.node }
+                            { node: $state.node, pending: $state.pending, follows: $state.follows, error: ("cyclic follows input " + $input + " on node " + $state.node) }
                           else
                             { node: $lock.root, pending: ($reference + [{ follow: $follow }] + $state.pending[1:]), follows: ($state.follows + [$follow]), error: null }
                           end
                       else
-                        { node: $state.node, pending: $state.pending, follows: $state.follows, error: "missing string or follows input " + $input + " on node " + $state.node }
+                        { node: $state.node, pending: $state.pending, follows: $state.follows, error: ("missing string or follows input " + $input + " on node " + $state.node) }
                       end
                   end
             ) as $result
