@@ -1,8 +1,10 @@
 { lib, ... }: {
     perSystem = { pkgs, ... }: {
         packages = (lib.pipe (builtins.readDir ./.) [
-            (lib.filterAttrs (name: value: (value == "directory" && builtins.pathExists (./. + "/${name}/package.nix"))))
-            (lib.mapAttrs (name: value: pkgs.callPackage (./. + "/${name}/package.nix") {}))
+            (lib.filterAttrs (filename: filetype: (filetype == "directory" && builtins.pathExists (./. + "/${filename}/package.nix"))))
+            (lib.mapAttrs (filename: filetype: (
+                pkgs.callPackage (./. + "/${filename}/package.nix") {}
+            )))
         ]);
     };
 }

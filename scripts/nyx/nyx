@@ -8,16 +8,21 @@ printHelp() {
                       nyx [mode] - Internal nix utility for nyx
 --------------------------------------------------------------------------------
 [mode]:
+    !todo! host-assert
+        Asserts the current host for correctness. Will:
+            * Ensure \`nyx\` host keys are present, validated, and correct.
+            * Ensure \`preserve\` (if enabled) is properly configured with a
+              valid path and anything necessary is preserved properly (keys).
     host-keygen
         Generate an Ed25519 OpenSSH host keypair in nyx attr form.
     host-prk-enc
         Extract the hosts private key to be symmetricly encrypted and encoded
-        for the purpose of adding it as a \`nyx.nixos.hosts.<hostname>.keys.priv\`
+        for the purpose of adding it as a \`nyx.nixos.hosts.<hostname>.keys.prv\`
         entry. The result is printed to the stdout. The user will be prompted
         for one.
     host-keys-match-check [hostname]
         Check the current hosts ssh keys against the host entry configured in
-        nyx.
+        nyx. Remark: might remove this and delegate to \`host-assert\`.
         * hostname [optional] - overrides the detected hostname
     host-nyx-validate-sk [hostname]
         Check that the encrypted nyx private key entry matches the stored
