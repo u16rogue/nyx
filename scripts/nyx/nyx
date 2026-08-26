@@ -13,6 +13,7 @@ printHelp() {
             * Ensure \`nyx\` host keys are present, validated, and correct.
             * Ensure \`preserve\` (if enabled) is properly configured with a
               valid path and anything necessary is preserved properly (keys).
+            * nixosConfigurations entry matches the networking.hostname
     host-keygen
         Generate an Ed25519 OpenSSH host keypair in nyx attr form.
     host-prk-enc

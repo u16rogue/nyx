@@ -3,6 +3,7 @@
 !.gitignore
 !flake.lock
 !flake.nix
+!README.md
 !legacy/
 !nixos/
 !overrides/

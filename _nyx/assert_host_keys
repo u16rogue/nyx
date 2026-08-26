@@ -4,7 +4,7 @@
 
 # Asserts that every nixos host has valid `nyx.nixos.hosts.<hostname>.keys`
 # entries:
-#   * every `flake.nixosConfigurations.<hostname>` has a matching
+#   * TODO: ! remove: we derive configs from `nyx` now ! every `flake.nixosConfigurations.<hostname>` has a matching
 #     `nyx.nixos.hosts.<hostname>` entry and vice versa
 #   * `keys.pub` is a well formed ssh-ed25519 public key
 #   * `keys.prv.age` is an age armored encrypted file (as produced by
