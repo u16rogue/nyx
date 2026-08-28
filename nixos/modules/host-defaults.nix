@@ -1,0 +1,15 @@
+{ lib, ... }: {
+    flake.modules.nixos.host-defaults = { modulesPath, ... }: {
+        imports = [(modulesPath + "/installer/scan/not-detected.nix")];
+
+        nixpkgs.config.allowUnfree = lib.mkDefault true;
+        time.timeZone = lib.mkDefault "Asia/Taipei";
+        networking.networkmanager.enable = lib.mkDefault true;
+        boot.loader.systemd-boot.enable = lib.mkDefault true;
+        boot.loader.efi.canTouchEfiVariables = lib.mkDefault true;
+
+        users.mutableUsers = false;
+        networking.firewall.enable = true;
+        nix.settings.experimental-features = [ "nix-command" "flakes" "pipe-operators" ];
+    };
+}

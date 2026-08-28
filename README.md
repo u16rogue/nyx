@@ -51,3 +51,4 @@ my nix slop
 * `overrides.opencode` that carry my auth keys and config so i dont have to setup and auth opencode per project
     * the current setup might be a better idea. tedious but "clean"-er.
     * alt: setup a script+age that auto configures opencode for that project sandbox
+* `nyx.nixos.users.<user>.ephemeralfs.preserve` files and directories that are not absolute paths (just check if it starts with `/`) should automatically assume it prepends `/home/${username}/${value}`

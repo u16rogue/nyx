@@ -1,31 +1,50 @@
 { self, ... }: let
     username = "user";
 in {
-    flake.modules.nixos."users.${username}" = { pkgs, ... }: let
-        mypkgs = self.packages.${pkgs.system};
-    in {
-        users.users.${username} = {
+    nyx.nixos.users.${username} = {
+        ephemeralfs.preserve = {
+            files = [
+
+            ];
+            directories = [
+                "/home/${username}/downloads"
+                "/home/${username}/media"
+                "/home/${username}/documents"
+                "/home/${username}/projects"
+            ];
+            partial.directories = [];
+        };
+
+        configuration = { pkgs, ... }: let nyxpkgs = self.packages.${pkgs.system}; in {
             isNormalUser = true;
             extraGroups = [ "wheel" ];
-            shell = mypkgs.fish;
+            shell = nyxpkgs.fish;
             packages = [
                 # Scripts
-                mypkgs.tmuxss
-                mypkgs.git-cans
-                mypkgs.mkignore
-                mypkgs.nix-develop
-                mypkgs.nix-gc
-                mypkgs.nix-pkgvercmp
-                mypkgs.nix-sync-lock-from-nixos
+                nyxpkgs.tmuxss
+                nyxpkgs.git-cans
+                nyxpkgs.mkignore
+                nyxpkgs.nix-develop
+                nyxpkgs.nix-gc
+                nyxpkgs.nix-pkgvercmp
+                nyxpkgs.nix-sync-lock-from-nixos
 
-                # Custom overridden packages (homeless configs +/ sandbox)
-                mypkgs.fish
-                mypkgs.nushell
+                # Custom overidden packages (homeless configs +/ sandbox)
+                nyxpkgs.fish
+                nyxpkgs.nushell
 
                 # direct nixpkgs
                 pkgs.git
                 pkgs.jq
                 pkgs.bubblewrap
+            
+                pkgs.writeShellApplication {
+                    name = "start";
+                    runtimeInputs = [];
+                    text = /*bash*/ ''
+                        exec start-hyprland
+                    '';
+                }
             ];
         };
     };
