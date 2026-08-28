@@ -26,6 +26,7 @@ my nix slop
 
 * [nixos](./nixos) - NixOS configurations.
     * `nyx` related options are defined in [nixos/default.nix](./nixos/default.nix)
+    * Host configurations must provide the disks for the paths `/boot` and `/persist`. Host should follow the common `fileSystems` provided by `nyx`.
     * Systems/NixOS/Hosts are expected to use an ephemeral filesystem where each host and user are required to explicitly state which files and directories are to be preserved.
         * A `partial` preservation is available via `nyx.nixos.hosts.<hostname>.ephemeralfs.preserve.partial.directories` to list directories that can be preserved and should possibly be stored to disk without the explicit necessity that it should be saved. Useful for systems that does not have a large enough RAM space for a root tmpfs or for directories that do need large spaces (eg home directories as its used by some programs and scripts to download large blobs that are discarded later or cache)
     * [modules](./nixos/modules) - Set of flake-parts `nixos` modules. All `*.nix` are aggregated and imported to be available.
@@ -40,11 +41,10 @@ my nix slop
 
 * [_nyx](./_nyx) + [workflow](./.github/workflow) - Meta folder(s). Contains scripts that are meant for automation. Mostly written by clankers.
     * Flake check
-    * [assert_host_keys](./_nyx/assert_host_keys) - Ensure each nyx host entries are filled in and valid. TODO: 
+    * [assert_hosts](./_nyx/assert_hosts) - Checks host registration against `nixosConfigurations`, requires at least one `users` entry, verifies `networking.hostName`, ensures `/boot`, `/persist`, and `/var/log` are wired correctly, and validates `keys.pub` and `keys.prv`.
     * [assert_templates](./_nyx/assert_templates) - Ensure template lock files are in sync.
 
 ## TODO
-* change `assert_host_keys` to `assert_hosts` and do what the name implies.
 * `sbx-shell` +/ `sbx-develop` as a replacement to the current [`.devshellshook.sh` -> setup custom env -> bwrap] pipeline. `flake.nix` shouldn't be deploying development sandboxes.
     * side: get `devenv.sh` working with `bwrap` and figure out a way to have the project `flake.nix` and devenv sync locks.
     * find a way to safely bind the nix socket inside or an alternative to caching as to not duplicate `~/.local/nix/store` per project sandbox (it currently just binds it as ro)
@@ -52,3 +52,4 @@ my nix slop
     * the current setup might be a better idea. tedious but "clean"-er.
     * alt: setup a script+age that auto configures opencode for that project sandbox
 * `nyx.nixos.users.<user>.ephemeralfs.preserve` files and directories that are not absolute paths (just check if it starts with `/`) should automatically assume it prepends `/home/${username}/${value}`
+* assert each host provides `/persist` and `/boot` filesystems.

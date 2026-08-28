@@ -17,6 +17,22 @@
                 {
                     networking.hostName = lib.mkDefault "${hostname}";
                     system.stateVersion = lib.mkDefault "25.11";
+                    fileSystems = {
+                        "/" = {
+                            device = "none";
+                            fsType = "tmpfs";
+                            options = [ "defaults" "size=1G" "mode=755" ];
+                            neededForBoot = true;
+                        };
+                        "/nix" = {
+                            depends = [ "/persist" ];
+                            neededForBoot = true;
+                            device = "/persist/nix";
+                            fsType = "none";
+                            options = [ "bind" ];
+                        };
+                        
+                    };
                 }
             ];
         })))

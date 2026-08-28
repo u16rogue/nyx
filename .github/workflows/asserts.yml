@@ -48,8 +48,8 @@ jobs:
       - name: Assert templates
         run: bash _nyx/assert_templates
 
-  assert-host-keys:
-    name: Assert host keys
+  assert-hosts:
+    name: Assert hosts
     runs-on: ubuntu-latest
 
     steps:
@@ -59,5 +59,5 @@ jobs:
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@v14
 
-      - name: Assert host keys
-        run: bash _nyx/assert_host_keys
+      - name: Assert hosts
+        run: bash _nyx/assert_hosts

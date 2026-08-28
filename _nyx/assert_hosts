@@ -1,0 +1,329 @@
+#!/usr/bin/env bash
+
+# THIS WAS WRITTEN BY A CLANKER
+
+# Asserts that every nixos host has valid `nyx.nixos.hosts.<hostname>`
+# entries:
+#   * every `flake.nixosConfigurations.<hostname>` has a matching
+#     `nyx.nixos.hosts.<hostname>` entry and vice versa
+#   * the host declares at least one user
+#   * the evaluated host config exposes `networking.hostName == <hostname>`
+#   * `fileSystems."/boot"`, `fileSystems."/persist"`, and `fileSystems."/var/log"`
+#     exist and are wired correctly
+#   * `keys.pub` is a well formed ssh-ed25519 public key
+#   * `keys.prv.age` is an age armored encrypted file (as produced by
+#     `nyx host-prk-enc`) and `keys.prv.sha256` is a SHA-256 digest
+
+FLAG_FAIL=0
+COUNT_OK=0
+COUNT_ERR=0
+COUNT_WARN=0
+PROJECT_DIR="$(realpath "$(dirname "$(realpath "${BASH_SOURCE[0]}")")/..")"
+
+report_err() {
+    echo "[err] $1" >&2
+    FLAG_FAIL=1
+    COUNT_ERR=$((COUNT_ERR + 1))
+}
+
+report_warn() {
+    echo "[warn] $1"
+    COUNT_WARN=$((COUNT_WARN + 1))
+}
+
+assert_pub_key() {
+    local host="$1"
+    local pub="$2"
+    local b64=
+    local decoded_bytes=
+
+    if [[ -z "$pub" ]]; then
+        report_err "host '$host' keys.pub is empty."
+        return 1
+    fi
+
+    if [[ ! "$pub" =~ ^ssh-ed25519\ [A-Za-z0-9+/]+={0,3}(\ .*)?$ ]]; then
+        report_err "host '$host' keys.pub is not a valid ssh-ed25519 public key entry."
+        return 1
+    fi
+
+    b64="${pub#ssh-ed25519 }"
+    b64="${b64%% *}"
+
+    if ! decoded_bytes="$(base64 --decode <<< "$b64" 2>/dev/null | wc --bytes)"; then
+        report_err "host '$host' keys.pub is not valid base64."
+        return 1
+    fi
+
+    if [[ "$decoded_bytes" -ne 51 ]]; then
+        report_err "host '$host' keys.pub decodes to $decoded_bytes bytes, expected 51."
+        return 1
+    fi
+
+    COUNT_OK=$((COUNT_OK + 1))
+}
+
+assert_prv_key() {
+    local host="$1"
+    local prv_json="$2"
+    local age=
+    local sha256=
+    local first_line=
+    local last_line=
+    local body=
+
+    if ! age="$(jq -er '.age' <<< "$prv_json")"; then
+        report_err "host '$host' is missing keys.prv.age."
+        return 1
+    fi
+
+    if ! sha256="$(jq -er '.sha256' <<< "$prv_json")"; then
+        report_err "host '$host' is missing keys.prv.sha256."
+        return 1
+    fi
+
+    if [[ ! "$sha256" =~ ^[a-f0-9]{64}$ ]]; then
+        report_err "host '$host' keys.prv.sha256 is not a lowercase SHA-256 digest."
+        return 1
+    fi
+
+    first_line="$(grep -m 1 . <<< "$age")"
+    last_line="$(tac <<< "$age" | grep -m 1 .)"
+
+    if [[ "$first_line" != "-----BEGIN AGE ENCRYPTED FILE-----" || "$last_line" != "-----END AGE ENCRYPTED FILE-----" ]]; then
+        report_err "host '$host' keys.prv.age is not an age armored encrypted file."
+        return 1
+    fi
+
+    body="$(sed -n '/^-----BEGIN AGE ENCRYPTED FILE-----$/,/^-----END AGE ENCRYPTED FILE-----$/p' <<< "$age" | grep -v -- '^-----')"
+
+    if [[ -z "$body" ]] || ! base64 --decode <<< "$body" > /dev/null 2>&1; then
+        report_err "host '$host' keys.prv.age armor body is not valid base64."
+        return 1
+    fi
+
+    if ! base64 --decode <<< "$body" 2>/dev/null | head --bytes 21 | grep -aq "age-encryption.org/v1"; then
+        report_err "host '$host' keys.prv.age does not decode to an age v1 payload."
+        return 1
+    fi
+
+    COUNT_OK=$((COUNT_OK + 1))
+}
+
+assert_host_users() {
+    local host="$1"
+    local users_json="$2"
+    local user=
+
+    if ! jq -e 'type == "array" and length > 0' <<< "$users_json" > /dev/null; then
+        report_err "host '$host' must declare at least one user."
+        return 1
+    fi
+
+    while IFS= read -r user; do
+        [[ -z "$user" ]] && continue
+
+        if ! jq -e --arg u "$user" 'index($u) != null' <<< "$HOST_USERS_JSON" > /dev/null; then
+            report_err "host '$host' references unknown user '$user'."
+            return 1
+        fi
+    done < <(jq -r '.[]' <<< "$users_json")
+
+    COUNT_OK=$((COUNT_OK + 1))
+}
+
+assert_host_hostname() {
+    local host="$1"
+    local hostname="$2"
+
+    if [[ -z "$hostname" ]]; then
+        report_err "host '$host' networking.hostName is empty."
+        return 1
+    fi
+
+    if [[ "$hostname" != "$host" ]]; then
+        report_err "host '$host' networking.hostName is '$hostname', expected '$host'."
+        return 1
+    fi
+
+    COUNT_OK=$((COUNT_OK + 1))
+}
+
+assert_host_filesystem() {
+    local host="$1"
+    local mountpoint="$2"
+    local fs_json="$3"
+    local fs_type=
+    local device=
+    local needed_for_boot=
+    local options=
+    local depends=
+
+    if ! jq -e 'type == "object"' <<< "$fs_json" > /dev/null; then
+        report_err "host '$host' is missing fileSystems.$mountpoint."
+        return 1
+    fi
+
+    fs_type="$(jq -r '.fsType // empty' <<< "$fs_json")"
+    device="$(jq -r '.device // empty' <<< "$fs_json")"
+    needed_for_boot="$(jq -r '.neededForBoot // false' <<< "$fs_json")"
+    options="$(jq -r '.options // [] | @json' <<< "$fs_json")"
+    depends="$(jq -r '.depends // [] | @json' <<< "$fs_json")"
+
+    case "$mountpoint" in
+        /boot)
+            if [[ "$device" != "/dev/disk/by-label/boot" ]]; then
+                report_err "host '$host' /boot must use /dev/disk/by-label/boot, got '$device'."
+                return 1
+            fi
+
+            if ! jq -e 'index("fmask=0077") != null and index("dmask=0077") != null' <<< "$options" > /dev/null; then
+                report_err "host '$host' /boot must keep strict FAT permissions."
+                return 1
+            fi
+
+            if [[ "$needed_for_boot" == "true" ]]; then
+                report_err "host '$host' /boot should not be marked neededForBoot."
+                return 1
+            fi
+            ;;
+        /persist)
+            if [[ "$device" != "/dev/disk/by-label/persist" ]]; then
+                report_err "host '$host' /persist must use /dev/disk/by-label/persist, got '$device'."
+                return 1
+            fi
+
+            if [[ "$needed_for_boot" != "true" ]]; then
+                report_err "host '$host' /persist must be neededForBoot."
+                return 1
+            fi
+
+            if ! jq -e 'index("/") != null' <<< "$depends" > /dev/null; then
+                report_err "host '$host' /persist must depend on /."
+                return 1
+            fi
+            ;;
+        /var/log)
+            if [[ "$fs_type" != "none" ]]; then
+                report_err "host '$host' /var/log must be a bind mount, got fsType '$fs_type'."
+                return 1
+            fi
+
+            if [[ "$device" != "/persist/var/log" ]]; then
+                report_err "host '$host' /var/log must bind /persist/var/log, got '$device'."
+                return 1
+            fi
+
+            if ! jq -e 'index("bind") != null' <<< "$options" > /dev/null; then
+                report_err "host '$host' /var/log must use bind mount options."
+                return 1
+            fi
+
+            if ! jq -e 'index("/persist") != null' <<< "$depends" > /dev/null; then
+                report_err "host '$host' /var/log must depend on /persist."
+                return 1
+            fi
+            ;;
+    esac
+
+    COUNT_OK=$((COUNT_OK + 1))
+}
+
+if ! command -v jq >/dev/null 2>&1; then
+    echo "[err] jq is required to assert hosts." >&2
+    exit 1
+fi
+
+HOSTS_JSON=
+HOST_USERS_JSON=
+CONFIGS_JSON=
+
+if ! HOSTS_JSON="$(nix eval --json --no-write-lock-file --option warn-dirty false "$PROJECT_DIR#nyx.nixos.hosts" --apply 'builtins.mapAttrs (_: host: { inherit (host) keys users; })')"; then
+    echo "[err] failed to evaluate nyx.nixos.hosts." >&2
+    exit 1
+fi
+
+if ! HOST_USERS_JSON="$(nix eval --json --no-write-lock-file --option warn-dirty false "$PROJECT_DIR#nyx.nixos.users" --apply 'builtins.attrNames')"; then
+    echo "[err] failed to evaluate nyx.nixos.users." >&2
+    exit 1
+fi
+
+if ! CONFIGS_JSON="$(nix eval --json --no-write-lock-file --option warn-dirty false "$PROJECT_DIR#nixosConfigurations" --apply 'builtins.attrNames')"; then
+    echo "[err] failed to evaluate flake.nixosConfigurations." >&2
+    exit 1
+fi
+
+ALL_HOSTS="$({
+    jq -r 'keys[]' <<< "$HOSTS_JSON"
+    jq -r '.[]' <<< "$CONFIGS_JSON"
+} | sort -u)"
+
+if [[ -z "$ALL_HOSTS" ]]; then
+    echo "[info] no nixos hosts found, nothing to assert."
+    exit 0
+fi
+
+while IFS= read -r host; do
+    [[ -z "$host" ]] && continue
+
+    in_nyx=0
+    in_cfg=0
+    jq -e --arg h "$host" 'has($h)' <<< "$HOSTS_JSON" > /dev/null && in_nyx=1
+    jq -e --arg h "$host" 'index($h) != null' <<< "$CONFIGS_JSON" > /dev/null && in_cfg=1
+
+    if [[ "$in_nyx" -eq 0 ]]; then
+        report_err "host '$host' has a nixosConfigurations entry but no nyx.nixos.hosts.$host entry."
+        continue
+    fi
+
+    if [[ "$in_cfg" -eq 0 ]]; then
+        report_err "host '$host' has a nyx.nixos.hosts entry but no nixosConfigurations.$host entry."
+        continue
+    fi
+
+    if ! assert_host_users "$host" "$(jq -c --arg h "$host" '.[$h].users' <<< "$HOSTS_JSON")"; then
+        :
+    fi
+
+    if ! host_hostname="$(nix eval --raw --no-write-lock-file --option warn-dirty false "$PROJECT_DIR#nixosConfigurations.\"$host\".config.networking.hostName" 2>/dev/null)"; then
+        report_err "host '$host' failed to evaluate networking.hostName."
+    else
+        assert_host_hostname "$host" "$host_hostname"
+    fi
+
+    if ! boot_fs_json="$(nix eval --json --no-write-lock-file --option warn-dirty false "$PROJECT_DIR#nixosConfigurations.\"$host\".config.fileSystems.\"/boot\"" 2>/dev/null)"; then
+        report_err "host '$host' failed to evaluate fileSystems./boot."
+    else
+        assert_host_filesystem "$host" "/boot" "$boot_fs_json"
+    fi
+
+    if ! persist_fs_json="$(nix eval --json --no-write-lock-file --option warn-dirty false "$PROJECT_DIR#nixosConfigurations.\"$host\".config.fileSystems.\"/persist\"" 2>/dev/null)"; then
+        report_err "host '$host' failed to evaluate fileSystems./persist."
+    else
+        assert_host_filesystem "$host" "/persist" "$persist_fs_json"
+    fi
+
+    if ! var_log_fs_json="$(nix eval --json --no-write-lock-file --option warn-dirty false "$PROJECT_DIR#nixosConfigurations.\"$host\".config.fileSystems.\"/var/log\"" 2>/dev/null)"; then
+        report_err "host '$host' failed to evaluate fileSystems./var/log."
+    else
+        assert_host_filesystem "$host" "/var/log" "$var_log_fs_json"
+    fi
+
+    if ! jq -e --arg h "$host" '.[$h].keys | has("pub")' <<< "$HOSTS_JSON" > /dev/null; then
+        report_err "host '$host' is missing the keys.pub entry."
+    else
+        assert_pub_key "$host" "$(jq -r --arg h "$host" '.[$h].keys.pub' <<< "$HOSTS_JSON")"
+    fi
+
+    if ! jq -e --arg h "$host" '.[$h].keys | has("prv")' <<< "$HOSTS_JSON" > /dev/null; then
+        report_err "host '$host' is missing the keys.prv entry."
+    else
+        assert_prv_key "$host" "$(jq -c --arg h "$host" '.[$h].keys.prv' <<< "$HOSTS_JSON")"
+    fi
+done <<< "$ALL_HOSTS"
+
+echo "[info] final result: $COUNT_OK ok, $COUNT_WARN warnings, $COUNT_ERR errors"
+
+if [[ "$FLAG_FAIL" != "0" ]]; then
+    exit 1
+fi

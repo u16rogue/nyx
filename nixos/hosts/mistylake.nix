@@ -62,39 +62,22 @@ in {
             nixpkgs.hostPlatform = "x86_64-linux";
             boot.initrd.availableKernelModules = [ "xhci_pci" "ahci" "nvme" "usbhid" "usb_storage" "sd_mod" ];
             boot.initrd.luks.devices."persist-luks".device = "/dev/md/nixos:persist-raid";
-            
-            fileSystems = {
-                "/boot" = {
-                    device = "/dev/disk/by-label/boot";
-                    fsType = "vfat";
-                    options = [ "fmask=0077" "dmask=0077" ];
-                };
-                "/" = {
-                    device = "none";
-                    fsType = "tmpfs";
-                    options = [ "defaults" "size=2G" "mode=755" ];
-                    neededForBoot = true;
-                };
-                "/persist" = {
-                    depends = [ "/" ];
-                    neededForBoot = true;
-                    device = "/dev/disk/by-label/persist";
-                    fsType = "ext4";
-                };
-                "/nix" = {
-                    depends = [ "/persist" ];
-                    neededForBoot = true;
-                    device = "/persist/nix";
-                    fsType = "none";
-                    options = [ "bind" ];
-                };
-                "/var/log" = {
-                    depends = [ "/persist" ];
-                    neededForBoot = true;
-                    device = "/persist/var/log";
-                    fsType = "none";
-                    options = [ "bind" ];
-                };
+            fileSystems."/boot" = {
+                device = "/dev/disk/by-label/boot";
+                fsType = "vfat";
+                options = [ "fmask=0077" "dmask=0077" ];
+            };
+            fileSystems."/persist" = {
+                depends = [ "/" ];
+                neededForBoot = true;
+                device = "/dev/disk/by-label/persist";
+                fsType = "ext4";
+            };
+            fileSystems."/var/log" = {
+                depends = [ "/persist" ];
+                device = "/persist/var/log";
+                fsType = "none";
+                options = [ "bind" ];
             };
         };
     };
