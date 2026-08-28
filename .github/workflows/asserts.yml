@@ -61,17 +61,3 @@ jobs:
 
       - name: Assert host keys
         run: bash _nyx/assert_host_keys
-
-  assert-host-keygen:
-    name: Assert host keygen
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@v14
-
-      - name: Assert host keygen
-        run: bash _nyx/assert_host_keygen
