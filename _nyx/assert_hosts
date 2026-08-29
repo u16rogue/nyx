@@ -31,6 +31,11 @@ report_warn() {
     COUNT_WARN=$((COUNT_WARN + 1))
 }
 
+report_ok() {
+    echo "[ok] $1"
+    COUNT_OK=$((COUNT_OK + 1))
+}
+
 assert_pub_key() {
     local host="$1"
     local pub="$2"
@@ -60,7 +65,7 @@ assert_pub_key() {
         return 1
     fi
 
-    COUNT_OK=$((COUNT_OK + 1))
+    report_ok "host '$host' keys.pub"
 }
 
 assert_prv_key() {
@@ -107,7 +112,7 @@ assert_prv_key() {
         return 1
     fi
 
-    COUNT_OK=$((COUNT_OK + 1))
+    report_ok "host '$host' keys.prv"
 }
 
 assert_host_users() {
@@ -129,7 +134,7 @@ assert_host_users() {
         fi
     done < <(jq -r '.[]' <<< "$users_json")
 
-    COUNT_OK=$((COUNT_OK + 1))
+    report_ok "host '$host' users: $(jq -r 'join(", ")' <<< "$users_json")"
 }
 
 assert_host_hostname() {
@@ -146,7 +151,7 @@ assert_host_hostname() {
         return 1
     fi
 
-    COUNT_OK=$((COUNT_OK + 1))
+    report_ok "host '$host' hostname: $hostname"
 }
 
 assert_host_filesystem() {
@@ -226,7 +231,7 @@ assert_host_filesystem() {
             ;;
     esac
 
-    COUNT_OK=$((COUNT_OK + 1))
+    report_ok "host '$host' filesystem $mountpoint"
 }
 
 if ! command -v jq >/dev/null 2>&1; then
@@ -266,6 +271,8 @@ fi
 while IFS= read -r host; do
     [[ -z "$host" ]] && continue
 
+    echo "[host] $host"
+
     in_nyx=0
     in_cfg=0
     jq -e --arg h "$host" 'has($h)' <<< "$HOSTS_JSON" > /dev/null && in_nyx=1
@@ -280,6 +287,8 @@ while IFS= read -r host; do
         report_err "host '$host' has a nyx.nixos.hosts entry but no nixosConfigurations.$host entry."
         continue
     fi
+
+    report_ok "host '$host' registration"
 
     if ! assert_host_users "$host" "$(jq -c --arg h "$host" '.[$h].users' <<< "$HOSTS_JSON")"; then
         :

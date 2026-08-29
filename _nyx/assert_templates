@@ -38,6 +38,7 @@ compare_diff() {
             echo "[diff] $current_path cannot be compared because $first_path is missing."
             diff_count=$((diff_count + 1))
         elif cmp -s "$first_path" "$current_path"; then
+            echo "[ok] $current_path matches $first_path"
             same_count=$((same_count + 1))
         else
             echo "[diff] $first_path != $current_path"
@@ -198,6 +199,7 @@ compare_lockfiles() {
                     echo "[err] $input_path $current_path#$current_input $current_message." >&2
                     err_count=$((err_count + 1))
                 elif [[ "$current_identity" == "$reference_identity" ]]; then
+                    echo "[ok] $input_path $current_path matches $first_path"
                     same_count=$((same_count + 1))
                 else
                     echo "[diff] $input_path $current_path#$current_input != $first_path#$reference_input"
@@ -235,18 +237,22 @@ collect_template_paths() {
 TEMPLATE_PATHS=()
 
 collect_template_paths ".devshellshook.sh" TEMPLATE_PATHS
+echo "[check] .devshellshook.sh"
 compare_diff \
     "${TEMPLATE_PATHS[@]}"
 
 collect_template_paths ".devshellspkgs.ls" TEMPLATE_PATHS
+echo "[check] .devshellspkgs.ls"
 compare_diff \
     "${TEMPLATE_PATHS[@]}"
 
 collect_template_paths ".zellij.kdl" TEMPLATE_PATHS
+echo "[check] .zellij.kdl"
 compare_diff \
     "${TEMPLATE_PATHS[@]}"
 
 collect_template_paths "flake.lock" TEMPLATE_PATHS
+echo "[check] flake.lock inputs"
 compare_lockfiles \
     "${TEMPLATE_PATHS[@]}"
 

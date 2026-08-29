@@ -1,1 +1,3 @@
 #!/usr/bin/env bash
+
+echo "[info] assert_state has no checks configured."
