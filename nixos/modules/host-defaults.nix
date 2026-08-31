@@ -1,7 +1,5 @@
 { lib, ... }: {
-    flake.modules.nixos.host-defaults = { modulesPath, ... }: {
-        imports = [(modulesPath + "/installer/scan/not-detected.nix")];
-
+    flake.modules.nixos.host-defaults = {
         nixpkgs.config.allowUnfree = lib.mkDefault true;
         time.timeZone = lib.mkDefault "Asia/Taipei";
         networking.networkmanager.enable = lib.mkDefault true;

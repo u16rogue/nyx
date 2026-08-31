@@ -14,7 +14,8 @@
             modules = [
                 inputs.disko.nixosModules.disko
                 nyxhost.configuration # config.nyx.nixos.hosts.${hostname}.configuration
-                ({ config, ... }: {
+                ({ config, modulesPath, ... }: {
+                    imports = [(modulesPath + "/installer/scan/not-detected.nix")];
                     networking.hostName = lib.mkDefault "${hostname}";
                     system.stateVersion = lib.mkDefault "25.11";
                     fileSystems = {
