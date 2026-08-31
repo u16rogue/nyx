@@ -23,6 +23,7 @@
                         imports = [(modulesPath + "/installer/scan/not-detected.nix")];
                         networking.hostName = lib.mkDefault "${hostname}";
                         nixpkgs.hostPlatform = nyxhost.platform;
+                        disko.enableConfig = true;
                         fileSystems = {
                             "/" = {
                                 device = "none";

@@ -3,9 +3,7 @@
 in {
     nyx.nixos.users.${username} = {
         ephemeralfs.preserve = {
-            files = [
-
-            ];
+            files = [];
             directories = [
                 "/home/${username}/downloads"
                 "/home/${username}/media"

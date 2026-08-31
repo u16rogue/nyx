@@ -1,7 +1,7 @@
 { ... }: let
-    hostName = "mistylake";
+    hostname = "mistylake";
 in {
-    nyx.nixos.hosts.${hostName} = {
+    nyx.nixos.hosts.${hostname} = {
         platform = "x86_64-linux";
         keys = {
             pub = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIE0ZgVVQZfW3BYIUT3fa9T1ncUnpIF+X8ZZysapPU5nQ root@mistylake";
@@ -62,7 +62,6 @@ in {
             system.stateVersion = "25.11";
             boot.initrd.availableKernelModules = [ "xhci_pci" "ahci" "nvme" "usbhid" "usb_storage" "sd_mod" ];
 
-            disko.enableConfig = true;
             disko.devices = {
                 disk = {
                     nvme0 = {

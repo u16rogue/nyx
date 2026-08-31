@@ -7,6 +7,8 @@ my nix slop
 
 * Any code or wall of text written by a clanker must be disclosed for sanity.
 
+* Q: Why a separate `nyx` "namespace" ? A: To query `#nyx` for the builtin scripts, to extend `nixosSystem` way beyond (especially `users.users.*.*`), to make things easier to assert, and to minimize duplication (eg. if the `users` extended options was implemented in nixosSystem).
+
 ## Contents
 
 * [scripts](./scripts) - A set of custom scripts
@@ -52,4 +54,5 @@ my nix slop
     * the current setup might be a better idea. tedious but "clean"-er.
     * alt: setup a script+age that auto configures opencode for that project sandbox
 * `nyx.nixos.users.<user>.ephemeralfs.preserve` files and directories that are not absolute paths (just check if it starts with `/`) should automatically assume it prepends `/home/${username}/${value}`
-* assert each host provides `/persist` and `/boot` filesystems.
+* `nyx user-make-secret <user>` command where the script can automatically derive the hosts that the user belong to, collect the pk's and generate the age'd output with recipients to that host
+* outputs for `nyx` related entries such as `nyx.overrides`, `nyx.scripts` and aggregated to `nyx.packages` etc
