@@ -12,13 +12,17 @@
         (lib.mapAttrs (hostname: nyxhost: let
             nyxhost_users = lib.genAttrs nyxhost.users (username: config.nyx.nixos.users.${username});
             result = inputs.nixpkgs.lib.nixosSystem {
-                specialArgs = { inherit inputs self; };
+                specialArgs = {
+                    inherit inputs self;
+                    nyxpkgs = self.packages.${nyxhost.platform};
+                };
                 modules = [
                     inputs.disko.nixosModules.disko
                     nyxhost.configuration # config.nyx.nixos.hosts.${hostname}.configuration
-                    ({ config, modulesPath, pkgs, ... }: {
+                    ({ config, modulesPath, pkgs, nyxpkgs, ... }: {
                         imports = [(modulesPath + "/installer/scan/not-detected.nix")];
                         networking.hostName = lib.mkDefault "${hostname}";
+                        nixpkgs.hostPlatform = nyxhost.platform;
                         fileSystems = {
                             "/" = {
                                 device = "none";
@@ -44,7 +48,7 @@
                             # i'd honestly prefer where `configuration` receives the same thing as what nixosSystem.modules receives
                             # as the pattern usually goes: `{ pkgs, ... }: { users.users.<name> = { ... }: {/*use pkgs*/}; }` i'll
                             # prolly expose users directly by deriving it in `modules` instead of here when i find a use case.
-                            inherit pkgs;
+                            inherit pkgs nyxpkgs;
                         });
 
                         assertions = let
@@ -72,6 +76,8 @@
             description = "Nyx nixos hosts";
 
             type = lib.types.attrsOf (lib.types.submodule {
+                # -- host platform --
+                options.platform = lib.mkOption { type = lib.types.str; };
                 # -- base nixos configuration --
                 options.configuration = lib.mkOption {
                     description = "NixOs system for this host";

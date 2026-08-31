@@ -1,4 +1,4 @@
-{ getSystem, ... }: let
+{ ... }: let
     username = "user";
 in {
     nyx.nixos.users.${username} = {
@@ -15,7 +15,7 @@ in {
             partial.directories = [];
         };
 
-        configuration = { pkgs, ... }: let nyxpkgs = (getSystem pkgs.stdenv.hostPlatform.system).packages; in {
+        configuration = { pkgs, nyxpkgs, ... }: {
             isNormalUser = true;
             extraGroups = [ "wheel" ];
             shell = nyxpkgs.fish;

@@ -17,7 +17,6 @@
     };
 
     outputs = inputs@{ self, nixpkgs, ... }: inputs.flake-parts.lib.mkFlake { inherit inputs; } ({ config, ... }: {
-        flake.description = "nix slop";
         flake.nyx = config.nyx; # export `nyx` options
 
         imports = [
