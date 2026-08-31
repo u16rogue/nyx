@@ -1,4 +1,4 @@
-{ self, inputs, ... }: let
+{ ... }: let
     hostName = "mistylake";
 in {
     nyx.nixos.hosts.${hostName} = {
@@ -48,7 +48,7 @@ in {
 
         users = [ "user" ];
 
-        configuration = { self, lib, config, ... }: {
+        configuration = { self, inputs, ... }: {
             imports = with self.modules.nixos; [
                 host-defaults
                 cpu-intel
@@ -61,17 +61,83 @@ in {
 
             nixpkgs.hostPlatform = "x86_64-linux";
             boot.initrd.availableKernelModules = [ "xhci_pci" "ahci" "nvme" "usbhid" "usb_storage" "sd_mod" ];
-            boot.initrd.luks.devices."persist-luks".device = "/dev/md/nixos:persist-raid";
-            fileSystems."/boot" = {
-                device = "/dev/disk/by-label/boot";
-                fsType = "vfat";
-                options = [ "fmask=0077" "dmask=0077" ];
-            };
-            fileSystems."/persist" = {
-                depends = [ "/" ];
-                neededForBoot = true;
-                device = "/dev/disk/by-label/persist";
-                fsType = "ext4";
+
+            disko.enableConfig = true;
+            disko.devices = {
+                disk = {
+                    nvme0 = {
+                        type = "disk";
+                        device = "/dev/disk/by-id/nvme-eui.0025384751a1d7e4";
+                        content = {
+                            type = "gpt";
+                            partitions = {
+                                legacy = {
+                                    size = "511M";
+                                    label = "primary";
+                                    device = "/dev/disk/by-id/nvme-eui.0025384751a1d7e4-part1";
+                                    content = {
+                                        type = "filesystem";
+                                        format = "ext4";
+                                    };
+                                };
+                                raid = {
+                                    size = "100%";
+                                    label = "primary";
+                                    device = "/dev/disk/by-id/nvme-eui.0025384751a1d7e4-part2";
+                                    content = {
+                                        type = "mdraid";
+                                        name = "nixos:persist-raid";
+                                    };
+                                };
+                            };
+                        };
+                    };
+                    nvme1 = {
+                        type = "disk";
+                        device = "/dev/disk/by-id/nvme-eui.0025384751a1db23";
+                        content = {
+                            type = "gpt";
+                            partitions = {
+                                ESP = {
+                                    size = "511M";
+                                    type = "EF00";
+                                    label = "ESP";
+                                    device = "/dev/disk/by-id/nvme-eui.0025384751a1db23-part1";
+                                    content = {
+                                        type = "filesystem";
+                                        format = "vfat";
+                                        mountpoint = "/boot";
+                                        mountOptions = [ "fmask=0077" "dmask=0077" ];
+                                    };
+                                };
+                                raid = {
+                                    size = "100%";
+                                    label = "primary";
+                                    device = "/dev/disk/by-id/nvme-eui.0025384751a1db23-part2";
+                                    content = {
+                                        type = "mdraid";
+                                        name = "nixos:persist-raid";
+                                    };
+                                };
+                            };
+                        };
+                    };
+                };
+                mdadm."nixos:persist-raid" = {
+                    type = "mdadm";
+                    level = 0;
+                    metadata = "1.2";
+                    content = {
+                        type = "luks";
+                        name = "persist-luks";
+                        content = {
+                            type = "filesystem";
+                            format = "ext4";
+                            extraArgs = [ "-L" "persist" ];
+                            mountpoint = "/persist";
+                        };
+                    };
+                };
             };
             fileSystems."/var/log" = {
                 depends = [ "/persist" ];

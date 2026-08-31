@@ -177,11 +177,6 @@ assert_host_filesystem() {
 
     case "$mountpoint" in
         /boot)
-            if [[ "$device" != "/dev/disk/by-label/boot" ]]; then
-                report_err "host '$host' /boot must use /dev/disk/by-label/boot, got '$device'."
-                return 1
-            fi
-
             if ! jq -e 'index("fmask=0077") != null and index("dmask=0077") != null' <<< "$options" > /dev/null; then
                 report_err "host '$host' /boot must keep strict FAT permissions."
                 return 1
@@ -193,11 +188,6 @@ assert_host_filesystem() {
             fi
             ;;
         /persist)
-            if [[ "$device" != "/dev/disk/by-label/persist" ]]; then
-                report_err "host '$host' /persist must use /dev/disk/by-label/persist, got '$device'."
-                return 1
-            fi
-
             if [[ "$needed_for_boot" != "true" ]]; then
                 report_err "host '$host' /persist must be neededForBoot."
                 return 1

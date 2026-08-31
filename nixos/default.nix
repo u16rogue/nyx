@@ -1,20 +1,20 @@
 { config, inputs, lib, self, ... }: {
-    # TODO: make this more linear by using builtins.map [fn] [val] instead then pipe to have lib.flatten at the end
-    imports = lib.flatten (lib.forEach [ ./hosts ./users ./modules ] (subdir:
-        (lib.pipe (builtins.readDir subdir) [
+    imports = lib.pipe [ ./hosts ./users ./modules ] [
+        (builtins.map (subdir: lib.pipe (builtins.readDir subdir) [
             (lib.filterAttrs (filename: filetype: filetype == "regular" && builtins.match ".*\\.nix" filename != null))
             builtins.attrNames
             (builtins.map (filename: subdir + "/${filename}"))
-        ])
-    ));
+        ]))
+        lib.flatten
+    ];
 
     config.flake.nixosConfigurations = lib.pipe config.nyx.nixos.hosts [
         (lib.mapAttrs (hostname: nyxhost: (inputs.nixpkgs.lib.nixosSystem {
             specialArgs = { inherit inputs self; };
             modules = [
-                # config.nyx.nixos.hosts.${hostname}.configuration
-                nyxhost.configuration 
-                {
+                inputs.disko.nixosModules.disko
+                nyxhost.configuration # config.nyx.nixos.hosts.${hostname}.configuration
+                ({ config, ... }: {
                     networking.hostName = lib.mkDefault "${hostname}";
                     system.stateVersion = lib.mkDefault "25.11";
                     fileSystems = {
@@ -31,9 +31,26 @@
                             fsType = "none";
                             options = [ "bind" ];
                         };
-                        
+                        "/persist" = {
+                            depends = [ "/" ];
+                            neededForBoot = true;
+                        };
                     };
-                }
+
+                    assertions = let
+                        assertFileSystemMountPoint = mount_point: {
+                            assertion = config.fileSystems ? "${mount_point}"
+                                && config.fileSystems."${mount_point}" ? device
+                                && config.fileSystems."${mount_point}".device != ""
+                                && config.fileSystems."${mount_point}" ? fsType
+                                && config.fileSystems."${mount_point}".fsType != "";
+                            message = "nyx host '${hostname}' must provide a ${mount_point} filesystem device and type.";
+                        };
+                    in [
+                        (assertFileSystemMountPoint "/boot")
+                        (assertFileSystemMountPoint "/persist")
+                    ];
+                })
             ];
         })))
     ];
@@ -61,8 +78,8 @@
                             description = "Encrypted backup of the host private key with its hash for verification.";
                             type = lib.types.submodule {
                                 options.age = lib.mkOption {
-                                    type = lib.types.str;
-                                    description = "Armored encrypted backup of the host private key. Can be used to apply it on the host or as a backup.";
+                                    type = lib.types.strMatching "^-----BEGIN AGE ENCRYPTED FILE-----\n([A-Za-z0-9+/=]+\n)+-----END AGE ENCRYPTED FILE-----\n?$";
+                                    description = "Armored encrypted backup of the host private key.";
                                     example = ''
                                         -----BEGIN AGE ENCRYPTED FILE-----
                                         ...
@@ -70,8 +87,8 @@
                                     '';
                                 };
                                 options.sha256 = lib.mkOption {
-                                    type = lib.types.str;
-                                    description = "SHA256 hash of the hosts private key.";
+                                    type = lib.types.strMatching "^[0-9a-f]{64}$";
+                                    description = "SHA-256 hash of the host private key.";
                                     example = "9d1398d0544800a282ec897ad35d0fe10376b02bc5b76dcb2754477433c62504";
                                 };
                             };

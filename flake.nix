@@ -10,6 +10,10 @@
             url = "github:nixpak/nixpak";
             inputs.nixpkgs.follows = "nixpkgs";
         };
+        disko = {
+            url = "github:nix-community/disko";
+            inputs.nixpkgs.follows = "nixpkgs";
+        };
     };
 
     outputs = inputs@{ self, nixpkgs, ... }: inputs.flake-parts.lib.mkFlake { inherit inputs; } ({ config, ... }: {
