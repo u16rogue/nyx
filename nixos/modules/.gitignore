@@ -3,6 +3,7 @@
 !.gitignore
 !cpu-amd.nix
 !cpu-intel.nix
+!gnupg.nix
 !gpu-nvidia.nix
 !host-defaults.nix
 !luks.nix

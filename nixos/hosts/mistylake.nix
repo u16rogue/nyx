@@ -53,10 +53,11 @@ in {
                 host-defaults
                 cpu-intel
                 gpu-nvidia
-                pipewire
-                openssh
                 swraid
                 luks
+                pipewire
+                openssh
+                gnupg
             ];
 
             nixpkgs.hostPlatform = "x86_64-linux";

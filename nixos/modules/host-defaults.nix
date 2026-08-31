@@ -6,9 +6,8 @@
         networking.networkmanager.enable = lib.mkDefault true;
         boot.loader.systemd-boot.enable = lib.mkDefault true;
         boot.loader.efi.canTouchEfiVariables = lib.mkDefault true;
-
-        users.mutableUsers = false;
-        networking.firewall.enable = true;
+        users.mutableUsers = lib.mkDefault false;
+        networking.firewall.enable = lib.mkDefault true;
         nix.settings.experimental-features = [ "nix-command" "flakes" "pipe-operators" ];
     };
 }
