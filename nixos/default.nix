@@ -9,51 +9,62 @@
     ];
 
     config.flake.nixosConfigurations = lib.pipe config.nyx.nixos.hosts [
-        (lib.mapAttrs (hostname: nyxhost: (inputs.nixpkgs.lib.nixosSystem {
-            specialArgs = { inherit inputs self; };
-            modules = [
-                inputs.disko.nixosModules.disko
-                nyxhost.configuration # config.nyx.nixos.hosts.${hostname}.configuration
-                ({ config, modulesPath, ... }: {
-                    imports = [(modulesPath + "/installer/scan/not-detected.nix")];
-                    networking.hostName = lib.mkDefault "${hostname}";
-                    system.stateVersion = lib.mkDefault "25.11";
-                    fileSystems = {
-                        "/" = {
-                            device = "none";
-                            fsType = "tmpfs";
-                            options = [ "defaults" "size=1G" "mode=755" ];
-                            neededForBoot = true;
+        (lib.mapAttrs (hostname: nyxhost: let
+            nyxhost_users = lib.genAttrs nyxhost.users (username: config.nyx.nixos.users.${username});
+            result = inputs.nixpkgs.lib.nixosSystem {
+                specialArgs = { inherit inputs self; };
+                modules = [
+                    inputs.disko.nixosModules.disko
+                    nyxhost.configuration # config.nyx.nixos.hosts.${hostname}.configuration
+                    ({ config, modulesPath, pkgs, ... }: {
+                        imports = [(modulesPath + "/installer/scan/not-detected.nix")];
+                        networking.hostName = lib.mkDefault "${hostname}";
+                        fileSystems = {
+                            "/" = {
+                                device = "none";
+                                fsType = "tmpfs";
+                                options = [ "defaults" "size=1G" "mode=755" ];
+                                neededForBoot = true;
+                            };
+                            "/nix" = {
+                                depends = [ "/persist" ];
+                                neededForBoot = true;
+                                device = "/persist/nix";
+                                fsType = "none";
+                                options = [ "bind" ];
+                            };
+                            "/persist" = {
+                                depends = [ "/" ];
+                                neededForBoot = true;
+                            };
                         };
-                        "/nix" = {
-                            depends = [ "/persist" ];
-                            neededForBoot = true;
-                            device = "/persist/nix";
-                            fsType = "none";
-                            options = [ "bind" ];
-                        };
-                        "/persist" = {
-                            depends = [ "/" ];
-                            neededForBoot = true;
-                        };
-                    };
 
-                    assertions = let
-                        assertFileSystemMountPoint = mount_point: {
-                            assertion = config.fileSystems ? "${mount_point}"
-                                && config.fileSystems."${mount_point}" ? device
-                                && config.fileSystems."${mount_point}".device != ""
-                                && config.fileSystems."${mount_point}" ? fsType
-                                && config.fileSystems."${mount_point}".fsType != "";
-                            message = "nyx host '${hostname}' must provide a ${mount_point} filesystem device and type.";
-                        };
-                    in [
-                        (assertFileSystemMountPoint "/boot")
-                        (assertFileSystemMountPoint "/persist")
-                    ];
-                })
-            ];
-        })))
+                        # Derive the requested nyx users into a nixosSystem users
+                        users.users = lib.flip lib.mapAttrs nyxhost_users (username: nyxuser: nyxuser.configuration {
+                            # i'd honestly prefer where `configuration` receives the same thing as what nixosSystem.modules receives
+                            # as the pattern usually goes: `{ pkgs, ... }: { users.users.<name> = { ... }: {/*use pkgs*/}; }` i'll
+                            # prolly expose users directly by deriving it in `modules` instead of here when i find a use case.
+                            inherit pkgs;
+                        });
+
+                        assertions = let
+                            assertFileSystemMountPoint = mount_point: {
+                                assertion = config.fileSystems ? "${mount_point}"
+                                    && config.fileSystems."${mount_point}" ? device
+                                    && config.fileSystems."${mount_point}".device != ""
+                                    && config.fileSystems."${mount_point}" ? fsType
+                                    && config.fileSystems."${mount_point}".fsType != "";
+                                message = "nyx host '${hostname}' must provide a ${mount_point} filesystem device and type.";
+                            };
+                        in [
+                            (assertFileSystemMountPoint "/boot")
+                            (assertFileSystemMountPoint "/persist")
+                        ];
+                    })
+                ];
+            };
+            in result
+        ))
     ];
 
     options.nyx.nixos = {
@@ -135,7 +146,7 @@
             type = lib.types.attrsOf (lib.types.submodule {
                 options.configuration = lib.mkOption {
                     description = "NixOS user configuration for this user.";
-                    type = lib.types.deferredModule;
+                    type = lib.types.raw;
                 };
 
                 #-- User specified impermanence --

@@ -1,3 +1,4 @@
+# Use this module instead of the nixosSystem builder @ `nixos/default.nix` when it is host specific optional. Something that will give you the thought "yeah i might have a system that will use a different value"
 { lib, ... }: {
     flake.modules.nixos.host-defaults = {
         nixpkgs.config.allowUnfree = lib.mkDefault true;

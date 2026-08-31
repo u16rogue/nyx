@@ -1,4 +1,4 @@
-{ self, ... }: let
+{ getSystem, ... }: let
     username = "user";
 in {
     nyx.nixos.users.${username} = {
@@ -15,10 +15,11 @@ in {
             partial.directories = [];
         };
 
-        configuration = { pkgs, ... }: let nyxpkgs = self.packages.${pkgs.system}; in {
+        configuration = { pkgs, ... }: let nyxpkgs = (getSystem pkgs.stdenv.hostPlatform.system).packages; in {
             isNormalUser = true;
             extraGroups = [ "wheel" ];
             shell = nyxpkgs.fish;
+            # initialPassword = "12345678"; # this is a bad idea as we have secrets in here. we MUST have a password.
             packages = [
                 # Scripts
                 nyxpkgs.tmuxss

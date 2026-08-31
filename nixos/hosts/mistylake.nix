@@ -60,6 +60,7 @@ in {
             ];
 
             nixpkgs.hostPlatform = "x86_64-linux";
+            system.stateVersion = "25.11";
             boot.initrd.availableKernelModules = [ "xhci_pci" "ahci" "nvme" "usbhid" "usb_storage" "sd_mod" ];
 
             disko.enableConfig = true;
