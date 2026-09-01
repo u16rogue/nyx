@@ -34,6 +34,7 @@ in {
                   gui
                   gpu
                   pipewire
+                  (dbus { talk = [ "org.freedesktop.portal.Desktop" ]; })
                   (rw-bind (noescape "~/.emulated-root/firefox/home/${username}") (noescape "~/"))
                   (add-runtime /*bash*/ ''
                       while read -r link; do

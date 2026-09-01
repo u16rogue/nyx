@@ -55,3 +55,5 @@ my nix slop
     * alt: setup a script+age that auto configures opencode for that project sandbox
 * `nyx.nixos.users.<user>.ephemeralfs.preserve` files and directories that are not absolute paths (just check if it starts with `/`) should automatically assume it prepends `/home/${username}/${value}`
 * outputs for `nyx` related entries such as `nyx.overrides`, `nyx.scripts` and aggregated to `nyx.packages` etc
+* assert that generated secrets have the proper relevant reciepients
+    * when implementing list of host do not use the same `nyx.nixos.hosts.users` but instead we should just accept public keys directly and access host pk's directly via `config`

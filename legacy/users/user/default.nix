@@ -43,10 +43,10 @@
         extraGroups = [ "wheel" ];
         packages = [];
         shell = pkgs.fish;
+        hashedPasswordFile = config.age.secrets."user-password".path;
     };
 
     age.secrets."user-password" = { file = ../../secrets/user-password.age; mode = "0400"; };
-    users.users.${username}.hashedPasswordFile = config.age.secrets."user-password".path;
 
     home-manager.users.${username} = { pkgs, ... }: {
         home = {

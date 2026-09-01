@@ -10,7 +10,10 @@
 
     config.flake.nixosConfigurations = lib.pipe config.nyx.nixos.hosts [
         (lib.mapAttrs (hostname: nyxhost: let
-            nyxhost_users = lib.genAttrs nyxhost.users (username: config.nyx.nixos.users.${username});
+            assert_nyxhost_invalid_users = lib.flip builtins.filter nyxhost.users (username: !(builtins.hasAttr username config.nyx.nixos.users));
+            nyxhost_users = if assert_nyxhost_invalid_users != []
+                then throw "nyx host '${hostname}' has invalid nyx user entries: ${lib.concatStringsSep ", " assert_nyxhost_invalid_users}"
+                else lib.genAttrs nyxhost.users (username: config.nyx.nixos.users.${username});
             result = inputs.nixpkgs.lib.nixosSystem {
                 specialArgs = {
                     inherit inputs self;
