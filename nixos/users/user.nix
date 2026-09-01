@@ -5,10 +5,10 @@ in {
         ephemeralfs.preserve = {
             files = [];
             directories = [
-                "/home/${username}/downloads"
-                "/home/${username}/media"
-                "/home/${username}/documents"
-                "/home/${username}/projects"
+                "downloads"
+                "media"
+                "documents"
+                "projects"
             ];
             partial.directories = [];
         };

@@ -34,6 +34,10 @@ printHelp() {
         hostname
         * path [optional] - defaults to \`/etc/ssh\`
         * hostname [optional] - overrides the detected hostname
+    user-make-secret <user>
+        Encrypt stdin for every host to which the user is assigned. The
+        armored age ciphertext is printed to stdout.
+        * user - the registered nyx user whose host keys receive the secret
     help
         Print this." >&2
 }
@@ -357,12 +361,51 @@ modeHostApplyKeys() {
     exit 0
 }
 
+modeUserMakeSecret() {
+    assertCommands "nix" "jq" "rage"
+    assertInNyxCwd
+
+    local username="${1:-}"
+    if [[ -z "$username" ]]; then
+        printErr "missing user"
+        exit 1
+    fi
+
+    local hosts_json
+    if ! hosts_json="$(nix eval --json '.#nyx.nixos.hosts' --apply 'hosts: builtins.mapAttrs (_: host: { users = host.users; pub = host.keys.pub; }) hosts' 2>/dev/null)"; then
+        printErr "failed to evaluate nyx host registrations"
+        exit 1
+    fi
+
+    local -a recipients
+    mapfile -t recipients < <(
+        jq -r --arg username "$username" '
+            to_entries
+            | map(select(.value.users | index($username)))
+            | .[] | .value.pub
+        ' <<< "$hosts_json"
+    )
+    if [[ "${#recipients[@]}" -eq 0 ]]; then
+        printErr "no hosts assigned to user '$username'"
+        exit 1
+    fi
+
+    local -a rage_args=("-e" "-a")
+    local recipient
+    for recipient in "${recipients[@]}"; do
+        rage_args+=("-r" "$recipient")
+    done
+
+    rage "${rage_args[@]}"
+}
+
 case "${1:-}" in
     host-keygen) modeHostKeygen "${@:2}";;
     host-prk-enc) modeHostPrkEnc "${@:2}";;
     host-keys-match-check) modeHostKeysMatchCheck "${@:2}";;
     host-nyx-validate-sk) modeHostNyxValidateSk "${@:2}";;
     host-apply-keys) modeHostApplyKeys "${@:2}";;
+    user-make-secret) modeUserMakeSecret "${@:2}";;
     *)
         # help mode is handled early.
         printErr "invalid mode '$1'"

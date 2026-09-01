@@ -54,5 +54,4 @@ my nix slop
     * the current setup might be a better idea. tedious but "clean"-er.
     * alt: setup a script+age that auto configures opencode for that project sandbox
 * `nyx.nixos.users.<user>.ephemeralfs.preserve` files and directories that are not absolute paths (just check if it starts with `/`) should automatically assume it prepends `/home/${username}/${value}`
-* `nyx user-make-secret <user>` command where the script can automatically derive the hosts that the user belong to, collect the pk's and generate the age'd output with recipients to that host
 * outputs for `nyx` related entries such as `nyx.overrides`, `nyx.scripts` and aggregated to `nyx.packages` etc
