@@ -80,14 +80,11 @@
             description = "Nyx nixos hosts";
 
             type = lib.types.attrsOf (lib.types.submodule {
-                # -- host platform --
                 options.platform = lib.mkOption { type = lib.types.str; };
-                # -- base nixos configuration --
                 options.configuration = lib.mkOption {
                     description = "NixOs system for this host";
                     type = lib.types.deferredModule;
                 };
-                # -- Host SSH ED25519 Keys --
                 options.keys = lib.mkOption {
                     description = "SSH host keys used for ssh and secrets management.";
                     type = lib.types.submodule {
@@ -101,7 +98,7 @@
                             type = lib.types.submodule {
                                 options.age = lib.mkOption {
                                     type = lib.types.strMatching "^-----BEGIN AGE ENCRYPTED FILE-----\n([A-Za-z0-9+/=]+\n)+-----END AGE ENCRYPTED FILE-----\n?$";
-                                    description = "Armored encrypted backup of the host private key.";
+                                    description = "Symmetric armored encrypted backup of the host private key.";
                                     example = ''
                                         -----BEGIN AGE ENCRYPTED FILE-----
                                         ...
@@ -117,7 +114,6 @@
                         };
                     };
                 };
-                # -- Host specified impermanence --
                 options.ephemeralfs.preserve = lib.mkOption {
                     description = "Host preservation configuration.";
                     type = lib.types.submodule {
@@ -142,12 +138,10 @@
                         };
                     };
                 };
-                # -- Host users
                 options.users = lib.mkOption {
                     description = "Users assigned to this host derived from `nyx.nixos.users.*`";
                     type = lib.types.listOf lib.types.str;
                 };
-                # --
             });
         };
 
@@ -159,7 +153,16 @@
                     type = lib.types.raw;
                 };
 
-                #-- User specified impermanence --
+                options.password = lib.mkOption {
+                    type = lib.types.strMatching "^-----BEGIN AGE ENCRYPTED FILE-----\n([A-Za-z0-9+/=]+\n)+-----END AGE ENCRYPTED FILE-----\n?$";
+                    description = "Host recipient encrypted of the user's password hash.";
+                    example = ''
+                        -----BEGIN AGE ENCRYPTED FILE-----
+                        ...
+                        -----END AGE ENCRYPTED FILE-----
+                    '';
+                };
+
                 options.ephemeralfs.preserve = lib.mkOption {
                     description = "User preservation configuration.";
                     type = lib.types.submodule {

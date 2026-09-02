@@ -13,6 +13,7 @@
 #   * `keys.pub` is a well formed ssh-ed25519 public key
 #   * `keys.prv.age` is an age armored encrypted file (as produced by
 #     `nyx host-prk-enc`) and `keys.prv.sha256` is a SHA-256 digest
+#   * each user password is encrypted for exactly the hosts assigned to it
 
 FLAG_FAIL=0
 COUNT_OK=0
@@ -137,6 +138,112 @@ assert_host_users() {
     report_ok "host '$host' users: $(jq -r 'join(", ")' <<< "$users_json")"
 }
 
+ssh_recipient_tag() {
+    local public_key="$1"
+    local fingerprint=
+    local digest=
+
+    if ! fingerprint="$(ssh-keygen -E sha256 -lf - <<< "$public_key" 2>/dev/null)"; then
+        return 1
+    fi
+
+    digest="${fingerprint#*SHA256:}"
+    digest="${digest%% *}"
+    printf '%s=' "$digest" | base64 --decode | head --bytes 4 | base64 | tr -d '=\n'
+}
+
+assert_user_password_recipients() {
+    local username="$1"
+    local password="$2"
+    local password_body=
+    local expected_recipients=
+    local expected_tags=
+    local actual_tags=
+    local host=
+    local public_key=
+    local recipient_tag=
+    local has_mismatch=0
+
+    password_body="$(sed -n '/^-----BEGIN AGE ENCRYPTED FILE-----$/,/^-----END AGE ENCRYPTED FILE-----$/p' <<< "$password" | grep -v -- '^-----')"
+    if [[ -z "$password_body" ]] || ! base64 --decode <<< "$password_body" > /dev/null 2>&1; then
+        report_err "user '$username' password is not valid age armor."
+        return 1
+    fi
+
+    if ! expected_recipients="$(
+        while IFS= read -r host; do
+            public_key="$(jq -r --arg h "$host" '.[$h].keys.pub' <<< "$HOSTS_JSON")"
+            if ! recipient_tag="$(ssh_recipient_tag "$public_key")"; then
+                exit 1
+            fi
+            printf '%s\t%s\n' "$host" "$recipient_tag"
+        done < <(jq -r --arg u "$username" '
+            to_entries[]
+            | select(.value.users | index($u))
+            | .key
+        ' <<< "$HOSTS_JSON")
+    )"; then
+        report_err "failed to derive expected recipient tags for user '$username'."
+        return 1
+    fi
+
+    if [[ -z "$expected_recipients" ]]; then
+        report_err "user '$username' has a password but is not assigned to any hosts."
+        return 1
+    fi
+
+    expected_recipients="$(LC_ALL=C sort <<< "$expected_recipients")"
+    expected_tags="$(awk -F '\t' '{ print $2 }' <<< "$expected_recipients" | LC_ALL=C sort)"
+
+    if ! actual_tags="$(
+        printf '%s\n' "$password_body" |
+            base64 --decode |
+            awk '
+                $0 == "age-encryption.org/v1" { header = 1; next }
+                header && /^--- / { separator = 1; exit }
+                header && /^-> / {
+                    if ($2 == "ssh-ed25519" && NF == 4) {
+                        print $3
+                    } else if ($2 !~ /^~/) {
+                        exit 1
+                    }
+                }
+                END { if (!header || !separator) exit 1 }
+            ' |
+            LC_ALL=C sort
+    )"; then
+        report_err "user '$username' password has an invalid or unsupported age recipient header."
+        return 1
+    fi
+
+    while IFS=$'\t' read -r host recipient_tag; do
+        if grep -Fxq -- "$recipient_tag" <<< "$actual_tags"; then
+            report_ok "user '$username' password recipient for host '$host'"
+        else
+            report_err "user '$username' password is missing the recipient for host '$host'."
+            has_mismatch=1
+        fi
+    done <<< "$expected_recipients"
+
+    while IFS= read -r recipient_tag; do
+        [[ -z "$recipient_tag" ]] && continue
+
+        if ! grep -Fxq -- "$recipient_tag" <<< "$expected_tags"; then
+            report_err "user '$username' password has an unexpected recipient tag '$recipient_tag'."
+            has_mismatch=1
+        fi
+    done <<< "$actual_tags"
+
+    if [[ "$actual_tags" != "$expected_tags" && "$has_mismatch" -eq 0 ]]; then
+        report_err "user '$username' password recipient stanza count does not match its assigned hosts. Regenerate it with 'nyx user-make-secret $username'."
+        return 1
+    fi
+
+    [[ "$has_mismatch" -eq 0 ]] || return 1
+
+    report_ok "user '$username' password recipients"
+}
+
 assert_host_hostname() {
     local host="$1"
     local hostname="$2"
@@ -231,6 +338,7 @@ fi
 
 HOSTS_JSON=
 HOST_USERS_JSON=
+USERS_JSON=
 CONFIGS_JSON=
 
 if ! HOSTS_JSON="$(nix eval --json --no-write-lock-file --option warn-dirty false "$PROJECT_DIR#nyx.nixos.hosts" --apply 'builtins.mapAttrs (_: host: { inherit (host) keys users; })')"; then
@@ -240,6 +348,11 @@ fi
 
 if ! HOST_USERS_JSON="$(nix eval --json --no-write-lock-file --option warn-dirty false "$PROJECT_DIR#nyx.nixos.users" --apply 'builtins.attrNames')"; then
     echo "[err] failed to evaluate nyx.nixos.users." >&2
+    exit 1
+fi
+
+if ! USERS_JSON="$(nix eval --json --no-write-lock-file --option warn-dirty false "$PROJECT_DIR#nyx.nixos.users" --apply 'builtins.mapAttrs (_: user: { inherit (user) password; })')"; then
+    echo "[err] failed to evaluate nyx.nixos.users passwords." >&2
     exit 1
 fi
 
@@ -320,6 +433,13 @@ while IFS= read -r host; do
         assert_prv_key "$host" "$(jq -c --arg h "$host" '.[$h].keys.prv' <<< "$HOSTS_JSON")"
     fi
 done <<< "$ALL_HOSTS"
+
+while IFS= read -r username; do
+    [[ -z "$username" ]] && continue
+
+    echo "[user] $username"
+    assert_user_password_recipients "$username" "$(jq -r --arg u "$username" '.[$u].password' <<< "$USERS_JSON")"
+done < <(jq -r 'keys[]' <<< "$USERS_JSON")
 
 echo "[info] final result: $COUNT_OK ok, $COUNT_WARN warnings, $COUNT_ERR errors"
 
