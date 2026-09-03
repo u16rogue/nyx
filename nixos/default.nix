@@ -12,7 +12,7 @@
         (lib.mapAttrs (hostname: nyxhost: let
             assert_nyxhost_invalid_users = lib.flip builtins.filter nyxhost.users (username: !(builtins.hasAttr username config.nyx.nixos.users));
             nyxhost_users = if assert_nyxhost_invalid_users != []
-                then throw "nyx host '${hostname}' has invalid nyx user entries: ${lib.concatStringsSep ", " assert_nyxhost_invalid_users}"
+                then throw "nyx host '${hostname}' has invalid nyx user entries: ${lib.concatStringsSep ", " assert_nyxhost_invalid_users}. These users do not exist as a nyx user."
                 else lib.genAttrs nyxhost.users (username: config.nyx.nixos.users.${username});
             result = inputs.nixpkgs.lib.nixosSystem {
                 specialArgs = {
@@ -117,11 +117,6 @@
                 options.ephemeralfs.preserve = lib.mkOption {
                     description = "Host preservation configuration.";
                     type = lib.types.submodule {
-                        options.at = lib.mkOption {
-                            description = "Path to directory where files and directories are preserved. Can be set to `null` if host is not ephemeral.";
-                            type = lib.types.nullOr lib.types.str;
-                        };
-
                         options.files = lib.mkOption {
                             description = "Absolute path to files for preservation.";
                             type = lib.types.listOf lib.types.str;
@@ -182,7 +177,6 @@
                         };
                     };
                 };
-                # --
             });
         };
     };

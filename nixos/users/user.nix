@@ -2,17 +2,6 @@
     username = "user";
 in {
     nyx.nixos.users.${username} = {
-        ephemeralfs.preserve = {
-            files = [];
-            directories = [
-                "downloads"
-                "media"
-                "documents"
-                "projects"
-            ];
-            partial.directories = [];
-        };
-
         password = ''
             -----BEGIN AGE ENCRYPTED FILE-----
             YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IHNzaC1lZDI1NTE5IGwxamN3ZyBSTGpp
@@ -25,10 +14,21 @@ in {
             -----END AGE ENCRYPTED FILE-----
         '';
 
+        ephemeralfs.preserve = {
+            files = [];
+            directories = [
+                "downloads"
+                "media"
+                "documents"
+                "projects"
+            ];
+            partial.directories = [];
+        };
+
         configuration = { pkgs, nyxpkgs, ... }: {
             isNormalUser = true;
             extraGroups = [ "wheel" ];
-            shell = nyxpkgs.fish;
+            shell = nyxpkgs.nushell;
             packages = [
                 # Scripts
                 nyxpkgs.tmuxss
