@@ -21,6 +21,7 @@
                 };
                 modules = [
                     inputs.disko.nixosModules.disko
+                    inputs.preservation.nixosModules.preservation
                     nyxhost.configuration # config.nyx.nixos.hosts.${hostname}.configuration
                     ({ config, modulesPath, pkgs, nyxpkgs, ... }: {
                         imports = [(modulesPath + "/installer/scan/not-detected.nix")];
@@ -54,6 +55,19 @@
                             # prolly expose users directly by deriving it in `modules` instead of here when i find a use case.
                             inherit pkgs nyxpkgs;
                         });
+
+                        preservation = {
+                            enable = true;
+                            preserveAt."/persist" = {
+                                files = nyxhost.ephemeralfs.preserve.files;
+                                directories = nyxhost.ephemeralfs.preserve.directories;
+                            };
+
+                            users = lib.flip lib.mapAttrs nyxhost_users (username: nyxuser: {
+                                files = nyxuser.ephemeralfs.preserve.files;
+                                directories = nyxuser.ephemeralfs.preserve.directories;
+                            });
+                        };
 
                         assertions = let
                             assertFileSystemMountPoint = mount_point: {
@@ -119,12 +133,12 @@
                     type = lib.types.submodule {
                         options.files = lib.mkOption {
                             description = "Absolute path to files for preservation.";
-                            type = lib.types.listOf lib.types.str;
+                            type = lib.types.listOf lib.types.raw;
                         };
 
                         options.directories = lib.mkOption {
                             description = "Absolute path to directories for preservation.";
-                            type = lib.types.listOf lib.types.str;
+                            type = lib.types.listOf lib.types.raw;
                         };
 
                         options.partial.directories = lib.mkOption {
@@ -163,12 +177,12 @@
                     type = lib.types.submodule {
                         options.files = lib.mkOption {
                             description = "Absolute path to files for preservation.";
-                            type = lib.types.listOf lib.types.str;
+                            type = lib.types.listOf lib.types.raw;
                         };
 
                         options.directories = lib.mkOption {
                             description = "Absolute path to directories for preservation.";
-                            type = lib.types.listOf lib.types.str;
+                            type = lib.types.listOf lib.types.raw;
                         };
 
                         options.partial.directories = lib.mkOption {

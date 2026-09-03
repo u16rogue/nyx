@@ -28,20 +28,20 @@ in {
         };
 
         ephemeralfs.preserve = {
-            at = "/persist";
             directories = [
                 # System state
-                "/var/lib/nixos"
+                { directory = "/var/lib/nixos"; inInitrd = true; }
                 "/var/lib/systemd/coredump"
+                "/var/log"
                 # Networking
                 "/etc/NetworkManager/system-connections"
                 # Bluetooth
                 "/var/lib/bluetooth"
             ];
             files = [
-                "/etc/ssh/ssh_host_ed25519_key"
-                "/etc/ssh/ssh_host_ed25519_key.pub"
-                "/etc/machine-id"
+                { file = "/etc/machine-id"; inInitrd = true; }
+                { file = "/etc/ssh/ssh_host_ed25519_key"; how = "symlink"; configureParent = true; }
+                { file = "/etc/ssh/ssh_host_ed25519_key.pub"; how = "symlink"; configureParent = true; }
             ];
         };
 
@@ -137,12 +137,6 @@ in {
                         };
                     };
                 };
-            };
-            fileSystems."/var/log" = {
-                depends = [ "/persist" ];
-                device = "/persist/var/log";
-                fsType = "none";
-                options = [ "bind" ];
             };
         };
     };
