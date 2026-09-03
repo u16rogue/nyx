@@ -28,19 +28,22 @@
                         networking.hostName = lib.mkDefault "${hostname}";
                         nixpkgs.hostPlatform = nyxhost.platform;
                         disko.enableConfig = true;
-                        fileSystems = {
+                        disko.devices.nodev = {
                             "/" = {
-                                device = "none";
                                 fsType = "tmpfs";
-                                options = [ "defaults" "size=1G" "mode=755" ];
-                                neededForBoot = true;
+                                mountOptions = [ "defaults" "size=1G" "mode=755" ];
                             };
+                            "/nix" = {
+                                device = "/persist/nix";
+                                fsType = "none";
+                                mountOptions = [ "bind" ];
+                            };
+                        };
+                        fileSystems = {
+                            "/".neededForBoot = true;
                             "/nix" = {
                                 depends = [ "/persist" ];
                                 neededForBoot = true;
-                                device = "/persist/nix";
-                                fsType = "none";
-                                options = [ "bind" ];
                             };
                             "/persist" = {
                                 depends = [ "/" ];
