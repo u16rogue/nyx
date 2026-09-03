@@ -79,7 +79,7 @@
                         age = {
                             identityPaths = [ "/etc/ssh/ssh_host_ed25519_key" ];
                             secrets = lib.flip lib.mapAttrs' nyxhost_users (username: nyxuser: lib.nameValuePair "nyx.secrets.user.${username}.password" {
-                                file = lib.writeText "nyx.secrets.user.${username}.password" nyxuser.password;
+                                file = pkgs.writeText "nyx.secrets.user.${username}.password" nyxuser.password;
                                 mode = "0400";
                             });
                         };

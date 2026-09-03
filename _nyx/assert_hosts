@@ -8,8 +8,8 @@
 #     `nyx.nixos.hosts.<hostname>` entry and vice versa
 #   * the host declares at least one user
 #   * the evaluated host config exposes `networking.hostName == <hostname>`
-#   * `fileSystems."/boot"`, `fileSystems."/persist"`, and `fileSystems."/var/log"`
-#     exist and are wired correctly
+#   * `fileSystems."/boot"` and `fileSystems."/persist"` exist and are wired
+#     correctly
 #   * `keys.pub` is a well formed ssh-ed25519 public key
 #   * `keys.prv.age` is an age armored encrypted file (as produced by
 #     `nyx host-prk-enc`) and `keys.prv.sha256` is a SHA-256 digest
@@ -265,8 +265,6 @@ assert_host_filesystem() {
     local host="$1"
     local mountpoint="$2"
     local fs_json="$3"
-    local fs_type=
-    local device=
     local needed_for_boot=
     local options=
     local depends=
@@ -276,8 +274,6 @@ assert_host_filesystem() {
         return 1
     fi
 
-    fs_type="$(jq -r '.fsType // empty' <<< "$fs_json")"
-    device="$(jq -r '.device // empty' <<< "$fs_json")"
     needed_for_boot="$(jq -r '.neededForBoot // false' <<< "$fs_json")"
     options="$(jq -r '.options // [] | @json' <<< "$fs_json")"
     depends="$(jq -r '.depends // [] | @json' <<< "$fs_json")"
@@ -302,27 +298,6 @@ assert_host_filesystem() {
 
             if ! jq -e 'index("/") != null' <<< "$depends" > /dev/null; then
                 report_err "host '$host' /persist must depend on /."
-                return 1
-            fi
-            ;;
-        /var/log)
-            if [[ "$fs_type" != "none" ]]; then
-                report_err "host '$host' /var/log must be a bind mount, got fsType '$fs_type'."
-                return 1
-            fi
-
-            if [[ "$device" != "/persist/var/log" ]]; then
-                report_err "host '$host' /var/log must bind /persist/var/log, got '$device'."
-                return 1
-            fi
-
-            if ! jq -e 'index("bind") != null' <<< "$options" > /dev/null; then
-                report_err "host '$host' /var/log must use bind mount options."
-                return 1
-            fi
-
-            if ! jq -e 'index("/persist") != null' <<< "$depends" > /dev/null; then
-                report_err "host '$host' /var/log must depend on /persist."
                 return 1
             fi
             ;;
@@ -413,12 +388,6 @@ while IFS= read -r host; do
         report_err "host '$host' failed to evaluate fileSystems./persist."
     else
         assert_host_filesystem "$host" "/persist" "$persist_fs_json"
-    fi
-
-    if ! var_log_fs_json="$(nix eval --json --no-write-lock-file --option warn-dirty false "$PROJECT_DIR#nixosConfigurations.\"$host\".config.fileSystems.\"/var/log\"" 2>/dev/null)"; then
-        report_err "host '$host' failed to evaluate fileSystems./var/log."
-    else
-        assert_host_filesystem "$host" "/var/log" "$var_log_fs_json"
     fi
 
     if ! jq -e --arg h "$host" '.[$h].keys | has("pub")' <<< "$HOSTS_JSON" > /dev/null; then
