@@ -21,7 +21,8 @@
                 };
                 modules = [
                     inputs.disko.nixosModules.disko
-                    inputs.preservation.nixosModules.preservation
+                    inputs.preservation.nixosModules.default
+                    inputs.ragenix.nixosModules.default
                     nyxhost.configuration # config.nyx.nixos.hosts.${hostname}.configuration
                     ({ config, modulesPath, pkgs, nyxpkgs, ... }: {
                         imports = [(modulesPath + "/installer/scan/not-detected.nix")];
@@ -52,23 +53,34 @@
                         };
 
                         # Derive the requested nyx users into a nixosSystem users
-                        users.users = lib.flip lib.mapAttrs nyxhost_users (username: nyxuser: nyxuser.configuration {
-                            # i'd honestly prefer where `configuration` receives the same thing as what nixosSystem.modules receives
-                            # as the pattern usually goes: `{ pkgs, ... }: { users.users.<name> = { ... }: {/*use pkgs*/}; }` i'll
-                            # prolly expose users directly by deriving it in `modules` instead of here when i find a use case.
-                            inherit pkgs nyxpkgs;
-                        });
+                        users.users = lib.flip lib.mapAttrs nyxhost_users (username: nyxuser:
+                            (nyxuser.configuration {
+                                # i'd honestly prefer where `configuration` receives the same thing as what nixosSystem.modules receives
+                                # as the pattern usually goes: `{ pkgs, ... }: { users.users.<name> = { ... }: {/*use pkgs*/}; }` i'll
+                                # prolly expose users directly by deriving it in `modules` instead of here when i find a use case.
+                                inherit pkgs nyxpkgs;
+                            })
+                            //
+                            { hashedPasswordFile = config.age.secrets."nyx.secrets.user.${username}.password".path; }
+                        );
 
                         preservation = {
                             enable = true;
                             preserveAt."/persist" = {
                                 files = nyxhost.ephemeralfs.preserve.files;
                                 directories = nyxhost.ephemeralfs.preserve.directories;
+                                users = lib.flip lib.mapAttrs nyxhost_users (username: nyxuser: {
+                                    files = nyxuser.ephemeralfs.preserve.files;
+                                    directories = nyxuser.ephemeralfs.preserve.directories;
+                                });
                             };
+                        };
 
-                            users = lib.flip lib.mapAttrs nyxhost_users (username: nyxuser: {
-                                files = nyxuser.ephemeralfs.preserve.files;
-                                directories = nyxuser.ephemeralfs.preserve.directories;
+                        age = {
+                            identityPaths = [ "/etc/ssh/ssh_host_ed25519_key" ];
+                            secrets = lib.flip lib.mapAttrs' nyxhost_users (username: nyxuser: lib.nameValuePair "nyx.secrets.user.${username}.password" {
+                                file = lib.writeText "nyx.secrets.user.${username}.password" nyxuser.password;
+                                mode = "0400";
                             });
                         };
 

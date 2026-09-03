@@ -18,6 +18,10 @@
             url = "github:nix-community/preservation";
             inputs.nixpkgs.follows = "nixpkgs";
         };
+        ragenix = {
+            url = "github:yaxitech/ragenix";
+            inputs.nixpkgs.follows = "nixpkgs";
+        };
     };
 
     outputs = inputs@{ self, nixpkgs, ... }: inputs.flake-parts.lib.mkFlake { inherit inputs; } ({ config, ... }: {
