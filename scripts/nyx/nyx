@@ -38,6 +38,18 @@ printHelp() {
         Encrypt stdin for every host to which the user is assigned. The
         armored age ciphertext is printed to stdout.
         * user - the registered nyx user whose host keys receive the secret
+    ephemeralfs.partial status
+        Show the active and staged partial preservation generations.
+    ephemeralfs.partial list
+        List all partial preservation generations.
+    ephemeralfs.partial new.boot
+        Create an empty generation and stage it for the next boot.
+    ephemeralfs.partial rollback <generation>
+        Stage an existing generation for the next boot.
+    ephemeralfs.partial cancel
+        Cancel the generation staged for the next boot.
+    ephemeralfs.partial delete <generation>
+        Delete an inactive, unstaged generation.
     help
         Print this." >&2
 }
@@ -399,6 +411,159 @@ modeUserMakeSecret() {
     rage "${rage_args[@]}"
 }
 
+modeEphemeralfsPartial() {
+    set -euo pipefail
+    assertCommands "chmod" "date" "flock" "ln" "mkdir" "mktemp" "mv" "readlink" "realpath" "rm" "sync"
+
+    local operation="${1:-}"
+    local base="${NYX_PARTIAL_STORAGE:-/persist/.partial}"
+    local generations="$base/generations"
+
+    validateStoragePath() {
+        local normalized
+        normalized="$(realpath -m -- "$base")"
+        if [[ "$base" != "$normalized" || "$base" != /persist/* ]]; then
+            printErr "partial storage must be a normalized path strictly below /persist"
+            exit 1
+        fi
+    }
+
+    validateStoragePath
+
+    partialLinkTarget() {
+        local name="$1"
+        if [[ -L "$base/$name" ]]; then
+            readlink -- "$base/$name"
+        else
+            printf '%s' "<none>"
+        fi
+    }
+
+    assertRoot() {
+        if [[ "$EUID" -ne 0 ]]; then
+            printErr "ephemeralfs.partial '$operation' must be run as root"
+            exit 1
+        fi
+    }
+
+    assertGeneration() {
+        local generation="$1"
+        if [[ ! "$generation" =~ ^[0-9]{8}T[0-9]{6}-[[:alnum:]]{6}$
+            || ! -d "$generations/$generation"
+            || -L "$generations/$generation"
+            || ! -d "$generations/$generation/root"
+            || -L "$generations/$generation/root" ]]; then
+            printErr "invalid partial generation '$generation'"
+            exit 1
+        fi
+    }
+
+    lockPartial() {
+        if [[ -L "$base" || -L "$generations" ]]; then
+            printErr "partial storage directories must not be symlinks"
+            exit 1
+        fi
+        exec 9>"$base/.lock"
+        flock -x 9
+    }
+
+    assertStorageNotSymlink() {
+        if [[ -L "$base" || -L "$generations" ]]; then
+            printErr "partial storage directories must not be symlinks"
+            exit 1
+        fi
+    }
+
+    stageGeneration() {
+        local generation="$1"
+        local temporary="$base/.next.$$"
+        rm -f -- "$temporary"
+        ln -s -- "generations/$generation" "$temporary"
+        mv -Tf -- "$temporary" "$base/next"
+    }
+
+    case "$operation" in
+        status)
+            assertRoot
+            printf 'current: %s\nnext...: %s\n' "$(partialLinkTarget current)" "$(partialLinkTarget next)"
+        ;;
+        list)
+            assertRoot
+            if [[ -d "$generations" ]]; then
+                local generation
+                for generation in "$generations"/*; do
+                    [[ -d "$generation/root" ]] || continue
+                    printf '%s\n' "${generation##*/}"
+                done
+            fi
+        ;;
+        new.boot)
+            assertRoot
+            assertStorageNotSymlink
+            mkdir -p -- "$generations"
+            chmod 0700 "$base" "$generations"
+            lockPartial
+            local stamp directory generation
+            stamp="$(date -u +%Y%m%dT%H%M%S)"
+            if ! directory="$(mktemp -d -- "$generations/$stamp-XXXXXX")"; then
+                printErr "failed to create partial generation"
+                exit 1
+            fi
+            case "$directory" in
+                "$generations"/*) ;;
+                *)
+                    printErr "generation was created outside partial storage"
+                    exit 1
+                ;;
+            esac
+            trap 'rm -rf -- "${directory:?}"' EXIT
+            chmod 0700 "$directory"
+            mkdir -m 0755 "$directory/root"
+            generation="${directory##*/}"
+            sync -f "$directory"
+            stageGeneration "$generation"
+            directory=""
+            trap - EXIT
+            sync -f "$base"
+            printf '%s\n' "$generation"
+        ;;
+        rollback)
+            assertRoot
+            lockPartial
+            local generation="${2:-}"
+            assertGeneration "$generation"
+            stageGeneration "$generation"
+            sync -f "$base"
+        ;;
+        cancel)
+            assertRoot
+            lockPartial
+            rm -f -- "$base/next"
+            sync -f "$base"
+        ;;
+        delete)
+            assertRoot
+            lockPartial
+            local generation="${2:-}"
+            assertGeneration "$generation"
+            if [[ "$(partialLinkTarget current)" == "generations/$generation" ]]; then
+                printErr "cannot delete the current generation"
+                exit 1
+            fi
+            if [[ "$(partialLinkTarget next)" == "generations/$generation" ]]; then
+                printErr "cannot delete the staged generation"
+                exit 1
+            fi
+            rm -rf -- "${generations:?}/$generation"
+            sync -f "$generations"
+        ;;
+        *)
+            printErr "invalid ephemeralfs.partial operation '$operation'"
+            exit 1
+        ;;
+    esac
+}
+
 case "${1:-}" in
     host-keygen) modeHostKeygen "${@:2}";;
     host-prk-enc) modeHostPrkEnc "${@:2}";;
@@ -406,6 +571,7 @@ case "${1:-}" in
     host-nyx-validate-sk) modeHostNyxValidateSk "${@:2}";;
     host-apply-keys) modeHostApplyKeys "${@:2}";;
     user-make-secret) modeUserMakeSecret "${@:2}";;
+    ephemeralfs.partial) modeEphemeralfsPartial "${@:2}";;
     *)
         # help mode is handled early.
         printErr "invalid mode '$1'"

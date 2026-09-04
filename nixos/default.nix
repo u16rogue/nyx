@@ -18,11 +18,20 @@
                 specialArgs = {
                     inherit inputs self;
                     nyxpkgs = self.packages.${nyxhost.platform};
+                    nyxPartial = {
+                        storagePath = nyxhost.ephemeralfs.preserve.partial.storagePath;
+                        rootEnable = nyxhost.ephemeralfs.preserve.partial.root.enable;
+                        directories = nyxhost.ephemeralfs.preserve.partial.directories;
+                        users = lib.mapAttrs (_: nyxuser: {
+                            directories = nyxuser.ephemeralfs.preserve.partial.directories;
+                        }) nyxhost_users;
+                    };
                 };
                 modules = [
                     inputs.disko.nixosModules.disko
                     inputs.preservation.nixosModules.default
                     inputs.ragenix.nixosModules.default
+                    ./partial-preservation.nix
                     nyxhost.configuration # config.nyx.nixos.hosts.${hostname}.configuration
                     ({ config, modulesPath, pkgs, nyxpkgs, ... }: {
                         imports = [(modulesPath + "/installer/scan/not-detected.nix")];
@@ -156,9 +165,22 @@
                             type = lib.types.listOf lib.types.raw;
                         };
 
-                        options.partial.directories = lib.mkOption {
-                            description = "Absolute path to directories for partial preservation.";
-                            type = lib.types.listOf lib.types.str;
+                        options.partial = {
+                            directories = lib.mkOption {
+                                description = "Absolute paths to directories stored in the active partial generation.";
+                                type = lib.types.listOf lib.types.raw;
+                                default = [];
+                            };
+                            storagePath = lib.mkOption {
+                                description = "Generation storage below the persistent filesystem.";
+                                type = lib.types.strMatching "^/persist/.+$";
+                                default = "/persist/.partial";
+                            };
+                            root.enable = lib.mkOption {
+                                description = "Use the active partial generation as the writable root filesystem.";
+                                type = lib.types.bool;
+                                default = false;
+                            };
                         };
                     };
                 };
@@ -201,8 +223,9 @@
                         };
 
                         options.partial.directories = lib.mkOption {
-                            description = "Absolute path to directories for partial preservation.";
-                            type = lib.types.listOf lib.types.str;
+                            description = "Home-relative directories stored in the active partial generation.";
+                            type = lib.types.listOf lib.types.raw;
+                            default = [];
                         };
                     };
                 };

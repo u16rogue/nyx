@@ -2,6 +2,7 @@
 .*
 !.gitignore
 !default.nix
+!partial-preservation.nix
 !hosts/
 !modules/
 !users/
