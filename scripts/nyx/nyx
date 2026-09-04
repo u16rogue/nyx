@@ -34,6 +34,17 @@ printHelp() {
         hostname
         * path [optional] - defaults to \`/etc/ssh\`
         * hostname [optional] - overrides the detected hostname
+    luks-unlock-keygen
+        Generate the shared Ed25519 client key used to authenticate to initrd
+        LUKS prompts. Prints a symmetrically encrypted nyx option assignment.
+    luks-unlock-host-keygen [path]
+        Generate this machine's dedicated initrd SSH host key and print its
+        public key as a nyx host option assignment.
+        * path [optional] - defaults to nyx.nixos.luksUnlock.hostKeyPath
+    remote-luks <hostname> <address>
+        Connect to a registered host's initrd and answer its LUKS prompt.
+        IPv6 link-local addresses require a client-side scope such as
+        \`fe80::1234%enp5s0\`.
     user-make-secret <user>
         Encrypt stdin for every host to which the user is assigned. The
         armored age ciphertext is printed to stdout.
@@ -361,6 +372,140 @@ modeHostApplyKeys() {
     exit 0
 }
 
+modeLuksUnlockKeygen() {
+    set -euo pipefail
+    umask 077
+    assertCommands "mktemp" "rage" "rm" "sha256sum" "ssh-keygen"
+
+    local temp_dir key_path public_key encrypted_private private_hash
+    temp_dir="$(mktemp -d)"
+    trap 'rm -rf -- "$temp_dir"' EXIT
+    trap 'exit 1' HUP INT TERM
+    key_path="$temp_dir/id_ed25519"
+
+    ssh-keygen -q -t ed25519 -N "" -C "nyx-luks-unlock" -f "$key_path"
+    public_key="$(< "${key_path}.pub")"
+    encrypted_private="$(rage -p -a -e < "$key_path")"
+    private_hash="$(sha256sum -- "$key_path")"
+    private_hash="${private_hash%% *}"
+
+    printf "nyx.nixos.luksUnlock.key = {\n    public = \"%s\";\n    private = {\n        age = ''\n%s\n        '';\n        sha256 = \"%s\";\n    };\n};\n" \
+        "$public_key" "$encrypted_private" "$private_hash"
+}
+
+modeLuksUnlockHostKeygen() {
+    set -euo pipefail
+    umask 077
+    assertCommands "install" "mktemp" "nix" "rm" "ssh-keygen"
+    assertInNyxCwd
+
+    local destination="${1:-}"
+    if [[ -z "$destination" ]]; then
+        destination="$(nix eval --raw '.#nyx.nixos.luksUnlock.hostKeyPath')"
+    fi
+    if [[ "$destination" != /* || "$destination" == */ ]]; then
+        printErr "host key path must be an absolute file path"
+        exit 1
+    fi
+
+    local destination_parent="${destination%/*}"
+    if [[ ! -d "$destination_parent" ]]; then
+        printErr "host key parent directory '$destination_parent' does not exist"
+        exit 1
+    fi
+
+    local -a install_command=(install)
+    if [[ -e "$destination" || -e "${destination}.pub" ]]; then
+        printErr "host key already exists at '$destination'"
+        exit 1
+    fi
+    if [[ ! -w "$destination_parent" && "$EUID" -ne 0 ]]; then
+        assertCommands "sudo"
+        install_command=(sudo install)
+        if sudo test -e "$destination" || sudo test -e "${destination}.pub"; then
+            printErr "host key already exists at '$destination'"
+            exit 1
+        fi
+    fi
+
+    local temp_dir key_path public_key
+    temp_dir="$(mktemp -d)"
+    trap 'rm -rf -- "$temp_dir"' EXIT
+    trap 'exit 1' HUP INT TERM
+    key_path="$temp_dir/ssh_host_initrd_ed25519_key"
+    ssh-keygen -q -t ed25519 -N "" -C "initrd-luks-unlock" -f "$key_path"
+    public_key="$(< "${key_path}.pub")"
+
+    "${install_command[@]}" -m 0600 "$key_path" "$destination"
+    "${install_command[@]}" -m 0644 "${key_path}.pub" "${destination}.pub"
+    printf 'luksUnlockHostKey = "%s";\n' "$public_key"
+}
+
+modeRemoteLuks() {
+    set -euo pipefail
+    umask 077
+    assertCommands "chmod" "mktemp" "nix" "rage" "rm" "sha256sum" "ssh"
+    assertInNyxCwd
+
+    local host_name="${1:-}"
+    local address="${2:-}"
+    if [[ -z "$host_name" || -z "$address" ]]; then
+        printErr "usage: nyx remote-luks <hostname> <address>"
+        exit 1
+    fi
+    if [[ ! "$host_name" =~ ^[A-Za-z0-9._-]+$ ]]; then
+        printErr "invalid hostname '$host_name'"
+        exit 1
+    fi
+
+    local encrypted_private expected_hash host_public port
+    if ! encrypted_private="$(nix eval --raw '.#nyx.nixos.luksUnlock.key.private.age' 2>/dev/null)"; then
+        printErr "no shared nyx LUKS unlock key is configured"
+        exit 1
+    fi
+    expected_hash="$(nix eval --raw '.#nyx.nixos.luksUnlock.key.private.sha256')"
+    if ! host_public="$(nix eval --raw ".#nyx.nixos.hosts.\"$host_name\".luksUnlockHostKey" 2>/dev/null)"; then
+        printErr "host '$host_name' has no initrd LUKS SSH host key"
+        exit 1
+    fi
+    port="$(nix eval --raw '.#nyx.nixos.luksUnlock.port' --apply toString)"
+
+    local temp_dir key_path known_hosts actual_hash host_alias
+    temp_dir="$(mktemp -d)"
+    trap 'rm -rf -- "$temp_dir"' EXIT
+    trap 'exit 1' HUP INT TERM
+    key_path="$temp_dir/id_ed25519"
+    known_hosts="$temp_dir/known_hosts"
+    host_alias="nyx-initrd-$host_name"
+
+    if ! printf '%s\n' "$encrypted_private" | rage -d > "$key_path"; then
+        printErr "failed to decrypt the shared LUKS unlock key"
+        exit 1
+    fi
+    chmod 0600 "$key_path"
+    actual_hash="$(sha256sum -- "$key_path")"
+    actual_hash="${actual_hash%% *}"
+    if [[ "$actual_hash" != "$expected_hash" ]]; then
+        printErr "decrypted LUKS unlock key failed hash validation"
+        exit 1
+    fi
+    printf '%s %s\n' "$host_alias" "$host_public" > "$known_hosts"
+
+    ssh -F /dev/null -tt \
+        -p "$port" \
+        -i "$key_path" \
+        -o BatchMode=yes \
+        -o CheckHostIP=no \
+        -o GlobalKnownHostsFile=/dev/null \
+        -o HostKeyAlias="$host_alias" \
+        -o IdentitiesOnly=yes \
+        -o IdentityAgent=none \
+        -o StrictHostKeyChecking=yes \
+        -o UpdateHostKeys=no \
+        -o UserKnownHostsFile="$known_hosts" \
+        "root@$address"
+}
+
 modeUserMakeSecret() {
     assertCommands "nix" "jq" "rage"
     assertInNyxCwd
@@ -405,6 +550,9 @@ case "${1:-}" in
     host-keys-match-check) modeHostKeysMatchCheck "${@:2}";;
     host-nyx-validate-sk) modeHostNyxValidateSk "${@:2}";;
     host-apply-keys) modeHostApplyKeys "${@:2}";;
+    luks-unlock-keygen) modeLuksUnlockKeygen "${@:2}";;
+    luks-unlock-host-keygen) modeLuksUnlockHostKeygen "${@:2}";;
+    remote-luks) modeRemoteLuks "${@:2}";;
     user-make-secret) modeUserMakeSecret "${@:2}";;
     *)
         # help mode is handled early.

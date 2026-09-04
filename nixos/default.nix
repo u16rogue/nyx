@@ -105,6 +105,41 @@
     ];
 
     options.nyx.nixos = {
+        luksUnlock = {
+            key = lib.mkOption {
+                description = "Shared client key used only to reach remote LUKS prompts.";
+                default = null;
+                type = lib.types.nullOr (lib.types.submodule {
+                    options = {
+                        public = lib.mkOption {
+                            type = lib.types.strMatching "^ssh-ed25519 [A-Za-z0-9+/]+={0,3}( .*)?$";
+                            description = "Public SSH key authorized by every nyx-luks-unlockable initrd.";
+                        };
+                        private = {
+                            age = lib.mkOption {
+                                type = lib.types.strMatching "^-----BEGIN AGE ENCRYPTED FILE-----\n([A-Za-z0-9+/=]+\n)+-----END AGE ENCRYPTED FILE-----\n?$";
+                                description = "Symmetrically encrypted private SSH unlock key.";
+                            };
+                            sha256 = lib.mkOption {
+                                type = lib.types.strMatching "^[0-9a-f]{64}$";
+                                description = "SHA-256 hash used to validate the decrypted unlock key.";
+                            };
+                        };
+                    };
+                });
+            };
+            port = lib.mkOption {
+                type = lib.types.port;
+                default = 2222;
+                description = "Shared initrd SSH port for remote LUKS unlocking.";
+            };
+            hostKeyPath = lib.mkOption {
+                type = lib.types.str;
+                default = "/persist/etc/ssh/ssh_host_initrd_ed25519_key";
+                description = "Conventional path to each host's dedicated initrd SSH host key.";
+            };
+        };
+
         hosts = lib.mkOption {
             description = "Nyx nixos hosts";
 
@@ -142,6 +177,11 @@
                             };
                         };
                     };
+                };
+                options.luksUnlockHostKey = lib.mkOption {
+                    default = null;
+                    type = lib.types.nullOr (lib.types.strMatching "^ssh-ed25519 [A-Za-z0-9+/]+={0,3}( .*)?$");
+                    description = "Public initrd SSH host key pinned by nyx remote-luks.";
                 };
                 options.ephemeralfs.preserve = lib.mkOption {
                     description = "Host preservation configuration.";
