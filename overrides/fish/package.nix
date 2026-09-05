@@ -6,6 +6,7 @@ in wrapPackage {
     inherit pkgs;
     package = fish;
     flags = {
+        "--no-config" = true;
         "--init-command" = "source ${writeText "config.fish" (builtins.readFile final_opts.config_file)}";
     };
 }
