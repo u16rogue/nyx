@@ -1,8 +1,8 @@
 { wrapPackage, pkgs, ghostty, overridesOpts ? {}, ... }: let
-    finalOpts = {
-        configFile = ./config.ghostty;
+    final_opts = {
+        config_file = ./config.ghostty;
     } // overridesOpts;
-    configFile = pkgs.writeText "config.ghostty" (builtins.readFile finalOpts.configFile);
+    config_file = pkgs.writeText "config.ghostty" (builtins.readFile final_opts.config_file);
 in wrapPackage {
     inherit pkgs;
     package = ghostty;
@@ -11,10 +11,10 @@ in wrapPackage {
         # ghostty actions workaround since +action are required to be second parameter
         ${envString}
         if [[ "''${1:-}" == "+validate-config" ]]; then
-            exec ${exePath} "$@" --config-file=${configFile}
+            exec ${exePath} "$@" --config-file=${config_file}
         elif [[ "''${1:-}" == +* ]]; then
             exec ${exePath} "$@"
         fi
-        exec ${exePath} --config-file=${configFile} "$@"
+        exec ${exePath} --config-file=${config_file} "$@"
     '';
 }

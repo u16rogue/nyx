@@ -1,12 +1,11 @@
-{ wrapPackage, pkgs, nushell, overridesOpts ? {}, ... }:
-let
-    finalOpts = {
-        configFile = ./config.nu;
+{ wrapPackage, pkgs, nushell, overridesOpts ? {}, ... }: let
+    final_opts = {
+        config_file = ./config.nu;
     } // overridesOpts;
 in wrapPackage {
     inherit pkgs;
     package = nushell;
     flags = {
-        "--config" = finalOpts.configFile;
+        "--config" = final_opts.config_file;
     };
 }
