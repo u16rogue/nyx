@@ -1,0 +1,8 @@
+theme = Catppuccin Mocha
+background-opacity = 0.9
+font-size = 11
+alpha-blending = linear
+freetype-load-flags = no-hinting
+font-codepoint-map = U+E000-U+E00A,U+EA60-U+EBEB,U+E0A0-U+E0C8,U+E0CA,U+E0CC-U+E0D7,U+E200-U+E2A9,U+E300-U+E3E3,U+E5FA-U+E6B7,U+E700-U+E8EF,U+ED00-U+EFC1,U+F000-U+F2FF,U+F300-U+F381,U+F400-U+F533,U+F0001-U+F1AF0=ComicShannsMono Nerd Font
+font-family = "ComicShannsMono Nerd Font Mono"
+font-style = "Regular"

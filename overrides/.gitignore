@@ -3,4 +3,5 @@
 !.gitignore
 !default.nix
 !fish/
+!ghostty/
 !nushell/
