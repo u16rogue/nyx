@@ -34,7 +34,7 @@ printHelp() {
         hostname
         * path [optional] - defaults to \`/etc/ssh\`
         * hostname [optional] - overrides the detected hostname
-    user-make-secret <user>
+    user-make-secret [user]
         Encrypt stdin for every host to which the user is assigned. The
         armored age ciphertext is printed to stdout.
         * user - the registered nyx user whose host keys receive the secret

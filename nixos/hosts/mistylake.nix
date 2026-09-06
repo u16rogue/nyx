@@ -47,7 +47,7 @@ in {
 
         users = [ "user" ];
 
-        configuration = { self, inputs, ... }: {
+        configuration = { self, ... }: {
             imports = with self.modules.nixos; [
                 host-defaults
                 cpu-intel
