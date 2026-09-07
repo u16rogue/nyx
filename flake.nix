@@ -2,6 +2,7 @@
     inputs = {
         nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
         flake-parts.url = "github:hercules-ci/flake-parts";
+        preservation.url = "github:nix-community/preservation";
         wrappers = {
             url = "github:lassulus/wrappers";
             inputs.nixpkgs.follows = "nixpkgs";
@@ -14,9 +15,12 @@
             url = "github:nix-community/disko";
             inputs.nixpkgs.follows = "nixpkgs";
         };
-        preservation.url = "github:nix-community/preservation";
         ragenix = {
             url = "github:yaxitech/ragenix";
+            inputs.nixpkgs.follows = "nixpkgs";
+        };
+        nvf = { # neovim
+            url = "github:notashelf/nvf";
             inputs.nixpkgs.follows = "nixpkgs";
         };
     };

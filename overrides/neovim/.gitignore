@@ -1,0 +1,5 @@
+**
+.*
+!.gitignore
+!config.nvf.nix
+!package.nix
