@@ -1,8 +1,8 @@
-{ wrapPackage, pkgs, nushell, overridesOpts ? {}, ... }: let
+{ inputs, pkgs, nushell, overridesOpts ? {}, ... }: let
     final_opts = {
         config_file = ./config.nu;
     } // overridesOpts;
-in wrapPackage {
+in inputs.wrappers.lib.wrapPackage {
     inherit pkgs;
     package = nushell;
     flags = {

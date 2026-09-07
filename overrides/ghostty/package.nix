@@ -1,9 +1,9 @@
-{ wrapPackage, pkgs, ghostty, overridesOpts ? {}, ... }: let
+{ inputs, pkgs, ghostty, overridesOpts ? {}, ... }: let
     final_opts = {
         config_file = ./config.ghostty;
     } // overridesOpts;
     config_file = pkgs.writeText "config.ghostty" (builtins.readFile final_opts.config_file);
-in wrapPackage {
+in inputs.wrappers.lib.wrapPackage {
     inherit pkgs;
     package = ghostty;
     env.FONTCONFIG_FILE = pkgs.makeFontsConf { fontDirectories = [ pkgs.nerd-fonts.comic-shanns-mono ]; };

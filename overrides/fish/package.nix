@@ -1,8 +1,8 @@
-{ wrapPackage, pkgs, fish, writeText, overridesOpts ? {}, ... }: let
+{ inputs, pkgs, fish, writeText, overridesOpts ? {}, ... }: let
     final_opts = {
         config_file = ./config.fish;
     } // overridesOpts;
-in wrapPackage {
+in inputs.wrappers.lib.wrapPackage {
     inherit pkgs;
     package = fish;
     flags = {
