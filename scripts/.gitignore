@@ -9,4 +9,5 @@
 !nix-pkgvercmp/
 !nix-sync-lock-from-nixos/
 !nyx/
+!nyx-efs/
 !tmuxss/

@@ -30,7 +30,8 @@ my nix slop
     * `nyx` related options are defined in [nixos/default.nix](./nixos/default.nix)
     * Host configurations must provide the disks for the paths `/boot` and `/persist`. Host should follow the common `fileSystems` provided by `nyx`.
     * Systems/NixOS/Hosts are expected to use an ephemeral filesystem where each host and user are required to explicitly state which files and directories are to be preserved.
-        * A `partial` preservation is available via `nyx.nixos.hosts.<hostname>.ephemeralfs.preserve.partial.directories` to list directories that can be preserved and should possibly be stored to disk without the explicit necessity that it should be saved. Useful for systems that does not have a large enough RAM space for a root tmpfs or for directories that do need large spaces (eg home directories as its used by some programs and scripts to download large blobs that are discarded later or cache)
+        * A `partial` preservation is available via `nyx.nixos.hosts.<hostname>.ephemeralfs.preserve.partial.directories` and `nyx.nixos.users.<username>.ephemeralfs.preserve.partial.directories`. Partial directories are stored on disk but can be reset independently from permanent preservation. Host paths are absolute and user paths are relative to their home; `/` as a user path selects their entire home. Host and user generations are stored below `/persist/.partial` and selected on reboot.
+        * `nyx-efs partial-new` creates a new empty host generation. A user with partial directories can schedule their own generation with `sudo nyx-efs partial-new --user <username>`. Existing generations are retained.
     * [modules](./nixos/modules) - Set of flake-parts `nixos` modules. All `*.nix` are aggregated and imported to be available.
     * [hosts](./nixos/hosts) - Set of flake-parts+nyx modules specifically defining host machines.
         * All `*.nix` are aggregated and imported to be evaluated.

@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+
+usage() {
+    echo "Usage: nyx-efs partial-new [--user <username>]"
+}
+
+if [[ ${1:-} != "partial-new" ]]; then
+    usage >&2
+    exit 1
+fi
+shift
+
+scope="host"
+if [[ $# -ne 0 ]]; then
+    if [[ $# -ne 2 || $1 != "--user" ]]; then
+        usage >&2
+        exit 1
+    fi
+    if [[ ! $2 =~ ^[a-z_][a-z0-9_-]*[$]?$ ]]; then
+        echo "[error] invalid username: $2" >&2
+        exit 1
+    fi
+    scope="user/$2"
+fi
+
+if [[ $EUID -ne 0 ]]; then
+    if [[ $scope == "host" ]]; then
+        echo "[error] host partial generations can only be changed by root" >&2
+    else
+        echo "[error] rerun with: sudo nyx-efs partial-new --user ${scope#user/}" >&2
+    fi
+    exit 1
+fi
+
+base="/persist/.partial/$scope"
+install -d -m 0700 "$base"
+exec 9>"$base/.lock"
+flock -x 9
+
+stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+directory="$(mktemp -d -- "$base/$stamp-XXXXXX")"
+generation="${directory##*/}"
+temporary="$base/.next.$$"
+chmod 0700 "$directory"
+sync -f "$directory"
+rm -f -- "$temporary"
+ln -s -- "$generation" "$temporary"
+mv -Tf -- "$temporary" "$base/next"
+sync -f "$base"
+
+echo "Partial generation $generation will become active on reboot."
