@@ -21,6 +21,7 @@
                     inputs.preservation.nixosModules.default
                     inputs.ragenix.nixosModules.default
                     nyxhost.configuration # config.nyx.nixos.hosts.${hostname}.configuration
+                    # Core builder
                     ({ config, modulesPath, pkgs, nyxpkgs, ... }: {
                         imports = [(modulesPath + "/installer/scan/not-detected.nix")];
                         networking.hostName = lib.mkDefault "${hostname}";
@@ -57,9 +58,9 @@
                                 # prolly expose users directly by deriving it in `modules` instead of here when i find a use case.
                                 inherit pkgs nyxpkgs;
                             })
-                            //
-                            { hashedPasswordFile = config.age.secrets."nyx.secrets.user.${username}.password".path; }
                         );
+
+                        age.identityPaths = [ "/etc/ssh/ssh_host_ed25519_key" ];
 
                         preservation = {
                             enable = true;
@@ -71,14 +72,6 @@
                                     directories = nyxuser.ephemeralfs.preserve.directories;
                                 });
                             };
-                        };
-
-                        age = {
-                            identityPaths = [ "/etc/ssh/ssh_host_ed25519_key" ];
-                            secrets = lib.flip lib.mapAttrs' nyxhost_users (username: nyxuser: lib.nameValuePair "nyx.secrets.user.${username}.password" {
-                                file = pkgs.writeText "nyx.secrets.user.${username}.password" nyxuser.password;
-                                mode = "0400";
-                            });
                         };
 
                         assertions = let
@@ -94,6 +87,14 @@
                             (assertFileSystemMountPoint "/boot")
                             (assertFileSystemMountPoint "/persist")
                         ];
+                    })
+                    # User password builder
+                    ({ config, pkgs, ... }: {
+                        users.users = lib.flip lib.mapAttrs nyxhost_users (username: nyxuser: { hashedPasswordFile = config.age.secrets."nyx.secrets.user.${username}.password".path; });
+                        age.secrets = lib.flip lib.mapAttrs' nyxhost_users (username: nyxuser: lib.nameValuePair "nyx.secrets.user.${username}.password" {
+                            file = pkgs.writeText "nyx.secrets.user.${username}.password" nyxuser.password;
+                            mode = "0400";
+                        });
                     })
                 ];
             };

@@ -57,3 +57,6 @@ my nix slop
 * assert that generated secrets have the proper relevant reciepients
     * when implementing list of host do not use the same `nyx.nixos.hosts.users` but instead we should just accept public keys directly and access host pk's directly via `config`
 * dev templates to use 2 nixpkgs one that can move around and another pinned to my nixos rev
+* might merge host define `users` and nyx users. this way users can be defined without creating a nyx module.
+* assert invalid preserve paths (`/` in host) and document special path (home `/` for users)
+* implement partial use the initrd and /sysroot
