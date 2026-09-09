@@ -11,15 +11,22 @@
             xdg-desktop-portal-hyprland
             xdg-desktop-portal-gtk
         ];
-        config.common = {
+        config.hyprland = {
             default = [ "hyprland" "gtk" ];
             "org.freedesktop.impl.portal.FileChooser" = [ "gtk" ];
         };
     };
 
+    systemd.user.services.xdg-desktop-portal = {
+        wants = [ "xdg-desktop-portal-gtk.service" ];
+        after = [ "xdg-desktop-portal-gtk.service" ];
+    };
+
     environment.sessionVariables.NIXOS_OZONE_WL = "1"; # electron app fix iirc
 
     home-manager.users.${username} = {
+        home.packages = [ pkgs.xdg-desktop-portal-gtk ];
+
         services.hyprpaper = {
             enable = true;
             settings = {

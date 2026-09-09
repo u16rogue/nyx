@@ -71,7 +71,7 @@ my nix slop
     * fuzzel
     * hyprland
     * hyprpaper
-    * keepassxc
+    * ~~keepassxc~~
     * kitty
     * monero-gui
     * moonlight-stream
