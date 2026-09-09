@@ -51,28 +51,9 @@
                         };
 
                         # Derive the requested nyx users into a nixosSystem users
-                        users.users = lib.flip lib.mapAttrs nyxhost_users (username: nyxuser:
-                            (nyxuser.configuration {
-                                # i'd honestly prefer where `configuration` receives the same thing as what nixosSystem.modules receives
-                                # as the pattern usually goes: `{ pkgs, ... }: { users.users.<name> = { ... }: {/*use pkgs*/}; }` i'll
-                                # prolly expose users directly by deriving it in `modules` instead of here when i find a use case.
-                                inherit pkgs nyxpkgs;
-                            })
-                        );
+                        users.users = lib.flip lib.mapAttrs nyxhost_users (username: nyxuser: nyxuser.configuration { inherit pkgs nyxpkgs; });
 
                         age.identityPaths = [ "/etc/ssh/ssh_host_ed25519_key" ];
-
-                        preservation = {
-                            enable = true;
-                            preserveAt."/persist" = {
-                                files = nyxhost.ephemeralfs.preserve.files;
-                                directories = nyxhost.ephemeralfs.preserve.directories;
-                                users = lib.flip lib.mapAttrs nyxhost_users (username: nyxuser: {
-                                    files = nyxuser.ephemeralfs.preserve.files;
-                                    directories = nyxuser.ephemeralfs.preserve.directories;
-                                });
-                            };
-                        };
 
                         assertions = let
                             assertFileSystemMountPoint = mount_point: {
@@ -89,12 +70,29 @@
                         ];
                     })
                     # User password builder
-                    ({ config, pkgs, ... }: {
-                        users.users = lib.flip lib.mapAttrs nyxhost_users (username: nyxuser: { hashedPasswordFile = config.age.secrets."nyx.secrets.user.${username}.password".path; });
-                        age.secrets = lib.flip lib.mapAttrs' nyxhost_users (username: nyxuser: lib.nameValuePair "nyx.secrets.user.${username}.password" {
-                            file = pkgs.writeText "nyx.secrets.user.${username}.password" nyxuser.password;
+                    ({ config, pkgs, ... }:
+                        let
+                            deriveAgeAttr = username: "nyx.secrets.user.${username}.password";
+                        in {
+                        users.users = lib.flip lib.mapAttrs nyxhost_users (username: nyxuser: { hashedPasswordFile = config.age.secrets."${deriveAgeAttr username}".path; });
+                        age.secrets = lib.flip lib.mapAttrs' nyxhost_users (username: nyxuser: lib.nameValuePair "${deriveAgeAttr username}" {
+                            file = pkgs.writeText "${deriveAgeAttr username}" nyxuser.password;
                             mode = "0400";
                         });
+                    })
+                    # Ephemeral file system preservation builder
+                    (/*{ ... }:*/{
+                        preservation = {
+                            enable = true;
+                            preserveAt."/persist" = {
+                                files = nyxhost.ephemeralfs.preserve.files;
+                                directories = nyxhost.ephemeralfs.preserve.directories;
+                                users = lib.flip lib.mapAttrs nyxhost_users (username: nyxuser: {
+                                    files = nyxuser.ephemeralfs.preserve.files;
+                                    directories = nyxuser.ephemeralfs.preserve.directories;
+                                });
+                            };
+                        };
                     })
                 ];
             };
