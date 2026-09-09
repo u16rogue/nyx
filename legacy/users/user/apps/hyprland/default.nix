@@ -11,8 +11,7 @@
             xdg-desktop-portal-hyprland
             xdg-desktop-portal-gtk
         ];
-        config.hyprland = {
-            default = [ "hyprland" "gtk" ];
+        config.common = {
             "org.freedesktop.impl.portal.FileChooser" = [ "gtk" ];
         };
     };
