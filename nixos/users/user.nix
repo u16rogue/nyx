@@ -50,6 +50,7 @@ in {
                 pkgs.git
                 pkgs.jq
                 pkgs.bubblewrap
+                pkgs.btop
             
                 (pkgs.writeShellApplication {
                     name = "start";

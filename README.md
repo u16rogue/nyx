@@ -60,3 +60,26 @@ my nix slop
 * might merge host define `users` and nyx users. this way users can be defined without creating a nyx module.
 * assert invalid preserve paths (`/` in host) and document special path (home `/` for users)
 * implement partial use the initrd and /sysroot
+* Packages to port/implement:
+    * ~~neovim~~
+    * ~~fish~~
+    * ~~nushell~~
+    * ~~ghostty~~
+    * ~~wiremix~~
+    * ~~btop~~
+    * firefox
+    * fuzzel
+    * hyprland
+    * hyprpaper
+    * keepassxc
+    * kitty
+    * monero-gui
+    * moonlight-stream
+    * remmina
+    * steamguard-cli
+    * tmux
+    * vesktop
+    * waybar
+    * obs
+    * yazi
+    * zellij

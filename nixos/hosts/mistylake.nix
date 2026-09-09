@@ -47,21 +47,25 @@ in {
 
         users = [ "user" ];
 
-        configuration = { self, ... }: {
+        configuration = { self, pkgs, ... }: {
             imports = with self.modules.nixos; [
                 host-defaults
                 cpu-intel
                 gpu-nvidia
-                swraid
                 luks
                 pipewire
                 openssh
                 gnupg
+                swraid
+            ];
+
+            environment.systemPackages = [
+                pkgs.git
+                pkgs.wiremix
             ];
 
             system.stateVersion = "25.11";
             boot.initrd.availableKernelModules = [ "xhci_pci" "ahci" "nvme" "usbhid" "usb_storage" "sd_mod" ];
-
             disko.devices = {
                 disk = {
                     nvme0 = {

@@ -58,11 +58,14 @@ in {
                 gnupg
             ];
 
+            environment.systemPackages = [
+                pkgs.git
+                pkgs.wiremix
+                pkgs.asusctl
+            ];
+
             system.stateVersion = "25.11";
             boot.initrd.availableKernelModules = [ "nvme" "xhci_pci" "thunderbolt" "usbhid" "rtsx_pci_sdmmc" ];
-
-            environment.systemPackages = [ pkgs.asusctl ];
-
             disko.devices.disk.nvme0 = {
                 type = "disk";
                 device = "/dev/disk/by-id/nvme-eui.e8238fa6bf530001001b448b4cc0a506";
