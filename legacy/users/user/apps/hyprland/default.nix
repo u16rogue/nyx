@@ -7,7 +7,14 @@
 
     xdg.portal = {
         enable = true;
-        extraPortals = with pkgs; [ xdg-desktop-portal-hyprland ]; # let others see
+        extraPortals = with pkgs; [
+            xdg-desktop-portal-hyprland
+            xdg-desktop-portal-gtk
+        ];
+        config.common = {
+            default = [ "hyprland" "gtk" ];
+            "org.freedesktop.impl.portal.FileChooser" = [ "gtk" ];
+        };
     };
 
     environment.sessionVariables.NIXOS_OZONE_WL = "1"; # electron app fix iirc

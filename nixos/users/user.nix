@@ -45,6 +45,7 @@ in {
                 # Custom overidden packages (homeless configs +/ sandbox)
                 nyxpkgs.fish
                 nyxpkgs.nushell
+                nyxpkgs.keepassxc
 
                 # direct nixpkgs
                 pkgs.git

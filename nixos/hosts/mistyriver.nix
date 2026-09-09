@@ -56,6 +56,7 @@ in {
                 pipewire
                 openssh
                 gnupg
+                xdg-portal-filechooser
             ];
 
             environment.systemPackages = [

@@ -4,5 +4,6 @@
 !default.nix
 !fish/
 !ghostty/
+!keepassxc/
 !neovim/
 !nushell/
