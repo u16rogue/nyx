@@ -4,4 +4,5 @@
 !addons.nix
 !addons-update.sh
 !package.nix
-!userChrome.css
+!profile-seed/
+!profile-seed/**
