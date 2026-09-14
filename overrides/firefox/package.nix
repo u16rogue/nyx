@@ -2,7 +2,6 @@
 # Default homepage, newtabs, and new windows to blank
 # ddg default search engine (maybe steal from schizo fox searchx)
 # add nixpkgs search shortcuts
-# set default theme to catpuccin https://addons.mozilla.org/en-US/firefox/addon/catppuccin/
 # set tracking protection to strict
 # https only + private
 # dns over https
@@ -55,6 +54,10 @@
                     };
                     "extensions.autoDisableScopes" = {
                         Value = 0;
+                        Status = "user";
+                    };
+                    "extensions.activeThemeID" = {
+                        Value = addons.catppuccin.extid;
                         Status = "user";
                     };
                 };
