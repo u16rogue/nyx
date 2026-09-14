@@ -1,10 +1,5 @@
 # TODO:
-# Default homepage, newtabs, and new windows to blank
-# ddg default search engine (maybe steal from schizo fox searchx)
-# add nixpkgs search shortcuts
-# set tracking protection to strict
-# https only + private
-# dns over https
+# private browsing
 # auto config sidebery
 { inputs, pkgs, lib, ... }: let
     addons = import ./addons.nix;
@@ -27,28 +22,61 @@ in (mkNixPak {
                     DisableFirefoxStudies = true;
                     DisablePocket = true;
                     OfferToSaveLogins = false;
-
-                    Preferences = {
-                        "toolkit.legacyUserProfileCustomizations.stylesheets" = {
-                            Value = true;
-                            Status = "user";
-                        };
-                        "browser.link.open_newwindow.restriction" = {
-                            Value = 0;
-                            Status = "user";
-                        };
-                        "privacy.userContext.newTabContainerOnLeftClick.enabled" = {
-                            Value = true;
-                            Status = "user";
-                        };
-                        "extensions.autoDisableScopes" = {
-                            Value = 0;
-                            Status = "user";
-                        };
-                        "extensions.activeThemeID" = {
-                            Value = addons.catppuccin.extid;
-                            Status = "user";
-                        };
+                    DisableFormHistory = true;
+                    EnableTrackingProtection = {
+                        Value = true;
+                        Category = "strict";
+                        BaselineExceptions = true;
+                        ConvenienceExceptions = false;
+                    };
+                    Homepage = {
+                        URL = "about:blank";
+                        StartPage = "none";
+                        NewTabOnRestore = false;
+                    };
+                    NewTabPage = false;
+                    HttpsOnlyMode = "enabled";
+                    DNSOverHTTPS = {
+                        Enabled = true;
+                        ProviderURL = "https://mozilla.cloudflare-dns.com/dns-query";
+                        Fallback = false;
+                    };
+                    NetworkPrediction = false;
+                    PromptForDownloadLocation = true;
+                    SearchEngines = {
+                        Default = "DuckDuckGo";
+                        DefaultPrivate = "DuckDuckGo";
+                        Add = [{
+                            Name = "Nixpkgs";
+                            Alias = "@nixpkgs";
+                            URLTemplate = "https://search.nixos.org/packages?channel=unstable&query={searchTerms}";
+                        }];
+                    };
+                    SearchSuggestEnabled = false;
+                    Preferences = lib.mapAttrs (_: value: value // { Status = value.Status or "user"; }) {
+                        "toolkit.legacyUserProfileCustomizations.stylesheets".Value = true;
+                        "browser.link.open_newwindow.restriction".Value = 0;
+                        "privacy.userContext.newTabContainerOnLeftClick.enabled".Value = true;
+                        "extensions.autoDisableScopes".Value = 0;
+                        "extensions.activeThemeID".Value = addons.catppuccin.extid;
+                        "browser.ctrlTab.sortByRecentlyUsed".Value = true;
+                        "browser.tabs.hoverPreview.showThumbnails".Value = false;
+                        "browser.toolbars.bookmarks.visibility".Value = "never";
+                        "browser.urlbar.showSearchTerms.enabled".Value = false;
+                        "browser.urlbar.suggest.bookmark".Value = false;
+                        "browser.urlbar.suggest.engines".Value = false;
+                        "browser.urlbar.suggest.history".Value = false;
+                        "browser.urlbar.suggest.openpage".Value = false;
+                        "browser.urlbar.suggest.quickactions".Value = false;
+                        "browser.urlbar.suggest.recentsearches".Value = false;
+                        "browser.urlbar.suggest.topsites".Value = false;
+                        "general.smoothScroll".Value = false;
+                        "network.http.speculative-parallel-limit".Value = 0;
+                        "network.prefetch-next".Value = false;
+                        "privacy.bounceTrackingProtection.mode".Value = 1;
+                        "privacy.globalprivacycontrol.enabled".Value = true;
+                        "privacy.query_stripping.enabled".Value = true;
+                        "privacy.query_stripping.enabled.pbmode".Value = true;
                     };
                 };
             };
