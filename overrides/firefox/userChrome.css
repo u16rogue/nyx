@@ -1,0 +1,16 @@
+#nav-bar { /* make the navbar compact */
+  margin-top: -42px;
+  box-shadow: none !important;
+}
+
+#main-window[privatebrowsingmode="temporary"] #nav-bar { /* if in private browsing, show the "private browsing" */
+  margin-right: 138px;
+}
+
+toolbarbutton[class="titlebar-button titlebar-close"] { /* removes the close button on the top right */
+  display: none;
+}
+
+#sidebar-header {
+  display: none !important;
+}

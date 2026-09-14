@@ -2,6 +2,7 @@
 .*
 !.gitignore
 !default.nix
+!firefox/
 !fish/
 !ghostty/
 !keepassxc/

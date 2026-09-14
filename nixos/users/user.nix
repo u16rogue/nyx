@@ -25,6 +25,7 @@ in {
                 "documents"
                 "projects"
                 ".nyx/app-fake-root/keepassxc"
+                ".nyx/app-fake-root/firefox"
             ];
             partial.directories = [];
         };
@@ -47,6 +48,7 @@ in {
                 nyxpkgs.fish
                 nyxpkgs.nushell
                 nyxpkgs.keepassxc
+                nyxpkgs.firefox
 
                 # direct nixpkgs
                 pkgs.git
