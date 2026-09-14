@@ -30,18 +30,26 @@ in (mkNixPak {
             extraStorePaths = [ pkgs.qt5.qtwayland.bin ];
             sockets.wayland = true;
 
-            bind.rw = [ (sloth.concat' sloth.runtimeDir "/doc") ]; # for portal
+            bind.rw = [
+                [ (sloth.mkdir (sloth.concat [ (sloth.env "HOME") "/.emulated-root/keepassxc/" (sloth.env "HOME") ])) (sloth.env "HOME") ]
+                [ (sloth.mkdir "/tmp/.emulated-tmp/keepassxc") "/tmp" ]
+                (sloth.concat' sloth.runtimeDir "/doc") # for document portal
+            ];
 
-            env = {
-                HOME = "/nonexistent";
+            env = let
+                resolveHomePath = appends: (sloth.concat' (sloth.env "HOME") "${appends}");
+            in {
+                HOME = sloth.env "HOME";
                 XDG_RUNTIME_DIR = sloth.runtimeDir;
                 WAYLAND_DISPLAY = sloth.envOr "WAYLAND_DISPLAY" "wayland-0";
                 QT_QPA_PLATFORM = "wayland";
                 QT_QPA_PLATFORMTHEME = "xdgdesktopportal";
-                QT_PLUGIN_PATH = "${pkgs.qt5.qtwayland.bin}/lib/qt-${pkgs.qt5.qtbase.version}/plugins:${pkgs.qt5.qtbase.bin}/lib/qt-${pkgs.qt5.qtbase.version}/plugins";
-                XDG_CACHE_HOME = "/nonexistent";
-                XDG_CONFIG_HOME = "/nonexistent";
-                XDG_DATA_HOME = "/nonexistent";
+                QT_PLUGIN_PATH  = "${pkgs.qt5.qtwayland.bin}/lib/qt-${pkgs.qt5.qtbase.version}/plugins:${pkgs.qt5.qtbase.bin}/lib/qt-${pkgs.qt5.qtbase.version}/plugins";
+                XDG_CACHE_HOME  = resolveHomePath "/.cache";
+                XDG_CONFIG_HOME = resolveHomePath "/.config";
+                XDG_DATA_HOME   = resolveHomePath "/.local/share";
+                XDG_STATE_HOME  = resolveHomePath "/.local/state";
+                TMPDIR = "/tmp";
             };
         };
     };
