@@ -24,6 +24,7 @@ in {
                 "media"
                 "documents"
                 "projects"
+                ".nyx/app-fake-root/keepassxc"
             ];
             partial.directories = [];
         };
