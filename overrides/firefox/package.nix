@@ -4,12 +4,16 @@
 # add nixpkgs search shortcuts
 # set default theme to catpuccin https://addons.mozilla.org/en-US/firefox/addon/catppuccin/
 # set tracking protection to strict
-# load extensions on build?
 # https only + private
 # dns over https
 # customize toolbar: [sidebars previous next refresh search/url downloads extension]
 # auto config sidebery
-{ inputs, pkgs, ... }: let
+{ inputs, pkgs, lib, ... }: let
+    addons = import ./addons.nix;
+    addonXpis = lib.flip pkgs.lib.mapAttrs addons (name: addon: pkgs.fetchurl {
+        name = "${name}-${addon.version}.xpi";
+        inherit (addon) url sha256;
+    });
     profileSeed = pkgs.runCommand "nyx-firefox-profile-seed" {} ''
         mkdir -p "$out/.mozilla/firefox/default/chrome"
         cp ${./userChrome.css} "$out/.mozilla/firefox/default/chrome/userChrome.css"
@@ -49,22 +53,11 @@
                         Value = true;
                         Status = "user";
                     };
+                    "extensions.autoDisableScopes" = {
+                        Value = 0;
+                        Status = "user";
+                    };
                 };
-
-                # AMO's signed latest XPI endpoints keep extension signing enabled.
-                Extensions.Install = [
-                    "https://addons.mozilla.org/firefox/downloads/latest/ublock-origin/latest.xpi"
-                    "https://addons.mozilla.org/firefox/downloads/latest/violentmonkey/latest.xpi"
-                    "https://addons.mozilla.org/firefox/downloads/latest/redirector/latest.xpi"
-                    "https://addons.mozilla.org/firefox/downloads/latest/darkreader/latest.xpi"
-                    "https://addons.mozilla.org/firefox/downloads/latest/onetab/latest.xpi"
-                    "https://addons.mozilla.org/firefox/downloads/latest/sidebery/latest.xpi"
-                    "https://addons.mozilla.org/firefox/downloads/latest/sponsorblock/latest.xpi"
-                    "https://addons.mozilla.org/firefox/downloads/latest/dearrow/latest.xpi"
-                    "https://addons.mozilla.org/firefox/downloads/latest/enhancer-for-youtube/latest.xpi"
-                    "https://addons.mozilla.org/firefox/downloads/latest/multi-account-containers/latest.xpi"
-                    "https://addons.mozilla.org/firefox/downloads/latest/facebook-container/latest.xpi"
-                ];
             };
         };
         wrapper = { exePath, ... }: /*bash*/ ''
@@ -75,6 +68,14 @@
                 "$HOME/.mozilla/firefox/profiles.ini"
             ${pkgs.coreutils}/bin/ln -sfnT "${profileSeed}/.mozilla/firefox/default/chrome/userChrome.css" \
                 "$profile/chrome/userChrome.css"
+
+            extension_dir="$profile/extensions"
+            ${pkgs.coreutils}/bin/mkdir -p "$extension_dir"
+            ${pkgs.lib.concatStringsSep "\n" (lib.flip lib.mapAttrsToList addons (name: addon: /*bash*/ ''
+                if [[ ! -e "$extension_dir/${addon.extid}.xpi" ]]; then
+                    ${pkgs.coreutils}/bin/ln -s "${addonXpis.${name}}" "$extension_dir/${addon.extid}.xpi"
+                fi
+            ''))}
 
             exec ${exePath} -P default "$@"
         '';
