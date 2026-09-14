@@ -23,6 +23,7 @@ my nix slop
     * Entries are **not** flake-part modules and should be treated as their own standalone unit.
     * Package entries uses [wrappers](https://github.com/lassulus/wrappers).
     * Packages provide an `overridesOpts` attr that can be use to further customize the package. eg. `package.override { overridesOpts = { color = "#fff"; }; }`
+    * Sandboxed overrides uses `$HOME/.nyx/app-fake-root/<package>` as its bind point
 
 * [templates](./templates) - A set of templates with flakes. Mostly for development; includes a sandboxing shell hook.
 
