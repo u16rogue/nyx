@@ -62,6 +62,8 @@ my nix slop
 * assert invalid preserve paths (`/` in host) and document special path (home `/` for users)
 * implement partial use the initrd and /sysroot
 * make languages an optional thing so the dev shell provides the lsp and other things instead of being part of neovim
+* `nyxos-generate-config` and maybe a generic host
+* `nyxos-install`
 * Packages to port/implement (extra todo: is it really necessary to sandbox these things?):
     * ~~neovim~~
     * ~~fish~~

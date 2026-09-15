@@ -52,6 +52,7 @@
         version = "5.6.1";
         url = "https://addons.mozilla.org/firefox/downloads/file/4903712/sidebery-5.6.1.xpi";
         sha256 = "e8a0a4b556ab7dd536897c1816af9d0918030223068ea6683a04376103a6caf2";
+        settings.settings = (builtins.fromJSON (builtins.readFile ./sidebery-settings.json)).settings;
     };
     sponsorblock = {
         extid = "sponsorBlocker@ajay.app";
