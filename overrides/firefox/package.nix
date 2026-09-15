@@ -1,6 +1,3 @@
-# TODO:
-# private browsing
-# auto config sidebery
 { inputs, pkgs, lib, ... }: let
     addons = import ./addons.nix;
     addon_xpis = lib.flip pkgs.lib.mapAttrs addons (name: addon: pkgs.fetchurl {
@@ -23,6 +20,10 @@ in (mkNixPak {
                     DisablePocket = true;
                     OfferToSaveLogins = false;
                     DisableFormHistory = true;
+                    ExtensionSettings = lib.mapAttrs (name: addon: {
+                        installation_mode = "force_installed";
+                        install_url = "file://${addon_xpis.${name}}";
+                    }) addons;
                     EnableTrackingProtection = {
                         Value = true;
                         Category = "strict";
@@ -38,7 +39,7 @@ in (mkNixPak {
                     HttpsOnlyMode = "enabled";
                     DNSOverHTTPS = {
                         Enabled = true;
-                        ProviderURL = "https://mozilla.cloudflare-dns.com/dns-query";
+                        ProviderURL = "1.1.1.1";
                         Fallback = false;
                     };
                     NetworkPrediction = false;
@@ -46,11 +47,13 @@ in (mkNixPak {
                     SearchEngines = {
                         Default = "DuckDuckGo";
                         DefaultPrivate = "DuckDuckGo";
-                        Add = [{
-                            Name = "Nixpkgs";
-                            Alias = "@nixpkgs";
-                            URLTemplate = "https://search.nixos.org/packages?channel=unstable&query={searchTerms}";
-                        }];
+                        Add = [
+                            {
+                                Name = "Nixpkgs";
+                                Alias = "@nixpkgs";
+                                URLTemplate = "https://search.nixos.org/packages?channel=unstable&query={searchTerms}";
+                            }
+                        ];
                     };
                     SearchSuggestEnabled = false;
                     Preferences = lib.mapAttrs (_: value: value // { Status = value.Status or "user"; }) {
@@ -84,22 +87,17 @@ in (mkNixPak {
                 profile="$HOME/.mozilla/firefox/default"
                 ${pkgs.coreutils}/bin/mkdir -p "$profile/chrome"
 
-                toolbar_layout="$profile/.nyx-toolbar-layout"
-                # Do not write preferences while an existing Firefox owns this profile.
-                if [[ ! -e "$toolbar_layout" && ! -e "$profile/lock" && ! -e "$profile/.parentlock" ]]; then
-                    printf '\n' >> "$profile/prefs.js"
-                    ${pkgs.coreutils}/bin/cat "${profile_seed}/default/prefs.js" >> "$profile/prefs.js"
-                    ${pkgs.coreutils}/bin/touch "$toolbar_layout"
-                fi
-
                 ${pkgs.coreutils}/bin/ln -sfnT "${profile_seed}/profiles.ini" \
                     "$HOME/.mozilla/firefox/profiles.ini"
+                ${pkgs.coreutils}/bin/ln -sfnT "${profile_seed}/default/user.js" \
+                    "$profile/user.js"
                 ${pkgs.coreutils}/bin/ln -sfnT "${profile_seed}/default/chrome/userChrome.css" \
                     "$profile/chrome/userChrome.css"
 
                 extension_dir="$profile/extensions"
                 ${pkgs.coreutils}/bin/mkdir -p "$extension_dir"
                 ${pkgs.lib.concatStringsSep "\n" (lib.flip lib.mapAttrsToList addons (name: addon: /*bash*/ ''
+                    # allows firefox to replace the symlink with an updated xpi addon allowing updates
                     if [[ ! -e "$extension_dir/${addon.extid}.xpi" ]]; then
                         ${pkgs.coreutils}/bin/ln -s "${addon_xpis.${name}}" "$extension_dir/${addon.extid}.xpi"
                     fi
