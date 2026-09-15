@@ -45,10 +45,12 @@ in {
                 nyxpkgs.nix-sync-lock-from-nixos
 
                 # Custom overidden packages (homeless configs +/ sandbox)
-                nyxpkgs.fish
-                nyxpkgs.nushell
-                nyxpkgs.keepassxc
                 nyxpkgs.firefox
+                nyxpkgs.fish
+                nyxpkgs.ghostty
+                nyxpkgs.keepassxc
+                nyxpkgs.neovim
+                nyxpkgs.nushell
 
                 # direct nixpkgs
                 pkgs.git

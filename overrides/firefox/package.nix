@@ -3,11 +3,11 @@
 # auto config sidebery
 { inputs, pkgs, lib, ... }: let
     addons = import ./addons.nix;
-    addonXpis = lib.flip pkgs.lib.mapAttrs addons (name: addon: pkgs.fetchurl {
+    addon_xpis = lib.flip pkgs.lib.mapAttrs addons (name: addon: pkgs.fetchurl {
         name = "${name}-${addon.version}.xpi";
         inherit (addon) url sha256;
     });
-    profileSeed = ./profile-seed;
+    profile_seed = ./profile-seed;
     mkNixPak = inputs.nixpak.lib.nixpak {
         inherit (pkgs) lib;
         inherit pkgs;
@@ -88,20 +88,20 @@ in (mkNixPak {
                 # Do not write preferences while an existing Firefox owns this profile.
                 if [[ ! -e "$toolbar_layout" && ! -e "$profile/lock" && ! -e "$profile/.parentlock" ]]; then
                     printf '\n' >> "$profile/prefs.js"
-                    ${pkgs.coreutils}/bin/cat "${profileSeed}/default/prefs.js" >> "$profile/prefs.js"
+                    ${pkgs.coreutils}/bin/cat "${profile_seed}/default/prefs.js" >> "$profile/prefs.js"
                     ${pkgs.coreutils}/bin/touch "$toolbar_layout"
                 fi
 
-                ${pkgs.coreutils}/bin/ln -sfnT "${profileSeed}/profiles.ini" \
+                ${pkgs.coreutils}/bin/ln -sfnT "${profile_seed}/profiles.ini" \
                     "$HOME/.mozilla/firefox/profiles.ini"
-                ${pkgs.coreutils}/bin/ln -sfnT "${profileSeed}/default/chrome/userChrome.css" \
+                ${pkgs.coreutils}/bin/ln -sfnT "${profile_seed}/default/chrome/userChrome.css" \
                     "$profile/chrome/userChrome.css"
 
                 extension_dir="$profile/extensions"
                 ${pkgs.coreutils}/bin/mkdir -p "$extension_dir"
                 ${pkgs.lib.concatStringsSep "\n" (lib.flip lib.mapAttrsToList addons (name: addon: /*bash*/ ''
                     if [[ ! -e "$extension_dir/${addon.extid}.xpi" ]]; then
-                        ${pkgs.coreutils}/bin/ln -s "${addonXpis.${name}}" "$extension_dir/${addon.extid}.xpi"
+                        ${pkgs.coreutils}/bin/ln -s "${addon_xpis.${name}}" "$extension_dir/${addon.extid}.xpi"
                     fi
                 ''))}
 

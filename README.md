@@ -61,6 +61,7 @@ my nix slop
 * might merge host define `users` and nyx users. this way users can be defined without creating a nyx module.
 * assert invalid preserve paths (`/` in host) and document special path (home `/` for users)
 * implement partial use the initrd and /sysroot
+* make languages an optional thing so the dev shell provides the lsp and other things instead of being part of neovim
 * Packages to port/implement (extra todo: is it really necessary to sandbox these things?):
     * ~~neovim~~
     * ~~fish~~
