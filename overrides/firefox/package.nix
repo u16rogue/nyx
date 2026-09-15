@@ -24,6 +24,10 @@ in (mkNixPak {
                         installation_mode = "force_installed";
                         install_url = "file://${addon_xpis.${name}}";
                     }) addons;
+                    "3rdparty".Extensions = lib.pipe addons [
+                        (lib.filterAttrs (_: addon: addon ? settings))
+                        (lib.mapAttrs' (_: addon: lib.nameValuePair addon.extid addon.settings))
+                    ];
                     EnableTrackingProtection = {
                         Value = true;
                         Category = "strict";
@@ -96,7 +100,7 @@ in (mkNixPak {
 
                 extension_dir="$profile/extensions"
                 ${pkgs.coreutils}/bin/mkdir -p "$extension_dir"
-                ${pkgs.lib.concatStringsSep "\n" (lib.flip lib.mapAttrsToList addons (name: addon: /*bash*/ ''
+                ${lib.concatStringsSep "\n" (lib.flip lib.mapAttrsToList addons (name: addon: /*bash*/ ''
                     # allows firefox to replace the symlink with an updated xpi addon allowing updates
                     if [[ ! -e "$extension_dir/${addon.extid}.xpi" ]]; then
                         ${pkgs.coreutils}/bin/ln -s "${addon_xpis.${name}}" "$extension_dir/${addon.extid}.xpi"

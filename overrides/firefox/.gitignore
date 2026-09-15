@@ -1,8 +1,9 @@
 **
 .*
-!.gitignore
-!addons.nix
-!addons-update.sh
-!package.nix
 !profile-seed/
 !profile-seed/**
+!.gitignore
+!addons-update.sh
+!addons.nix
+!package.nix
+!ubo-settings.json
