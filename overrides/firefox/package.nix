@@ -41,9 +41,10 @@ in (mkNixPak {
                     };
                     NewTabPage = false;
                     HttpsOnlyMode = "enabled";
+                    Certificates.ImportEnterpriseRoots = true;
                     DNSOverHTTPS = {
                         Enabled = true;
-                        ProviderURL = "1.1.1.1";
+                        ProviderURL = "https://mozilla.cloudflare-dns.com/dns-query";
                         Fallback = false;
                     };
                     NetworkPrediction = false;
@@ -69,6 +70,7 @@ in (mkNixPak {
                         "browser.ctrlTab.sortByRecentlyUsed".Value = true;
                         "browser.tabs.hoverPreview.showThumbnails".Value = false;
                         "browser.toolbars.bookmarks.visibility".Value = "never";
+                        "browser.startup.page".Value = 3;
                         "browser.urlbar.showSearchTerms.enabled".Value = false;
                         "browser.urlbar.suggest.bookmark".Value = false;
                         "browser.urlbar.suggest.engines".Value = false;
@@ -113,6 +115,7 @@ in (mkNixPak {
         app.binPath = "bin/firefox";
         flatpak.appId = "org.mozilla.firefox";
         dbus.policies."org.freedesktop.portal.Desktop" = "talk";
+        etc.sslCertificates.enable = true;
         bubblewrap = {
             network = true;
             bindEntireStore = false;
