@@ -52,7 +52,6 @@
         version = "5.6.1";
         url = "https://addons.mozilla.org/firefox/downloads/file/4903712/sidebery-5.6.1.xpi";
         sha256 = "e8a0a4b556ab7dd536897c1816af9d0918030223068ea6683a04376103a6caf2";
-        settings.settings = (builtins.fromJSON (builtins.readFile ./sidebery-settings.json)).settings;
     };
     sponsorblock = {
         extid = "sponsorBlocker@ajay.app";
@@ -65,7 +64,6 @@
         version = "1.74.0";
         url = "https://addons.mozilla.org/firefox/downloads/file/4981431/ublock_origin-1.74.0.xpi";
         sha256 = "175756d74468c9ba45863f7fc333d3be670f82d5b066314e915814dd547d1652";
-        settings.adminSettings = builtins.fromJSON (builtins.readFile ./ubo-settings.json);
     };
     violentmonkey = {
         extid = "{aecec67f-0d10-4fa7-b7c7-609a2db280cf}";

@@ -61,3 +61,17 @@ jobs:
 
       - name: Assert hosts
         run: bash _nyx/assert_hosts
+
+  assert-firefox-addons:
+    name: Assert Firefox addons
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v14
+
+      - name: Assert Firefox addons
+        run: bash overrides/firefox/addons-assert.sh

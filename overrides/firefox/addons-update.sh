@@ -20,7 +20,7 @@ for package in bash dirname mktemp realpath curl jq; do
 done
 
 directory="$(dirname "$script")"
-target="$directory/addons.nix"
+target="$directory/addons/addons.nix"
 temporary="$(mktemp "$directory/.addons.nix.XXXXXX")"
 trap 'rm -f "$temporary"' EXIT
 

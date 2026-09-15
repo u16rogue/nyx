@@ -1,10 +1,10 @@
 **
 .*
+!addons/
+!addons/**
 !profile-seed/
 !profile-seed/**
 !.gitignore
+!addons-assert.sh
 !addons-update.sh
-!addons.nix
 !package.nix
-!ubo-settings.json
-!sidebery-settings.json

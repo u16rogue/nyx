@@ -1,5 +1,5 @@
 { inputs, pkgs, lib, ... }: let
-    addons = import ./addons.nix;
+    addons = import ./addons/addons.nix;
     addon_xpis = lib.flip pkgs.lib.mapAttrs addons (name: addon: pkgs.fetchurl {
         name = "${name}-${addon.version}.xpi";
         inherit (addon) url sha256;
@@ -20,13 +20,13 @@ in (mkNixPak {
                     DisablePocket = true;
                     OfferToSaveLogins = false;
                     DisableFormHistory = true;
-                    ExtensionSettings = lib.mapAttrs (name: addon: {
+                    ExtensionSettings = lib.flip lib.mapAttrs addons (name: addon: {
                         installation_mode = "force_installed";
                         install_url = "file://${addon_xpis.${name}}";
-                    }) addons;
+                    });
                     "3rdparty".Extensions = lib.pipe addons [
-                        (lib.filterAttrs (_: addon: addon ? settings))
-                        (lib.mapAttrs' (_: addon: lib.nameValuePair addon.extid addon.settings))
+                        (lib.filterAttrs (name: _: builtins.pathExists (./addons + "/${name}/settings.nix")))
+                        (lib.mapAttrs' (name: addon: lib.nameValuePair addon.extid (import (./addons + "/${name}/settings.nix"))))
                     ];
                     EnableTrackingProtection = {
                         Value = true;
