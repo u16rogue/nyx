@@ -114,13 +114,18 @@ in (mkNixPak {
         flatpak.appId = "org.mozilla.firefox";
         dbus.policies."org.freedesktop.portal.Desktop" = "talk";
         etc.sslCertificates.enable = true;
+        gpu.enable = true;
         bubblewrap = {
             network = true;
             bindEntireStore = false;
             clearEnv = true;
             newSession = true;
             dieWithParent = true;
-            sockets.wayland = true;
+            sockets = {
+                wayland = true;
+                pipewire = true;
+                pulse = true;
+            };
 
             bind.rw = [
                 [ (sloth.mkdir (sloth.concat [ (sloth.env "HOME") "/.nyx/app-fake-root/firefox/" (sloth.env "HOME") ])) (sloth.env "HOME") ]

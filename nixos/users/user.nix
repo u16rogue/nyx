@@ -24,10 +24,12 @@ in {
                 "media"
                 "documents"
                 "projects"
-                ".nyx/app-fake-root/keepassxc"
                 ".nyx/app-fake-root/firefox"
+                ".nyx/app-fake-root/vesktop"
             ];
-            partial.directories = [];
+            partial.directories = [
+                ".nyx/app-fake-root/keepassxc" # keepass has nothing important to save
+            ];
         };
 
         configuration = { pkgs, nyxpkgs, ... }: {
