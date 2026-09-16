@@ -64,6 +64,7 @@ in (mkNixPak {
                     Preferences = lib.mapAttrs (_: value: value // { Status = value.Status or "user"; }) {
                         "toolkit.legacyUserProfileCustomizations.stylesheets".Value = true;
                         "browser.link.open_newwindow.restriction".Value = 0;
+                        "privacy.userContext.enabled".Value = true;
                         "privacy.userContext.newTabContainerOnLeftClick.enabled".Value = true;
                         "extensions.autoDisableScopes".Value = 0;
                         "extensions.activeThemeID".Value = addons.catppuccin.extid;
@@ -92,13 +93,10 @@ in (mkNixPak {
             wrapper = { exePath, ... }: /*bash*/ ''
                 profile="$HOME/.mozilla/firefox/default"
                 ${pkgs.coreutils}/bin/mkdir -p "$profile/chrome"
-
-                ${pkgs.coreutils}/bin/ln -sfnT "${profile_seed}/profiles.ini" \
-                    "$HOME/.mozilla/firefox/profiles.ini"
-                ${pkgs.coreutils}/bin/ln -sfnT "${profile_seed}/default/user.js" \
-                    "$profile/user.js"
-                ${pkgs.coreutils}/bin/ln -sfnT "${profile_seed}/default/chrome/userChrome.css" \
-                    "$profile/chrome/userChrome.css"
+                ${pkgs.coreutils}/bin/ln -sfnT "${profile_seed}/profiles.ini" "$HOME/.mozilla/firefox/profiles.ini"
+                ${pkgs.coreutils}/bin/ln -sfnT "${profile_seed}/default/user.js" "$profile/user.js"
+                ${pkgs.coreutils}/bin/ln -sfnT "${profile_seed}/default/chrome/userChrome.css" "$profile/chrome/userChrome.css"
+                [[ ! -e "$profile/containers.json" ]] && ${pkgs.coreutils}/bin/cp "${profile_seed}/default/containers.json" "$profile/containers.json";
 
                 extension_dir="$profile/extensions"
                 ${pkgs.coreutils}/bin/mkdir -p "$extension_dir"

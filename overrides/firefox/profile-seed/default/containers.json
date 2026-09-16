@@ -1,0 +1,46 @@
+{
+  "version": 5,
+  "lastUserContextId": 4,
+  "identities": [
+    {
+      "userContextId": 1,
+      "public": true,
+      "icon": "fingerprint",
+      "color": "blue",
+      "l10nID": "",
+      "name": "Personal",
+      "accessKey": "",
+      "telemetryId": 0
+    },
+    {
+      "userContextId": 2,
+      "public": true,
+      "icon": "briefcase",
+      "color": "orange",
+      "l10nID": "",
+      "name": "Work",
+      "accessKey": "",
+      "telemetryId": 0
+    },
+    {
+      "userContextId": 3,
+      "public": true,
+      "icon": "sunglasses",
+      "color": "purple",
+      "l10nID": "",
+      "name": "Watch",
+      "accessKey": "",
+      "telemetryId": 0
+    },
+    {
+      "userContextId": 4,
+      "public": true,
+      "icon": "fence",
+      "color": "red",
+      "l10nID": "",
+      "name": "Throwaway",
+      "accessKey": "",
+      "telemetryId": 0
+    }
+  ]
+}

@@ -64,6 +64,11 @@ my nix slop
 * make languages an optional thing so the dev shell provides the lsp and other things instead of being part of neovim
 * `nyxos-generate-config` and maybe a generic host
 * `nyxos-install`
+* for partial directories eithe auto sort or have `pre` and `post` where pre mounts before preserve and post mounts after preserve which is useful for when:
+    * We have a partial home but permanent important-data except for the cache folder inside the important folder which is again partial
+        * pre: ~/
+        * preserve: ~/.important-data
+        * post ~/.important-data/useless-cache
 * Packages to port/implement (extra todo: is it really necessary to sandbox these things?):
     * ~~neovim~~
     * ~~fish~~
@@ -72,6 +77,8 @@ my nix slop
     * ~~wiremix~~
     * ~~btop~~
     * firefox
+        * ~~ublock~~
+        * ~~sidebery~~
     * fuzzel
     * hyprland
     * hyprpaper
