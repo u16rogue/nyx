@@ -1,0 +1,14 @@
+ul[aria-label="Direct Messages"] {
+    /*Remove Nitro, Shop, Quests, Divider*/
+    div[aria-posinset="2"], li:has(a[href="/shop"]), div:has(a[href="/quest-home"]), div[class^="sectionDivider_"] {
+        display: none;
+    }
+
+    /*Hide DM's until hovered*/
+    li:has(a[href^="/channels/@me/"]) {
+        opacity: 0;
+        &:hover {
+            opacity: 1;
+        }
+    }
+}

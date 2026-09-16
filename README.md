@@ -76,9 +76,10 @@ my nix slop
     * ~~ghostty~~
     * ~~wiremix~~
     * ~~btop~~
-    * firefox
+    * ~~firefox~~
         * ~~ublock~~
         * ~~sidebery~~
+        * ~~containers~~
     * fuzzel
     * hyprland
     * hyprpaper
@@ -89,7 +90,7 @@ my nix slop
     * remmina
     * steamguard-cli
     * tmux
-    * vesktop
+    * ~~vesktop~~
     * waybar
     * obs
     * yazi
