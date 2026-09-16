@@ -96,7 +96,7 @@ in (mkNixPak {
                 ${pkgs.coreutils}/bin/ln -sfnT "${profile_seed}/profiles.ini" "$HOME/.mozilla/firefox/profiles.ini"
                 ${pkgs.coreutils}/bin/ln -sfnT "${profile_seed}/default/user.js" "$profile/user.js"
                 ${pkgs.coreutils}/bin/ln -sfnT "${profile_seed}/default/chrome/userChrome.css" "$profile/chrome/userChrome.css"
-                [[ ! -e "$profile/containers.json" ]] && ${pkgs.coreutils}/bin/cp "${profile_seed}/default/containers.json" "$profile/containers.json";
+                [[ ! -e "$profile/containers.json" ]] && ${pkgs.coreutils}/bin/ln -sfnT "${profile_seed}/default/containers.json" "$profile/containers.json";
 
                 extension_dir="$profile/extensions"
                 ${pkgs.coreutils}/bin/mkdir -p "$extension_dir"
