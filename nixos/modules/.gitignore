@@ -7,7 +7,9 @@
 !gpu-nvidia.nix
 !host-defaults.nix
 !luks.nix
+!networkmanager.nix
 !openssh.nix
 !pipewire.nix
 !swraid.nix
+!systemd-boot.nix
 !xdg-portal-filechooser.nix

@@ -27,10 +27,21 @@
             # Core builder
             ({ config, modulesPath, pkgs, nyxpkgs, ... }: {
                 imports = [(modulesPath + "/installer/scan/not-detected.nix")];
-                networking.hostName = lib.mkDefault "${hostname}";
+
+                time.timeZone = lib.mkDefault "Asia/Taipei";
+
+                nix.settings.experimental-features = [ "nix-command" "flakes" "pipe-operators" ];
+                networking.hostName = "${hostname}";
+                users.mutableUsers = false;
+                networking.firewall.enable = true;
+                nixpkgs.config.allowUnfree = true;
                 nixpkgs.hostPlatform = nyxhost.platform;
-                users.users = lib.flip lib.mapAttrs nyxhost_users (_: nyxhost_user: nyxhost_user.configuration { inherit nyxhost pkgs nyxpkgs config; });
                 age.identityPaths = [ "/etc/ssh/ssh_host_ed25519_key" ];
+                security.sudo.wheelNeedsPassword = true;
+
+                users.users = (lib.flip lib.mapAttrs nyxhost_users (_: nyxhost_user: nyxhost_user.configuration { inherit nyxhost pkgs nyxpkgs config; })) // {
+                    root.hashedPassword = "!"; # disable root user authentication
+                };
 
                 disko.enableConfig = true;
                 disko.devices.nodev = {

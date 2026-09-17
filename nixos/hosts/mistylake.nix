@@ -49,7 +49,7 @@
 
         configuration = { self, pkgs, ... }: {
             imports = with self.modules.nixos; [
-                host-defaults
+                systemd-boot
                 cpu-intel
                 gpu-nvidia
                 luks
@@ -57,6 +57,7 @@
                 openssh
                 gnupg
                 xdg-portal-filechooser
+                networkmanager
                 swraid
             ];
 
