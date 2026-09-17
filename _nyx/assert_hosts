@@ -6,7 +6,7 @@
 # entries:
 #   * every `flake.nixosConfigurations.<hostname>` has a matching
 #     `nyx.nixos.hosts.<hostname>` entry and vice versa
-#   * the host declares at least one user
+#   * the host declares at least one uniquely named registered user object
 #   * the evaluated host config exposes `networking.hostName == <hostname>`
 #   * `fileSystems."/boot"` and `fileSystems."/persist"` exist and are wired
 #     correctly
@@ -119,23 +119,28 @@ assert_prv_key() {
 assert_host_users() {
     local host="$1"
     local users_json="$2"
-    local user=
+    local username=
 
     if ! jq -e 'type == "array" and length > 0' <<< "$users_json" > /dev/null; then
         report_err "host '$host' must declare at least one user."
         return 1
     fi
 
-    while IFS= read -r user; do
-        [[ -z "$user" ]] && continue
+    if ! jq -e '[.[].name] | length == (unique | length)' <<< "$users_json" > /dev/null; then
+        report_err "host '$host' assigns a user more than once."
+        return 1
+    fi
 
-        if ! jq -e --arg u "$user" 'index($u) != null' <<< "$HOST_USERS_JSON" > /dev/null; then
-            report_err "host '$host' references unknown user '$user'."
+    while IFS= read -r username; do
+        [[ -z "$username" ]] && continue
+
+        if ! jq -e --arg u "$username" 'index($u) != null' <<< "$HOST_USERS_JSON" > /dev/null; then
+            report_err "host '$host' references unknown user '$username'."
             return 1
         fi
-    done < <(jq -r '.[]' <<< "$users_json")
+    done < <(jq -r '.[].name' <<< "$users_json")
 
-    report_ok "host '$host' users: $(jq -r 'join(", ")' <<< "$users_json")"
+    report_ok "host '$host' users: $(jq -r 'map(.name) | join(", ")' <<< "$users_json")"
 }
 
 ssh_recipient_tag() {
@@ -179,7 +184,7 @@ assert_user_password_recipients() {
             printf '%s\t%s\n' "$host" "$recipient_tag"
         done < <(jq -r --arg u "$username" '
             to_entries[]
-            | select(.value.users | index($u))
+            | select(.value.users | map(.name) | index($u))
             | .key
         ' <<< "$HOSTS_JSON")
     )"; then
@@ -316,7 +321,7 @@ HOST_USERS_JSON=
 USERS_JSON=
 CONFIGS_JSON=
 
-if ! HOSTS_JSON="$(nix eval --json --no-write-lock-file --option warn-dirty false "$PROJECT_DIR#nyx.nixos.hosts" --apply 'builtins.mapAttrs (_: host: { inherit (host) keys users; })')"; then
+if ! HOSTS_JSON="$(nix eval --json --no-write-lock-file --option warn-dirty false "$PROJECT_DIR#nyx.nixos.hosts" --apply 'builtins.mapAttrs (_: host: { inherit (host) keys; users = builtins.map (user: { inherit (user) name; }) host.users; })')"; then
     echo "[err] failed to evaluate nyx.nixos.hosts." >&2
     exit 1
 fi

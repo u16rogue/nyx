@@ -1,7 +1,5 @@
-{ ... }: let
-    username = "user";
-in {
-    nyx.nixos.users.${username} = {
+{ ... }: {
+    nyx.nixos.users.user = {
         password = ''
             -----BEGIN AGE ENCRYPTED FILE-----
             YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IHNzaC1lZDI1NTE5IGwxamN3ZyBhL2Qz
@@ -32,7 +30,7 @@ in {
             ];
         };
 
-        configuration = { pkgs, nyxpkgs, ... }: {
+        configuration = { pkgs, nyxpkgs, nyxhost, ... }: {
             isNormalUser = true;
             extraGroups = [ "wheel" ];
             shell = nyxpkgs.nushell;
@@ -53,6 +51,7 @@ in {
                 nyxpkgs.keepassxc
                 nyxpkgs.neovim
                 nyxpkgs.nushell
+                nyxpkgs.vesktop
 
                 # direct nixpkgs
                 pkgs.git

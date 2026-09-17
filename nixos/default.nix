@@ -8,103 +8,110 @@
         lib.flatten
     ];
 
-    config.flake.nixosConfigurations = lib.pipe config.nyx.nixos.hosts [
-        (lib.mapAttrs (hostname: nyxhost: let
-            nyxhost_users = lib.genAttrs nyxhost.users (username: config.nyx.nixos.users.${username});
-            result = inputs.nixpkgs.lib.nixosSystem {
-                specialArgs = {
-                    inherit inputs self;
-                    nyxpkgs = self.packages.${nyxhost.platform};
+    config.flake.nixosConfigurations = lib.flip lib.mapAttrs config.nyx.nixos.hosts (hostname: nyxhost: inputs.nixpkgs.lib.nixosSystem {
+        specialArgs = {
+            inherit inputs self;
+            nyxpkgs = self.packages.${nyxhost.platform};
+        };
+        modules = let
+            nyxhost_users = lib.pipe nyxhost.users [
+                (builtins.map (nyxuser: lib.nameValuePair nyxuser.name nyxuser))
+                lib.listToAttrs
+            ];
+        in [
+            inputs.disko.nixosModules.disko
+            inputs.preservation.nixosModules.default
+            inputs.ragenix.nixosModules.default
+            # Host defined config
+            nyxhost.configuration
+            # Core builder
+            ({ config, modulesPath, pkgs, nyxpkgs, ... }: {
+                imports = [(modulesPath + "/installer/scan/not-detected.nix")];
+                networking.hostName = lib.mkDefault "${hostname}";
+                nixpkgs.hostPlatform = nyxhost.platform;
+                users.users = lib.flip lib.mapAttrs nyxhost_users (_: nyxhost_user: nyxhost_user.configuration { inherit nyxhost pkgs nyxpkgs config; });
+                age.identityPaths = [ "/etc/ssh/ssh_host_ed25519_key" ];
+
+                disko.enableConfig = true;
+                disko.devices.nodev = {
+                    "/" = {
+                        fsType = "tmpfs";
+                        mountOptions = [ "defaults" "size=1G" "mode=755" ];
+                    };
+                    "/nix" = {
+                        device = "/persist/nix";
+                        fsType = "none";
+                        mountOptions = [ "bind" ];
+                    };
                 };
-                modules = [
-                    inputs.disko.nixosModules.disko
-                    inputs.preservation.nixosModules.default
-                    inputs.ragenix.nixosModules.default
-                    nyxhost.configuration # config.nyx.nixos.hosts.${hostname}.configuration
-                    # Core builder
-                    ({ config, modulesPath, pkgs, nyxpkgs, ... }: {
-                        imports = [(modulesPath + "/installer/scan/not-detected.nix")];
-                        networking.hostName = lib.mkDefault "${hostname}";
-                        nixpkgs.hostPlatform = nyxhost.platform;
-                        disko.enableConfig = true;
-                        disko.devices.nodev = {
-                            "/" = {
-                                fsType = "tmpfs";
-                                mountOptions = [ "defaults" "size=1G" "mode=755" ];
-                            };
-                            "/nix" = {
-                                device = "/persist/nix";
-                                fsType = "none";
-                                mountOptions = [ "bind" ];
-                            };
-                        };
-                        fileSystems = {
-                            "/".neededForBoot = true;
-                            "/nix" = {
-                                depends = [ "/persist" ];
-                                neededForBoot = true;
-                            };
-                            "/persist" = {
-                                depends = [ "/" ];
-                                neededForBoot = true;
-                            };
-                        };
+                fileSystems = {
+                    "/".neededForBoot = true;
+                    "/nix" = {
+                        depends = [ "/persist" ];
+                        neededForBoot = true;
+                    };
+                    "/persist" = {
+                        depends = [ "/" ];
+                        neededForBoot = true;
+                    };
+                };
 
-                        # Derive the requested nyx users into a nixosSystem users
-                        users.users = lib.flip lib.mapAttrs nyxhost_users (username: nyxuser: nyxuser.configuration { inherit pkgs nyxpkgs; });
-
-                        age.identityPaths = [ "/etc/ssh/ssh_host_ed25519_key" ];
-
-                        assertions = let
-                            assertFileSystemMountPoint = mount_point: {
-                                assertion = config.fileSystems ? "${mount_point}"
-                                    && config.fileSystems."${mount_point}" ? device
-                                    && config.fileSystems."${mount_point}".device != ""
-                                    && config.fileSystems."${mount_point}" ? fsType
-                                    && config.fileSystems."${mount_point}".fsType != "";
-                                message = "nyx host '${hostname}' must provide a ${mount_point} filesystem device and type.";
-                            };
-                        in [
-                            (assertFileSystemMountPoint "/boot")
-                            (assertFileSystemMountPoint "/persist")
-                        ];
-                    })
-                    # User password builder
-                    ({ config, pkgs, ... }:
-                        let
-                            deriveAgeAttr = username: "nyx.secrets.user.${username}.password";
-                        in {
-                        users.users = lib.flip lib.mapAttrs nyxhost_users (username: nyxuser: { hashedPasswordFile = config.age.secrets."${deriveAgeAttr username}".path; });
-                        age.secrets = lib.flip lib.mapAttrs' nyxhost_users (username: nyxuser: lib.nameValuePair "${deriveAgeAttr username}" {
-                            file = pkgs.writeText "${deriveAgeAttr username}" nyxuser.password;
-                            mode = "0400";
-                        });
-                    })
-                    # Ephemeral file system preservation builder
-                    (/*{ ... }:*/{
-                        preservation = {
-                            enable = true;
-                            preserveAt."/persist" = {
-                                files = nyxhost.ephemeralfs.preserve.files;
-                                directories = nyxhost.ephemeralfs.preserve.directories;
-                                users = lib.flip lib.mapAttrs nyxhost_users (username: nyxuser: {
-                                    files = nyxuser.ephemeralfs.preserve.files;
-                                    directories = nyxuser.ephemeralfs.preserve.directories;
-                                });
-                            };
-                        };
-                    })
+                assertions = let
+                    assertFileSystemMountPoint = mount_point: {
+                        assertion = config.fileSystems ? "${mount_point}"
+                            && config.fileSystems."${mount_point}" ? device
+                            && config.fileSystems."${mount_point}".device != ""
+                            && config.fileSystems."${mount_point}" ? fsType
+                            && config.fileSystems."${mount_point}".fsType != "";
+                        message = "nyx host '${hostname}' must provide a ${mount_point} filesystem device and type.";
+                    };
+                in [
+                    (assertFileSystemMountPoint "/boot")
+                    (assertFileSystemMountPoint "/persist")
+                    {
+                        assertion = let nyxhost_user_names = builtins.map (nyxhost_user: nyxhost_user.name) nyxhost.users; in builtins.length nyxhost_user_names == builtins.length (lib.unique nyxhost_user_names);
+                        message = "nyx host '${hostname}' must not assign a user more than once.";
+                    }
                 ];
-            };
-            in result
-        ))
-    ];
+            })
+            # User password builder
+            ({ config, pkgs, ... }: let deriveAgeAttr = username: "nyx.secrets.user.${username}.password"; in {
+                # Create and register the password as a secret
+                age.secrets = lib.flip lib.mapAttrs' nyxhost_users (username: nyxhost_user: lib.nameValuePair (deriveAgeAttr username) {
+                    file = pkgs.writeText (deriveAgeAttr username) nyxhost_user.password;
+                    mode = "0400";
+                });
+                # Set that registered secret as the user's password file
+                users.users = lib.flip lib.mapAttrs nyxhost_users (username: _: { hashedPasswordFile = config.age.secrets."${deriveAgeAttr username}".path; });
+            })
+            # Ephemeral file system preservation builder
+            (/*{ ... }:*/{
+                preservation = {
+                    enable = true;
+                    preserveAt."/persist" = {
+                        files = nyxhost.ephemeralfs.preserve.files;
+                        directories = nyxhost.ephemeralfs.preserve.directories;
+                        users = lib.flip lib.mapAttrs nyxhost_users (_: nyxuser: {
+                            files = nyxuser.ephemeralfs.preserve.files;
+                            directories = nyxuser.ephemeralfs.preserve.directories;
+                        });
+                    };
+                };
+            })
+        ];
+    });
 
     options.nyx.nixos = {
         hosts = lib.mkOption {
             description = "Nyx nixos hosts";
 
-            type = lib.types.attrsOf (lib.types.submodule {
+            type = lib.types.attrsOf (lib.types.submodule ({ name, ... }: {
+                options.name = lib.mkOption {
+                    description = "Name derived from the enclosing `nyx.nixos.hosts` attribute.";
+                    type = lib.types.str;
+                    default = name;
+                    readOnly = true;
+                };
                 options.platform = lib.mkOption { type = lib.types.str; };
                 options.configuration = lib.mkOption {
                     description = "NixOs system for this host";
@@ -159,20 +166,25 @@
                     };
                 };
                 options.users = lib.mkOption {
-                    description = "Users assigned to this host derived from `nyx.nixos.users.*`";
-                    type = lib.types.listOf lib.types.str;
+                    description = "User objects assigned to this host.";
+                    type = lib.types.listOf lib.types.raw;
                 };
-            });
+            }));
         };
 
         users = lib.mkOption {
             description = "Nyx nixos users";
-            type = lib.types.attrsOf (lib.types.submodule {
+            type = lib.types.attrsOf (lib.types.submodule ({ name, ... }: {
+                options.name = lib.mkOption {
+                    description = "Name derived from the enclosing `nyx.nixos.users` attribute and used for the NixOS user account and password secret.";
+                    type = lib.types.str;
+                    default = name;
+                    readOnly = true;
+                };
                 options.configuration = lib.mkOption {
                     description = "NixOS user configuration for this user.";
                     type = lib.types.raw;
                 };
-
                 options.password = lib.mkOption {
                     type = lib.types.strMatching "^-----BEGIN AGE ENCRYPTED FILE-----\n([A-Za-z0-9+/=]+\n)+-----END AGE ENCRYPTED FILE-----\n?$";
                     description = "Host recipient encrypted of the user's password hash.";
@@ -182,7 +194,6 @@
                         -----END AGE ENCRYPTED FILE-----
                     '';
                 };
-
                 options.ephemeralfs.preserve = lib.mkOption {
                     description = "User preservation configuration.";
                     type = lib.types.submodule {
@@ -202,7 +213,7 @@
                         };
                     };
                 };
-            });
+            }));
         };
     };
 }

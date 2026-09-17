@@ -1,7 +1,5 @@
-{ ... }: let
-    hostname = "mistylake";
-in {
-    nyx.nixos.hosts.${hostname} = {
+{ config, ... }: {
+    nyx.nixos.hosts.mistylake = {
         platform = "x86_64-linux";
         keys = {
             pub = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIE0ZgVVQZfW3BYIUT3fa9T1ncUnpIF+X8ZZysapPU5nQ root@mistylake";
@@ -45,7 +43,9 @@ in {
             ];
         };
 
-        users = [ "user" ];
+        users = with config.nyx.nixos.users; [
+            user
+        ];
 
         configuration = { self, pkgs, ... }: {
             imports = with self.modules.nixos; [

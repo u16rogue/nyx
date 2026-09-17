@@ -29,13 +29,13 @@ my nix slop
 
 * [nixos](./nixos) - NixOS configurations.
     * `nyx` related options are defined in [nixos/default.nix](./nixos/default.nix)
-    * Host configurations must provide the disks for the paths `/boot` and `/persist`. Host should follow the common `fileSystems` provided by `nyx`.
+    * Host configurations must provide the disks for the paths `/boot` and `/persist`. Hosts should follow the common `fileSystems` provided by `nyx`.
     * Systems/NixOS/Hosts are expected to use an ephemeral filesystem where each host and user are required to explicitly state which files and directories are to be preserved.
         * A `partial` preservation is available via `nyx.nixos.hosts.<hostname>.ephemeralfs.preserve.partial.directories` to list directories that can be preserved and should possibly be stored to disk without the explicit necessity that it should be saved. Useful for systems that does not have a large enough RAM space for a root tmpfs or for directories that do need large spaces (eg home directories as its used by some programs and scripts to download large blobs that are discarded later or cache)
     * [modules](./nixos/modules) - Set of flake-parts `nixos` modules. All `*.nix` are aggregated and imported to be available.
     * [hosts](./nixos/hosts) - Set of flake-parts+nyx modules specifically defining host machines.
         * All `*.nix` are aggregated and imported to be evaluated.
-        * Hosts are aggregated from `nyx.nixos.hosts.*`
+        * Hosts are aggregated from `nyx.nixos.hosts.*`. Their `users` lists contain user objects from `nyx.nixos.users.*`, rather than user-name strings. A user object's `name` is generated from its `nyx.nixos.users` attribute and is used for the NixOS account and password secret.
         * `nixosSystem` are managed by `nyx` and the entries must ***not*** provide its own `flake.nixosConfigurations` attr.
         * All host must provide its own ed25519 keys. The `nyx` script provides multiple utilities for managing this.
     * [users](./nixos/users) - Set of flake-parts+nyx modules.
@@ -44,7 +44,7 @@ my nix slop
 
 * [_nyx](./_nyx) + [workflow](./.github/workflow) - Meta folder(s). Contains scripts that are meant for automation. Mostly written by clankers.
     * Flake check
-    * [assert_hosts](./_nyx/assert_hosts) - Checks host registration against `nixosConfigurations`, requires at least one `users` entry, verifies `networking.hostName`, ensures `/boot`, `/persist`, and `/var/log` are wired correctly, and validates `keys.pub` and `keys.prv`.
+    * [assert_hosts](./_nyx/assert_hosts) - Checks host registration against `nixosConfigurations`, requires at least one uniquely named registered user object, verifies `networking.hostName`, ensures `/boot` and `/persist` are wired correctly, validates `keys.pub` and `keys.prv`, and verifies password recipients.
     * [assert_templates](./_nyx/assert_templates) - Ensure template lock files are in sync.
 
 ## TODO

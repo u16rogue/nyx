@@ -1,7 +1,5 @@
-{ ... }: let
-    hostname = "mistyriver";
-in {
-    nyx.nixos.hosts.${hostname} = {
+{ config, ... }: {
+    nyx.nixos.hosts.mistyriver = {
         platform = "x86_64-linux";
         keys = {
             pub = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPYWxa99sHJ94Cb69bbD+dBknEJNcVRDerPmsgrEdwFW root@mistyriver";
@@ -45,7 +43,9 @@ in {
             ];
         };
 
-        users = [ "user" ];
+        users = with config.nyx.nixos.users; [
+            user
+        ];
 
         configuration = { self, pkgs, ... }: {
             imports = with self.modules.nixos; [
