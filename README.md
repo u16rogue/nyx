@@ -46,6 +46,7 @@ my nix slop
     * Flake check
     * [assert_hosts](./_nyx/assert_hosts) - Checks host registration against `nixosConfigurations`, requires at least one uniquely named registered user object, verifies `networking.hostName`, ensures `/boot` and `/persist` are wired correctly, validates `keys.pub` and `keys.prv`, and verifies password recipients.
     * [assert_templates](./_nyx/assert_templates) - Ensure template lock files are in sync.
+    * [overrides/firefox/addons-assert.sh](./overrides/firefox/addons-assert.sh) - Ensure addon configuration entries are valid addons.
 
 ## TODO
 * `sbx-shell` +/ `sbx-develop` as a replacement to the current [`.devshellshook.sh` -> setup custom env -> bwrap] pipeline. `flake.nix` shouldn't be deploying development sandboxes.
@@ -58,7 +59,6 @@ my nix slop
 * assert that generated secrets have the proper relevant reciepients
     * when implementing list of host do not use the same `nyx.nixos.hosts.users` but instead we should just accept public keys directly and access host pk's directly via `config`
 * dev templates to use 2 nixpkgs one that can move around and another pinned to my nixos rev
-* might merge host define `users` and nyx users. this way users can be defined without creating a nyx module.
 * assert invalid preserve paths (`/` in host) and document special path (home `/` for users)
 * implement partial use the initrd and /sysroot
 * make languages an optional thing so the dev shell provides the lsp and other things instead of being part of neovim

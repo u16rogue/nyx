@@ -5,7 +5,6 @@
 !cpu-intel.nix
 !gnupg.nix
 !gpu-nvidia.nix
-!host-defaults.nix
 !luks.nix
 !networkmanager.nix
 !openssh.nix
