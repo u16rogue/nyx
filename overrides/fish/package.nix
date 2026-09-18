@@ -1,12 +1,8 @@
-{ inputs, pkgs, fish, writeText, overridesOpts ? {}, ... }: let
-    final_opts = {
-        config_file = ./config.fish;
-    } // overridesOpts;
-in inputs.wrappers.lib.wrapPackage {
+{ inputs, pkgs, fish, ... }: inputs.wrappers.lib.wrapPackage {
     inherit pkgs;
     package = fish;
     flags = {
         "--no-config" = true;
-        "--init-command" = "source ${writeText "config.fish" (builtins.readFile final_opts.config_file)}";
+        "--init-command" = "source ${./config.fish}";
     };
 }

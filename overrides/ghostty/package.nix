@@ -1,8 +1,5 @@
-{ inputs, pkgs, ghostty, overridesOpts ? {}, ... }: let
-    final_opts = {
-        config_file = ./config.ghostty;
-    } // overridesOpts;
-    config_file = pkgs.writeText "config.ghostty" (builtins.readFile final_opts.config_file);
+{ inputs, pkgs, ghostty, ... }: let
+    config_file = ./config.ghostty;
 in inputs.wrappers.lib.wrapPackage {
     inherit pkgs;
     package = ghostty;

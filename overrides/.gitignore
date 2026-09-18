@@ -4,8 +4,17 @@
 !default.nix
 !firefox/
 !fish/
+!fuzzel/
 !ghostty/
 !keepassxc/
+!kitty/
+!monero-gui/
+!moonlight-stream/
 !neovim/
 !nushell/
+!remmina/
+!steamguard-cli/
+!tmux/
 !vesktop/
+!yazi/
+!zellij/

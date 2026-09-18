@@ -80,18 +80,18 @@ my nix slop
         * ~~ublock~~
         * ~~sidebery~~
         * ~~containers~~
-    * fuzzel
+    * ~~fuzzel~~
     * hyprland
     * hyprpaper
     * ~~keepassxc~~
-    * kitty
-    * monero-gui
-    * moonlight-stream
-    * remmina
-    * steamguard-cli
-    * tmux
+    * ~~kitty~~
+    * ~~monero-gui~~
+    * ~~moonlight-stream~~
+    * ~~remmina~~
+    * ~~steamguard-cli~~
+    * ~~tmux~~
     * ~~vesktop~~
     * waybar
     * obs
-    * yazi
-    * zellij
+    * ~~yazi~~
+    * ~~zellij~~

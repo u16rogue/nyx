@@ -1,0 +1,5 @@
+**
+.*
+!.gitignore
+!config.conf
+!package.nix

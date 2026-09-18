@@ -23,6 +23,10 @@
                 "documents"
                 "projects"
                 ".nyx/app-fake-root/firefox"
+                ".nyx/app-fake-root/monero-gui"
+                ".nyx/app-fake-root/moonlight-stream"
+                ".nyx/app-fake-root/remmina"
+                ".nyx/app-fake-root/steamguard-cli"
                 ".nyx/app-fake-root/vesktop"
             ];
             partial.directories = [
@@ -47,11 +51,20 @@
                 # Custom overidden packages (homeless configs +/ sandbox)
                 nyxpkgs.firefox
                 nyxpkgs.fish
+                nyxpkgs.fuzzel
                 nyxpkgs.ghostty
                 nyxpkgs.keepassxc
+                nyxpkgs.kitty
+                nyxpkgs.monero-gui
+                nyxpkgs.moonlight-stream
                 nyxpkgs.neovim
                 nyxpkgs.nushell
+                nyxpkgs.remmina
+                nyxpkgs.steamguard-cli
+                nyxpkgs.tmux
                 nyxpkgs.vesktop
+                nyxpkgs.yazi
+                nyxpkgs.zellij
 
                 # direct nixpkgs
                 pkgs.git
