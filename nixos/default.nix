@@ -11,7 +11,10 @@
     config.flake.nixosConfigurations = lib.flip lib.mapAttrs config.nyx.nixos.hosts (hostname: nyxhost: inputs.nixpkgs.lib.nixosSystem {
         specialArgs = {
             inherit inputs self;
-            nyxpkgs = self.packages.${nyxhost.platform};
+            nyx = {
+                pkgs = self.packages.${nyxhost.platform};
+                host = nyxhost;
+            };
         };
         modules = let
             nyxhost_users = lib.pipe nyxhost.users [
@@ -25,7 +28,7 @@
             # Host defined config
             nyxhost.configuration
             # Core builder
-            ({ config, modulesPath, pkgs, nyxpkgs, ... }: {
+            ({ config, modulesPath, pkgs, nyx, ... }: {
                 imports = [(modulesPath + "/installer/scan/not-detected.nix")];
 
                 time.timeZone = lib.mkDefault "Asia/Taipei";
@@ -39,7 +42,7 @@
                 age.identityPaths = [ "/etc/ssh/ssh_host_ed25519_key" ];
                 security.sudo.wheelNeedsPassword = true;
 
-                users.users = (lib.flip lib.mapAttrs nyxhost_users (_: nyxhost_user: nyxhost_user.configuration { inherit nyxhost pkgs nyxpkgs config; })) // {
+                users.users = (lib.flip lib.mapAttrs nyxhost_users (_: nyxhost_user: nyxhost_user.configuration { inherit nyx pkgs config; })) // {
                     root.hashedPassword = "!"; # disable root user authentication
                 };
 

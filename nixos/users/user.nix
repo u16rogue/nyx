@@ -34,37 +34,37 @@
             ];
         };
 
-        configuration = { pkgs, nyxpkgs, nyxhost, ... }: {
+        configuration = { pkgs, nyx, ... }: {
             isNormalUser = true;
             extraGroups = [ "wheel" ];
-            shell = nyxpkgs.nushell;
+            shell = nyx.pkgs.nushell;
             packages = [
                 # Scripts
-                nyxpkgs.tmuxss
-                nyxpkgs.git-cans
-                nyxpkgs.mkignore
-                nyxpkgs.nix-develop
-                nyxpkgs.nix-gc
-                nyxpkgs.nix-pkgvercmp
-                nyxpkgs.nix-sync-lock-from-nixos
+                nyx.pkgs.tmuxss
+                nyx.pkgs.git-cans
+                nyx.pkgs.mkignore
+                nyx.pkgs.nix-develop
+                nyx.pkgs.nix-gc
+                nyx.pkgs.nix-pkgvercmp
+                nyx.pkgs.nix-sync-lock-from-nixos
 
                 # Custom overidden packages (homeless configs +/ sandbox)
-                nyxpkgs.firefox
-                nyxpkgs.fish
-                nyxpkgs.fuzzel
-                nyxpkgs.ghostty
-                nyxpkgs.keepassxc
-                nyxpkgs.kitty
-                nyxpkgs.monero-gui
-                nyxpkgs.moonlight-stream
-                nyxpkgs.neovim
-                nyxpkgs.nushell
-                nyxpkgs.remmina
-                nyxpkgs.steamguard-cli
-                nyxpkgs.tmux
-                nyxpkgs.vesktop
-                nyxpkgs.yazi
-                nyxpkgs.zellij
+                nyx.pkgs.firefox
+                nyx.pkgs.fish
+                nyx.pkgs.fuzzel
+                nyx.pkgs.ghostty
+                nyx.pkgs.keepassxc
+                nyx.pkgs.kitty
+                nyx.pkgs.monero-gui
+                nyx.pkgs.moonlight-stream
+                nyx.pkgs.neovim
+                nyx.pkgs.nushell
+                nyx.pkgs.remmina
+                nyx.pkgs.steamguard-cli
+                nyx.pkgs.tmux
+                nyx.pkgs.vesktop
+                nyx.pkgs.yazi
+                nyx.pkgs.zellij
 
                 # direct nixpkgs
                 pkgs.git
