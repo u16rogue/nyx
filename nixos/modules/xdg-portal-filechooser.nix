@@ -1,4 +1,4 @@
-{ ... }: {
+{
     flake.modules.nixos.xdg-portal-filechooser = { pkgs, ... }: {
         xdg.portal = {
             enable = true;

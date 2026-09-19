@@ -1,5 +1,5 @@
-{ lib, ... }: {
-    flake.modules.nixos.swraid = {
+{
+    flake.modules.nixos.swraid = { lib, ... }: {
         boot.initrd.kernelModules = [ "dm-raid" ];
         boot.swraid = {
             enable = true;
