@@ -62,8 +62,6 @@
             ];
 
             environment.systemPackages = [
-                pkgs.git
-                pkgs.wiremix
             ];
 
             system.stateVersion = "25.11";

@@ -61,8 +61,6 @@
             ];
 
             environment.systemPackages = [
-                pkgs.git
-                pkgs.wiremix
                 pkgs.asusctl
             ];
 
