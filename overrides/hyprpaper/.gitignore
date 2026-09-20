@@ -1,0 +1,5 @@
+**
+.*
+!.gitignore
+!hyprpaper.conf
+!package.nix

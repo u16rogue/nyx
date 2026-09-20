@@ -1,0 +1,5 @@
+**
+.*
+!.gitignore
+!config.jsonc
+!package.nix

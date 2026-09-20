@@ -88,6 +88,8 @@
                     }
                 ];
             })
+            # Load user host configurations
+            { imports = lib.flip lib.mapAttrsToList nyxhost_users (_: nyxhost_user: nyxhost_user.host-configuration); }
             # User password builder
             ({ config, pkgs, ... }: let deriveAgeAttr = username: "nyx.secrets.user.${username}.password"; in {
                 # Create and register the password as a secret
@@ -127,6 +129,53 @@
                     readOnly = true;
                 };
                 options.platform = lib.mkOption { type = lib.types.str; };
+                options.monitors = lib.mkOption {
+                    description = "Physical monitor layout for this host.";
+                    type = lib.types.listOf (lib.types.submodule {
+                        options = {
+                            id = lib.mkOption {
+                                description = "Connector or monitor identifier.";
+                                type = lib.types.str;
+                            };
+                            resolution = lib.mkOption {
+                                description = "Preferred display resolution in pixels.";
+                                type = lib.types.nullOr (lib.types.submodule {
+                                    options = {
+                                        x = lib.mkOption { type = lib.types.int; };
+                                        y = lib.mkOption { type = lib.types.int; };
+                                    };
+                                });
+                                default = null;
+                            };
+                            refreshrate = lib.mkOption {
+                                description = "Preferred refresh rate in hertz.";
+                                type = lib.types.nullOr lib.types.int;
+                                default = null;
+                            };
+                            position = lib.mkOption {
+                                description = "Display position in the virtual layout.";
+                                type = lib.types.nullOr (lib.types.submodule {
+                                    options = {
+                                        x = lib.mkOption { type = lib.types.int; };
+                                        y = lib.mkOption { type = lib.types.int; };
+                                    };
+                                });
+                                default = null;
+                            };
+                            scale = lib.mkOption {
+                                description = "Display scale factor.";
+                                type = lib.types.number;
+                                default = 1;
+                            };
+                            enabled = lib.mkOption {
+                                description = "Whether the display is enabled.";
+                                type = lib.types.bool;
+                                default = true;
+                            };
+                        };
+                    });
+                    default = [{ id = ""; }];
+                };
                 options.configuration = lib.mkOption {
                     description = "NixOs system for this host";
                     type = lib.types.deferredModule;
@@ -194,6 +243,10 @@
                     type = lib.types.str;
                     default = name;
                     readOnly = true;
+                };
+                options.host-configuration = lib.mkOption {
+                    description = "NixOS host configuration for this user.";
+                    type = lib.types.raw;
                 };
                 options.configuration = lib.mkOption {
                     description = "NixOS user configuration for this user.";

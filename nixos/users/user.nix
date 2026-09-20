@@ -34,6 +34,18 @@
             ];
         };
 
+        host-configuration = { pkgs, ... }: {
+            xdg.portal = {
+                enable = true;
+                extraPortals = [
+                    pkgs.xdg-desktop-portal-gtk
+                    pkgs.xdg-desktop-portal-hyprland
+                ];
+                config.common."org.freedesktop.impl.portal.FileChooser" = [ "gtk" ];
+            };
+            environment.sessionVariables.NIXOS_OZONE_WL = "1";
+        };
+
         configuration = { pkgs, nyx, ... }: {
             isNormalUser = true;
             extraGroups = [ "wheel" ];
@@ -53,6 +65,13 @@
                 nyx.pkgs.fish
                 nyx.pkgs.fuzzel
                 nyx.pkgs.ghostty
+                (nyx.pkgs.hyprland.override {
+                    overridesOpts = {
+                        monitors = nyx.host.monitors;
+                    };
+                    hyprpaper = (nyx.pkgs.hyprpaper.override { overridesOpts.wallpaper = "/home/user/media/wallpaper"; });
+                    waybar = nyx.pkgs.waybar;
+                })
                 nyx.pkgs.keepassxc
                 nyx.pkgs.kitty
                 nyx.pkgs.monero-gui

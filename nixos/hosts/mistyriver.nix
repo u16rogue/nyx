@@ -1,6 +1,13 @@
 { config, ... }: {
     nyx.nixos.hosts.mistyriver = {
         platform = "x86_64-linux";
+        monitors = [
+            {
+                id = "eDP-1";
+                resolution = { x = 1920; y = 1200; };
+                refreshrate = 60;
+            }
+        ];
         keys = {
             pub = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPYWxa99sHJ94Cb69bbD+dBknEJNcVRDerPmsgrEdwFW root@mistyriver";
             prv = {
@@ -56,7 +63,6 @@
                 pipewire
                 openssh
                 gnupg
-                xdg-portal-filechooser
                 networkmanager
             ];
 

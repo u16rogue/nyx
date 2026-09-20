@@ -56,7 +56,6 @@
                 pipewire
                 openssh
                 gnupg
-                xdg-portal-filechooser
                 networkmanager
                 swraid
             ];
