@@ -21,28 +21,46 @@ done
 
 directory="$(dirname "$script")"
 target="$directory/addons/addons.nix"
-temporary="$(mktemp "$directory/.addons.nix.XXXXXX")"
-trap 'rm -f "$temporary"' EXIT
 
 log "Reading addon list from $target."
+if ! addon_names="$(nix eval --json --file "$target" --apply builtins.attrNames | jq --raw-output '.[]')"; then
+    log "Failed to evaluate addon names; leaving $target unchanged."
+    exit 1
+fi
+if [[ -z "$addon_names" ]]; then
+    log "Refusing to replace $target with an empty addon set."
+    exit 1
+fi
+
+temporary="$(mktemp "$directory/.addons.nix.XXXXXX")"
+trap 'rm -f "$temporary"' EXIT
 {
     printf '{\n'
     while IFS= read -r addon; do
         log "Fetching $addon metadata from AMO."
         metadata="$(curl --fail --location --retry 3 --silent --show-error "https://addons.mozilla.org/api/v5/addons/addon/$addon/")"
-        extid="$(jq --raw-output '.guid' <<< "$metadata")"
-        version="$(jq --raw-output '.current_version.version' <<< "$metadata")"
-        url="$(jq --raw-output '.current_version.file.url' <<< "$metadata")"
-        sha256="$(jq --raw-output '.current_version.file.hash | split(":")[1]' <<< "$metadata")"
+        if ! jq -e '
+            (.guid | type == "string" and length > 0)
+            and (.current_version.version | type == "string" and length > 0)
+            and (.current_version.file.url | type == "string" and test("^https://"))
+            and (.current_version.file.hash | type == "string" and test("^sha256:[0-9a-fA-F]{64}$"))
+        ' <<< "$metadata" > /dev/null; then
+            log "AMO returned incomplete metadata for $addon."
+            exit 1
+        fi
+        extid="$(jq --raw-output '.guid | @json' <<< "$metadata")"
+        version="$(jq --raw-output '.current_version.version | @json' <<< "$metadata")"
+        url="$(jq --raw-output '.current_version.file.url | @json' <<< "$metadata")"
+        sha256="$(jq --raw-output '.current_version.file.hash | split(":")[1] | @json' <<< "$metadata")"
 
-        log "Pinned $addon $version ($extid)."
+        log "Pinned $addon metadata."
         printf '    %s = {\n' "$addon"
-        printf '        extid = "%s";\n' "$extid"
-        printf '        version = "%s";\n' "$version"
-        printf '        url = "%s";\n' "$url"
-        printf '        sha256 = "%s";\n' "$sha256"
+        printf '        extid = %s;\n' "$extid"
+        printf '        version = %s;\n' "$version"
+        printf '        url = %s;\n' "$url"
+        printf '        sha256 = %s;\n' "$sha256"
         printf '    };\n'
-    done < <(nix eval --json --file "$target" --apply builtins.attrNames | jq --raw-output '.[]')
+    done <<< "$addon_names"
     printf '}\n'
 } > "$temporary"
 

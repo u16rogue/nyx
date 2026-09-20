@@ -20,7 +20,7 @@ in (mkNixPak {
                     DisablePocket = true;
                     OfferToSaveLogins = false;
                     DisableFormHistory = true;
-                    ExtensionSettings = lib.flip lib.mapAttrs addons (name: addon: {
+                    ExtensionSettings = lib.flip lib.mapAttrs' addons (name: addon: lib.nameValuePair addon.extid {
                         installation_mode = "force_installed";
                         install_url = "file://${addon_xpis.${name}}";
                     });
@@ -101,9 +101,11 @@ in (mkNixPak {
                 extension_dir="$profile/extensions"
                 ${pkgs.coreutils}/bin/mkdir -p "$extension_dir"
                 ${lib.concatStringsSep "\n" (lib.flip lib.mapAttrsToList addons (name: addon: /*bash*/ ''
-                    # allows firefox to replace the symlink with an updated xpi addon allowing updates
-                    if [[ ! -e "$extension_dir/${addon.extid}.xpi" ]]; then
-                        ${pkgs.coreutils}/bin/ln -s "${addon_xpis.${name}}" "$extension_dir/${addon.extid}.xpi"
+                    extension_path="$extension_dir/${addon.extid}.xpi"
+                    if [[ -L "$extension_path" ]]; then
+                        ${pkgs.coreutils}/bin/ln -sfnT "${addon_xpis.${name}}" "$extension_path"
+                    elif [[ ! -e "$extension_path" ]]; then
+                        ${pkgs.coreutils}/bin/ln -s "${addon_xpis.${name}}" "$extension_path"
                     fi
                 ''))}
 
@@ -129,7 +131,7 @@ in (mkNixPak {
 
             bind.rw = [
                 [ (sloth.mkdir (sloth.concat [ (sloth.env "HOME") "/.nyx/app-fake-root/firefox/" (sloth.env "HOME") ])) (sloth.env "HOME") ]
-                [ (sloth.mkdir "/tmp/.nyx-tmp/firefox") "/tmp" ]
+                [ (sloth.mkdir (sloth.concat' sloth.runtimeDir "/nyx/firefox")) "/tmp" ]
                 (sloth.concat' sloth.runtimeDir "/doc") # for document portal
             ];
 
