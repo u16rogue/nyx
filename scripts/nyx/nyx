@@ -300,7 +300,7 @@ modeHostNyxValidateSk() {
 }
 
 modeHostApplyKeys() {
-    assertCommands "nix" "rage"
+    assertCommands "nix" "rage" "sha256sum" "ssh-keygen" "mktemp" "chmod" "ln" "rm"
     assertInNyxCwd
 
     local path_output="${1:-"/etc/ssh"}"
@@ -311,10 +311,17 @@ modeHostApplyKeys() {
 
     local path_sk="$path_output/ssh_host_ed25519_key"
     local path_pk="${path_sk}.pub"
-    local has_err=0
+    local has_err=0 tmp_sk="" tmp_pk="" host_sk_hash="" host_sk_expected="" derived_pk=""
+
+    # shellcheck disable=SC2329 # invoked by the EXIT trap below
+    cleanupHostApplyKeys() {
+        [[ -z "$tmp_sk" ]] || rm -f -- "$tmp_sk"
+        [[ -z "$tmp_pk" ]] || rm -f -- "$tmp_pk"
+    }
+    trap cleanupHostApplyKeys EXIT
 
     for kpath in "$path_sk" "$path_pk"; do
-        if [[ -f "$kpath" ]]; then
+        if [[ -e "$kpath" || -L "$kpath" ]]; then
             printErr "$kpath already exists."
             has_err=1
         fi
@@ -343,18 +350,62 @@ modeHostApplyKeys() {
         exit 1
     fi
 
-    if ! host_sk="$(printf '%s\n' "$host_sk_age" | rage -d)"; then
+    if ! host_sk_expected="$(nix eval --raw ".#nyx.nixos.hosts.\"$host_name\".keys.prv.sha256" 2>/dev/null)"; then
+        printErr "cannot retrieve private nyx host key hash for hostname"
+        exit 1
+    fi
+
+    umask 077
+    if ! tmp_sk="$(mktemp "$path_output/.ssh_host_ed25519_key.XXXXXX")"; then
+        printErr "failed to create private key temporary file"
+        exit 1
+    fi
+    if ! tmp_pk="$(mktemp "$path_output/.ssh_host_ed25519_key.pub.XXXXXX")"; then
+        printErr "failed to create public key temporary file"
+        exit 1
+    fi
+
+    if ! printf '%s\n' "$host_sk_age" | rage -d > "$tmp_sk"; then
         printErr "failed to decrypt sk age entry"
         exit 1
     fi
 
-    if ! printf "%s" "$host_pk" > "$path_pk"; then
-        printErr "failed to write pk"
+    if ! host_sk_hash="$(sha256sum -- "$tmp_sk")"; then
+        printErr "failed to hash decrypted private key"
+        exit 1
+    fi
+    host_sk_hash="${host_sk_hash%% *}"
+    if [[ "$host_sk_hash" != "$host_sk_expected" ]]; then
+        printErr "decrypted private key does not match registered hash"
         exit 1
     fi
 
-    if ! printf "%s" "$host_sk" > "$path_sk"; then
-        printErr "failed to write sk"
+    if ! derived_pk="$(ssh-keygen -y -f "$tmp_sk")"; then
+        printErr "failed to derive public key from decrypted private key"
+        exit 1
+    fi
+    local derived_type derived_body expected_type expected_body _
+    read -r derived_type derived_body _ <<< "$derived_pk"
+    read -r expected_type expected_body _ <<< "$host_pk"
+    if [[ "$derived_type $derived_body" != "$expected_type $expected_body" ]]; then
+        printErr "decrypted private key does not match registered public key"
+        exit 1
+    fi
+    if ! printf '%s\n' "$host_pk" > "$tmp_pk"; then
+        printErr "failed to prepare public key"
+        exit 1
+    fi
+    chmod 0600 "$tmp_sk"
+    chmod 0644 "$tmp_pk"
+
+    # Hard links fail if either destination appeared after the initial check.
+    if ! ln -- "$tmp_sk" "$path_sk"; then
+        printErr "failed to install private key; destination already exists"
+        exit 1
+    fi
+    if ! ln -- "$tmp_pk" "$path_pk"; then
+        rm -f -- "$path_sk"
+        printErr "failed to install public key; destination already exists"
         exit 1
     fi
 
@@ -372,7 +423,7 @@ modeUserMakeSecret() {
     fi
 
     local hosts_json
-    if ! hosts_json="$(nix eval --json '.#nyx.nixos.hosts' --apply 'hosts: builtins.mapAttrs (_: host: { users = host.users; pub = host.keys.pub; }) hosts' 2>/dev/null)"; then
+    if ! hosts_json="$(nix eval --json '.#nyx.nixos.hosts' --apply 'hosts: builtins.mapAttrs (_: host: { users = builtins.map (user: user.name) host.users; pub = host.keys.pub; }) hosts' 2>/dev/null)"; then
         printErr "failed to evaluate nyx host registrations"
         exit 1
     fi
