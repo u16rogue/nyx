@@ -26,7 +26,7 @@ in (mkNixPak {
             };
             bind.rw = [
                 [ (sloth.mkdir (sloth.concat [ (sloth.env "HOME") "/.nyx/app-fake-root/remmina/" (sloth.env "HOME") ])) (sloth.env "HOME") ]
-                [ (sloth.mkdir "/tmp/.nyx-tmp/remmina") "/tmp" ]
+                [ (sloth.mkdir (sloth.concat' sloth.runtimeDir "/nyx/remmina")) "/tmp" ]
                 [ (sloth.mkdir (sloth.concat [ (sloth.env "HOME") "/.nyx/app-fake-root/remmina/tmp-share" ])) "/tmp/remmina-share" ]
                 (sloth.concat' sloth.runtimeDir "/doc")
             ];

@@ -17,7 +17,7 @@ in (mkNixPak {
             dieWithParent = true;
             bind.rw = [
                 [ (sloth.mkdir (sloth.concat [ (sloth.env "HOME") "/.nyx/app-fake-root/steamguard-cli/" (sloth.env "HOME") ])) (sloth.env "HOME") ]
-                [ (sloth.mkdir "/tmp/.nyx-tmp/steamguard-cli") "/tmp" ]
+                [ (sloth.mkdir (sloth.concat' sloth.runtimeDir "/nyx/steamguard-cli")) "/tmp" ]
             ];
             env = {
                 HOME = sloth.env "HOME";

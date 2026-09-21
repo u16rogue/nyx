@@ -26,7 +26,7 @@ in (mkNixPak {
             };
             bind.rw = [
                 [ (sloth.mkdir (sloth.concat [ (sloth.env "HOME") "/.nyx/app-fake-root/monero-gui/" (sloth.env "HOME") ])) (sloth.env "HOME") ]
-                [ (sloth.mkdir "/tmp/.nyx-tmp/monero-gui") "/tmp" ]
+                [ (sloth.mkdir (sloth.concat' sloth.runtimeDir "/nyx/monero-gui")) "/tmp" ]
                 (sloth.concat' sloth.runtimeDir "/doc")
             ];
             env = {

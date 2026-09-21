@@ -26,7 +26,7 @@ in (mkNixPak {
             };
             bind.rw = [
                 [ (sloth.mkdir (sloth.concat [ (sloth.env "HOME") "/.nyx/app-fake-root/moonlight-stream/" (sloth.env "HOME") ])) (sloth.env "HOME") ]
-                [ (sloth.mkdir "/tmp/.nyx-tmp/moonlight-stream") "/tmp" ]
+                [ (sloth.mkdir (sloth.concat' sloth.runtimeDir "/nyx/moonlight-stream")) "/tmp" ]
                 (sloth.concat' sloth.runtimeDir "/doc")
             ];
             env = {
