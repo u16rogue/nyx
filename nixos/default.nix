@@ -30,22 +30,23 @@
             # Core builder
             ({ config, modulesPath, pkgs, nyx, ... }: {
                 imports = [(modulesPath + "/installer/scan/not-detected.nix")];
-
+                # Defaults
                 time.timeZone = lib.mkDefault "Asia/Taipei";
-
+                # Enforced
                 nix.settings.experimental-features = [ "nix-command" "flakes" "pipe-operators" ];
                 networking.hostName = "${hostname}";
                 users.mutableUsers = false;
                 networking.firewall.enable = true;
                 nixpkgs.config.allowUnfree = true;
                 nixpkgs.hostPlatform = nyxhost.platform;
-                age.identityPaths = [ "/etc/ssh/ssh_host_ed25519_key" ];
+                age.identityPaths = [ "/persist/etc/ssh/ssh_host_ed25519_key" ];
                 security.sudo.wheelNeedsPassword = true;
-
+                systemd.suppressedSystemUnits = [ "systemd-machine-id-commit.service" ];
+                # User Builder
                 users.users = (lib.flip lib.mapAttrs nyxhost_users (_: nyxhost_user: nyxhost_user.configuration { inherit nyx pkgs config; })) // {
                     root.hashedPassword = "!"; # disable root user authentication
                 };
-
+                # Enforced fs structure
                 disko.enableConfig = true;
                 disko.devices.nodev = {
                     "/" = {
@@ -246,7 +247,7 @@
                 };
                 options.host-configuration = lib.mkOption {
                     description = "NixOS host configuration for this user.";
-                    type = lib.types.raw;
+                    type = lib.types.deferredModule;
                 };
                 options.configuration = lib.mkOption {
                     description = "NixOS user configuration for this user.";
