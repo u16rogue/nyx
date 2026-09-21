@@ -6,10 +6,6 @@ set -euo pipefail
 
 PROJECT_DIR="$(realpath "$(dirname "$(realpath "${BASH_SOURCE[0]}")")/..")"
 ROOT_LOCK="$PROJECT_DIR/flake.lock"
-TEMPLATE_LOCKS=(
-    "$PROJECT_DIR/templates/dev/flake.lock"
-    "$PROJECT_DIR/templates/dev-cpp/flake.lock"
-)
 
 if ! command -v jq >/dev/null 2>&1; then
     echo "[err] jq is required to sync nixpkgs lock entries." >&2
@@ -71,6 +67,6 @@ sync_template_lock() {
 
 ROOT_NIXPKGS_NODE="$(extract_root_nixpkgs_node "$ROOT_LOCK")"
 
-for template_lock in "${TEMPLATE_LOCKS[@]}"; do
+for template_lock in "$PROJECT_DIR"/templates/*/flake.lock; do
     sync_template_lock "$template_lock"
 done

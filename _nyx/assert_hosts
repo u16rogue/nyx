@@ -2,6 +2,8 @@
 
 # THIS WAS WRITTEN BY A CLANKER
 
+set -o pipefail
+
 # Asserts that every nixos host has valid `nyx.nixos.hosts.<hostname>`
 # entries:
 #   * every `flake.nixosConfigurations.<hostname>` has a matching
@@ -204,16 +206,18 @@ assert_user_password_recipients() {
         printf '%s\n' "$password_body" |
             base64 --decode |
             awk '
-                $0 == "age-encryption.org/v1" { header = 1; next }
-                header && /^--- / { separator = 1; exit }
-                header && /^-> / {
+                $0 == "age-encryption.org/v1" { saw_header = 1; parsing_header = 1; next }
+                parsing_header && /^--- / { separator = 1; parsing_header = 0; next }
+                parsing_header && /^-> / {
                     if ($2 == "ssh-ed25519" && NF == 4) {
                         print $3
-                    } else if ($2 !~ /^~/) {
+                    # age emits GREASE recipient stanzas to keep implementations
+                    # from ossifying around only the recipient types we use.
+                    } else if ($2 !~ /^i.*-grease$/) {
                         exit 1
                     }
                 }
-                END { if (!header || !separator) exit 1 }
+                END { if (!saw_header || !separator) exit 1 }
             ' |
             LC_ALL=C sort
     )"; then
