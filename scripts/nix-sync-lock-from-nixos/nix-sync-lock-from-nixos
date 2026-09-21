@@ -57,14 +57,15 @@ else
     echo "[error] command 'nixos-version' is unavailable." >&2
 fi
 
-# === Get current flake nixpkgs input name + rev + lastModified ===
-FLAKE_INPUT='<error_flake>'
+# === Get current flake nixpkgs rev + lastModified ===
+FLAKE_INPUT='nixpkgs'
+FLAKE_NODE='<error_flake>'
 FLAKE_REV='<error_flake>'
 FLAKE_DATE='<error_flake>'
 FLAKE_OWNER='<error_flake>'
 FLAKE_REPO='<error_flake>'
 
-read -r FLAKE_INPUT FLAKE_REV FLAKE_LM FLAKE_OWNER FLAKE_REPO FLAKE_TYPE < <(jq -r '
+read -r FLAKE_NODE FLAKE_REV FLAKE_LM FLAKE_OWNER FLAKE_REPO FLAKE_TYPE < <(jq -r '
     . as $lock
     | if ($lock.root // null) == null then
           "<error_flake: missing .root> <error_flake> <error_flake> <error_flake> <error_flake> <error_flake>"

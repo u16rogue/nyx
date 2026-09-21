@@ -25,4 +25,4 @@ else
     [[ "$answer" != "y" ]] && exit 1
 fi
 
-exec nix develop
+exec nix develop "$@"

@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 
-if [ -z "$1" ]; then
+if ! command -v "tmux" &> /dev/null; then
+    echo "[error] no tmux" >&2
+    exit 1
+fi
+
+if [ -z "${1:-}" ]; then
     echo "[error] missing directory. Usage: $0 <directory>" >&2
     exit 1
 fi
