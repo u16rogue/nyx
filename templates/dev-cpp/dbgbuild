@@ -32,7 +32,7 @@ if [[ ! -f "$BUILD_DIR/CMakeCache.txt" ]]; then
         printerr "cmake generation failed"
         exit 1
     fi
+    echo "host" > "$BUILD_DIR/.nyx_template_metadata"
 fi
 
 exec cmake --build "$BUILD_DIR"
-
