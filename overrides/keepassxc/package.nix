@@ -16,6 +16,7 @@ in (mkNixPak {
         };
 
         flatpak.appId = "org.keepassxc.KeePassXC";
+        timeZone.enable = true;
         dbus.policies."org.freedesktop.portal.Desktop" = "talk";
         fonts = {
             enable = true;
