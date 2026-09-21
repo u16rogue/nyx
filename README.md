@@ -22,7 +22,7 @@ my nix slop
     * Packages are aggregated by [overrides/default.nix](./overrides/default.nix) filtering for entries that have `package.nix` on them and added as a `packages` entry via flake-parts.
     * Entries are **not** flake-part modules and should be treated as their own standalone unit.
     * Package entries uses [wrappers](https://github.com/lassulus/wrappers).
-    * Packages provide an `overridesOpts` attr that can be use to further customize the package. eg. `package.override { overridesOpts = { color = "#fff"; }; }`
+    * Packages that expose `overridesOpts` can be further customized, for example `package.override { overridesOpts = { color = "#fff"; }; }`.
     * Sandboxed overrides uses `$HOME/.nyx/app-fake-root/<package>` as its bind point
 
 * [templates](./templates) - A set of templates with flakes. Mostly for development; includes a sandboxing shell hook.
@@ -31,7 +31,7 @@ my nix slop
     * `nyx` related options are defined in [nixos/default.nix](./nixos/default.nix)
     * Host configurations must provide the disks for the paths `/boot` and `/persist`. Hosts should follow the common `fileSystems` provided by `nyx`.
     * Systems/NixOS/Hosts are expected to use an ephemeral filesystem where each host and user are required to explicitly state which files and directories are to be preserved.
-        * A `partial` preservation is available via `nyx.nixos.hosts.<hostname>.ephemeralfs.preserve.partial.directories` to list directories that can be preserved and should possibly be stored to disk without the explicit necessity that it should be saved. Useful for systems that does not have a large enough RAM space for a root tmpfs or for directories that do need large spaces (eg home directories as its used by some programs and scripts to download large blobs that are discarded later or cache)
+        * `partial` preservation is planned but not implemented in the active flake. Do not rely on `partial.directories` entries until the generation and initrd implementation is merged and boot-tested.
     * [modules](./nixos/modules) - Set of flake-parts `nixos` modules. All `*.nix` are aggregated and imported to be available.
     * [hosts](./nixos/hosts) - Set of flake-parts+nyx modules specifically defining host machines.
         * All `*.nix` are aggregated and imported to be evaluated.
@@ -42,7 +42,7 @@ my nix slop
 
 * [legacy](./legacy) - My old nixos config
 
-* [_nyx](./_nyx) + [workflow](./.github/workflow) - Meta folder(s). Contains scripts that are meant for automation. Mostly written by clankers.
+* [_nyx](./_nyx) + [workflows](./.github/workflows) - Meta folder(s). Contains scripts that are meant for automation. Mostly written by clankers.
     * Flake check
     * [assert_hosts](./_nyx/assert_hosts) - Checks host registration against `nixosConfigurations`, requires at least one uniquely named registered user object, verifies `networking.hostName`, ensures `/boot` and `/persist` are wired correctly, validates `keys.pub` and `keys.prv`, and verifies password recipients.
     * [assert_templates](./_nyx/assert_templates) - Ensure template lock files are in sync.
@@ -56,8 +56,6 @@ my nix slop
     * the current setup might be a better idea. tedious but "clean"-er.
     * alt: setup a script+age that auto configures opencode for that project sandbox
 * outputs for `nyx` related entries such as `nyx.overrides`, `nyx.scripts` and aggregated to `nyx.packages` etc
-* assert that generated secrets have the proper relevant reciepients
-    * when implementing list of host do not use the same `nyx.nixos.hosts.users` but instead we should just accept public keys directly and access host pk's directly via `config`
 * dev templates to use 2 nixpkgs one that can move around and another pinned to my nixos rev
 * assert invalid preserve paths (`/` in host) and document special path (home `/` for users)
 * implement partial use the initrd and /sysroot
@@ -81,8 +79,8 @@ my nix slop
         * ~~sidebery~~
         * ~~containers~~
     * ~~fuzzel~~
-    * hyprland
-    * hyprpaper
+    * ~~hyprland~~
+    * ~~hyprpaper~~
     * ~~keepassxc~~
     * ~~kitty~~
     * ~~monero-gui~~
@@ -91,7 +89,7 @@ my nix slop
     * ~~steamguard-cli~~
     * ~~tmux~~
     * ~~vesktop~~
-    * waybar
+    * ~~waybar~~
     * obs
     * ~~yazi~~
     * ~~zellij~~
