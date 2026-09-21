@@ -27,6 +27,7 @@ in (mkNixPak {
         };
         app.binPath = "bin/vesktop";
         flatpak.appId = "dev.vencord.Vesktop";
+        timeZone.enable = true;
         dbus.policies = {
             "org.freedesktop.Notifications" = "talk";
             "org.freedesktop.portal.Desktop" = "talk";
@@ -55,6 +56,11 @@ in (mkNixPak {
             env = {
                 HOME = sloth.env "HOME";
                 XDG_RUNTIME_DIR = sloth.runtimeDir;
+                XDG_CURRENT_DESKTOP = sloth.env "XDG_CURRENT_DESKTOP";
+                PIPEWIRE_REMOTE = sloth.envOr "PIPEWIRE_REMOTE" "pipewire-0";
+                PIPEWIRE_RUNTIME_DIR = sloth.envOr "PIPEWIRE_RUNTIME_DIR" sloth.runtimeDir;
+                PULSE_SERVER = sloth.envOr "PULSE_SERVER" (sloth.concat [ "unix:" sloth.runtimeDir "/pulse/native" ]);
+                PULSE_RUNTIME_PATH = sloth.envOr "PULSE_RUNTIME_PATH" sloth.runtimeDir;
                 WAYLAND_DISPLAY = sloth.envOr "WAYLAND_DISPLAY" "wayland-0";
                 NIXOS_OZONE_WL = "1";
             };

@@ -10,6 +10,7 @@ in (mkNixPak {
             binPath = "bin/monero-wallet-gui";
         };
         flatpak.appId = "org.getmonero.monero-wallet-gui";
+        timeZone.enable = true;
         dbus.policies."org.freedesktop.portal.Desktop" = "talk";
         etc.sslCertificates.enable = true;
         fonts.enable = true;
@@ -32,6 +33,7 @@ in (mkNixPak {
             env = {
                 HOME = sloth.env "HOME";
                 XDG_RUNTIME_DIR = sloth.runtimeDir;
+                XDG_CURRENT_DESKTOP = sloth.env "XDG_CURRENT_DESKTOP";
                 WAYLAND_DISPLAY = sloth.envOr "WAYLAND_DISPLAY" "wayland-0";
             };
         };

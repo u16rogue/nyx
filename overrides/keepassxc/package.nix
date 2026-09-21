@@ -36,19 +36,14 @@ in (mkNixPak {
                 (sloth.concat' sloth.runtimeDir "/doc") # for document portal
             ];
 
-            env = let
-                resolveHomePath = appends: (sloth.concat' (sloth.env "HOME") "${appends}");
-            in {
+            env = {
                 HOME = sloth.env "HOME";
                 XDG_RUNTIME_DIR = sloth.runtimeDir;
+                XDG_CURRENT_DESKTOP = sloth.env "XDG_CURRENT_DESKTOP";
                 WAYLAND_DISPLAY = sloth.envOr "WAYLAND_DISPLAY" "wayland-0";
                 QT_QPA_PLATFORM = "wayland";
                 QT_QPA_PLATFORMTHEME = "xdgdesktopportal";
                 QT_PLUGIN_PATH  = "${pkgs.qt5.qtwayland.bin}/lib/qt-${pkgs.qt5.qtbase.version}/plugins:${pkgs.qt5.qtbase.bin}/lib/qt-${pkgs.qt5.qtbase.version}/plugins";
-                XDG_CACHE_HOME  = resolveHomePath "/.cache";
-                XDG_CONFIG_HOME = resolveHomePath "/.config";
-                XDG_DATA_HOME   = resolveHomePath "/.local/share";
-                XDG_STATE_HOME  = resolveHomePath "/.local/state";
                 TMPDIR = "/tmp";
             };
         };
