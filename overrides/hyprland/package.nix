@@ -1,10 +1,10 @@
 {
     inputs, pkgs, lib, writeText,
     hyprland, xwayland, grim, slurp, satty, wl-clipboard, jq,
+    dbus, systemd, xdg-desktop-portal, xdg-desktop-portal-gtk, xdg-desktop-portal-hyprland,
     hyprpaper, waybar,
     overridesOpts ? {}, ...
 }: let
-    jq' = "${jq}/bin/jq";
     monitors = overridesOpts.monitors or [{
         id = "";
         resolution = null;
@@ -13,16 +13,52 @@
         scale = 1;
         enabled = true;
     }];
-    renderMonitor = monitor: if !monitor.enabled then
+    renderMonitor = monitor:
+        if !monitor.enabled then
             "${monitor.id},disable"
         else let
             mode = if monitor.resolution == null then "highrr" else "${toString monitor.resolution.x}x${toString monitor.resolution.y}";
             refreshrate = lib.optionalString (monitor.refreshrate != null) "@${toString monitor.refreshrate}";
             position = if monitor.position == null then "auto" else "${toString monitor.position.x}x${toString monitor.position.y}";
         in "${monitor.id},${mode}${refreshrate},${position},${toString monitor.scale}";
+    portals = [ xdg-desktop-portal xdg-desktop-portal-gtk xdg-desktop-portal-hyprland ];
+    portal_configs = pkgs.runCommand "hyprland-portal-config" {} ''
+        mkdir -p "$out/xdg-desktop-portal"
+        cat > "$out/xdg-desktop-portal/hyprland-portals.conf" <<'EOF'
+        [preferred]
+        default=hyprland;gtk
+        org.freedesktop.impl.portal.FileChooser=gtk
+        EOF
+    '';
+    start_portals = pkgs.writeShellScript "start-hyprland-portals" ''
+        set -eu
+
+        ${dbus}/bin/dbus-update-activation-environment --systemd \
+            WAYLAND_DISPLAY HYPRLAND_INSTANCE_SIGNATURE \
+            XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP XDG_SESSION_TYPE \
+            XDG_CONFIG_DIRS XDG_DATA_DIRS
+
+        ${systemd}/bin/systemctl --user import-environment \
+            WAYLAND_DISPLAY HYPRLAND_INSTANCE_SIGNATURE \
+            XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP XDG_SESSION_TYPE \
+            XDG_CONFIG_DIRS XDG_DATA_DIRS
+        ${systemd}/bin/systemctl --user --runtime --force link \
+            ${xdg-desktop-portal}/share/systemd/user/xdg-document-portal.service \
+            ${xdg-desktop-portal}/share/systemd/user/xdg-desktop-portal.service \
+            ${xdg-desktop-portal-gtk}/share/systemd/user/xdg-desktop-portal-gtk.service \
+            ${xdg-desktop-portal-hyprland}/share/systemd/user/xdg-desktop-portal-hyprland.service
+        ${systemd}/bin/systemctl --user daemon-reload
+
+        # Starting Type=dbus units serially prevents the broker racing its backends.
+        ${systemd}/bin/systemctl --user restart xdg-desktop-portal-hyprland.service
+        ${systemd}/bin/systemctl --user restart xdg-desktop-portal-gtk.service
+        ${systemd}/bin/systemctl --user restart xdg-document-portal.service
+        ${systemd}/bin/systemctl --user restart xdg-desktop-portal.service
+    '';
     hyprland_config = writeText "hyprland.conf" ''
         exec-once = ${hyprpaper}/bin/hyprpaper
         exec-once = ${waybar}/bin/waybar
+        exec-once = ${start_portals}
         $mainMod = SUPER
         $up = W
         $left = A
@@ -33,13 +69,13 @@
         bind = $mainMod, tab, togglegroup
         bind = $mainMod SHIFT, Q, killactive,
         bind = $mainMod SHIFT, space, togglefloating,
-        bind = $mainMod SHIFT, grave, exec, kitty
+        bind = $mainMod SHIFT, grave, exec, ghostty
         bind = $mainMod, grave, exec, fuzzel
         bind = $mainMod, F1, exec, hyprctl dispatch dpms toggle
-        bind = CTRL, Print, exec, ${grim}/bin/grim -g "$(${slurp}/bin/slurp -o -r -c '##ff0000ff')" -t png - | ${satty}/bin/satty -f - -o - --fullscreen --actions-on-enter save-to-file --early-exit | ${wl-clipboard}/bin/wl-copy
+        bind = CTRL, Print, exec, grim -g "$(slurp -o -r -c '##ff0000ff')" -t png - | satty -f - -o - --fullscreen --actions-on-enter save-to-file --early-exit | wl-copy
         
-        bind = $mainMod, $right, execr, sh -c 'if [ $(hyprctl activewindow -j | ${jq'} "(.grouped|length==0) or (.address==.grouped[-1])") = "true" ]; then hyprctl dispatch movefocus r; else hyprctl dispatch changegroupactive f; fi'
-        bind = $mainMod, $left, execr, sh -c 'if [ $(hyprctl activewindow -j | ${jq'} "(.grouped|length==0) or (.address==.grouped[0])") = "true" ]; then hyprctl dispatch movefocus l; else hyprctl dispatch changegroupactive b; fi'
+        bind = $mainMod, $right, execr, sh -c 'if [ $(hyprctl activewindow -j | jq "(.grouped|length==0) or (.address==.grouped[-1])") = "true" ]; then hyprctl dispatch movefocus r; else hyprctl dispatch changegroupactive f; fi'
+        bind = $mainMod, $left, execr, sh -c 'if [ $(hyprctl activewindow -j | jq "(.grouped|length==0) or (.address==.grouped[0])") = "true" ]; then hyprctl dispatch movefocus l; else hyprctl dispatch changegroupactive b; fi'
         bind = $mainMod, $up, movefocus, u
         bind = $mainMod, $down, movefocus, d
         
@@ -139,8 +175,24 @@
 in inputs.wrappers.lib.wrapPackage {
     inherit pkgs;
     package = hyprland;
-    exePath = "${hyprland}/bin/Hyprland";
+    exePath = "${hyprland}/bin/start-hyprland";
     binName = "start-hyprland";
-    runtimeInputs = [ hyprland xwayland ];
-    flags."--config" = hyprland_config;
+    runtimeInputs = [
+        hyprland xwayland dbus systemd
+        slurp grim satty wl-clipboard jq
+    ] ++ portals;
+    env = {
+        NIXOS_OZONE_WL = "1";
+        XDG_CURRENT_DESKTOP = "Hyprland";
+        XDG_SESSION_DESKTOP = "Hyprland";
+        XDG_SESSION_TYPE = "wayland";
+        XDG_CONFIG_DIRS = "${portal_configs}:\${XDG_CONFIG_DIRS:-}";
+        XDG_DATA_DIRS = "${lib.makeSearchPath "share" portals}:\${XDG_DATA_DIRS:-}";
+    };
+    args = [ "--" "--config" hyprland_config "$@" ];
+    preHook = ''
+        dbus-update-activation-environment --systemd \
+            XDG_CONFIG_DIRS XDG_DATA_DIRS XDG_CURRENT_DESKTOP \
+            XDG_SESSION_DESKTOP XDG_SESSION_TYPE NIXOS_OZONE_WL
+    '';
 }

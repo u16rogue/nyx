@@ -34,23 +34,15 @@
             ];
         };
 
-        host-configuration = { pkgs, ... }: {
-            xdg.portal = {
-                enable = true;
-                extraPortals = [
-                    pkgs.xdg-desktop-portal-gtk
-                    pkgs.xdg-desktop-portal-hyprland
-                ];
-                config.common."org.freedesktop.impl.portal.FileChooser" = [ "gtk" ];
-            };
-            environment.sessionVariables.NIXOS_OZONE_WL = "1";
-        };
+        host-configuration = { ... }: {};
 
         configuration = { pkgs, nyx, ... }: {
             isNormalUser = true;
             extraGroups = [ "wheel" ];
             shell = nyx.pkgs.nushell;
             packages = [
+                # Shell
+                nyx.pkgs.nushell
                 # Scripts
                 nyx.pkgs.tmuxss
                 nyx.pkgs.git-cans
@@ -66,18 +58,14 @@
                 nyx.pkgs.fuzzel
                 nyx.pkgs.ghostty
                 (nyx.pkgs.hyprland.override {
-                    overridesOpts = {
-                        monitors = nyx.host.monitors;
-                    };
+                    overridesOpts.monitors = nyx.host.monitors;
                     hyprpaper = (nyx.pkgs.hyprpaper.override { overridesOpts.wallpaper = "/home/user/media/wallpaper"; });
                     waybar = nyx.pkgs.waybar;
                 })
                 nyx.pkgs.keepassxc
-                nyx.pkgs.kitty
                 nyx.pkgs.monero-gui
                 nyx.pkgs.moonlight-stream
                 nyx.pkgs.neovim
-                nyx.pkgs.nushell
                 nyx.pkgs.remmina
                 nyx.pkgs.steamguard-cli
                 nyx.pkgs.tmux
@@ -92,7 +80,7 @@
                 pkgs.btop
             
                 (pkgs.writeShellApplication {
-                    name = "start";
+                    name = "start-desktop";
                     runtimeInputs = [];
                     text = /*bash*/ ''
                         exec start-hyprland

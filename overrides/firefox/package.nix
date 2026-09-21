@@ -140,6 +140,8 @@ in (mkNixPak {
                 HOME = sloth.env "HOME";
                 XDG_RUNTIME_DIR = sloth.runtimeDir;
                 XDG_CURRENT_DESKTOP = sloth.env "XDG_CURRENT_DESKTOP";
+                XDG_SESSION_DESKTOP = sloth.env "XDG_SESSION_DESKTOP";
+                XDG_SESSION_TYPE = sloth.envOr "XDG_SESSION_TYPE" "wayland";
                 PIPEWIRE_REMOTE = sloth.envOr "PIPEWIRE_REMOTE" "pipewire-0";
                 PIPEWIRE_RUNTIME_DIR = sloth.envOr "PIPEWIRE_RUNTIME_DIR" sloth.runtimeDir;
                 PULSE_SERVER = sloth.envOr "PULSE_SERVER" (sloth.concat [ "unix:" sloth.runtimeDir "/pulse/native" ]);
