@@ -34,14 +34,37 @@
             ];
         };
 
-        host-configuration = { ... }: {};
+        # The whole hyprland implementation is currently a workaround as i cannot get the hyprland
+        # package itself to be the core of its own instance. Can't get portals to work so in the mean
+        # time we'll rely on the nixos module. TODO: make the `hyprland` override package itself manage
+        # its own portals and session
+        host-configuration = { pkgs, nyx, ... }: {
+            programs.hyprland = {
+                enable = true;
+                package = nyx.pkgs.hyprland.override {
+                    overridesOpts.monitors = nyx.host.monitors;
+                    hyprpaper = nyx.pkgs.hyprpaper.override { overridesOpts.wallpaper = "/home/user/media/wallpaper"; };
+                    waybar = nyx.pkgs.waybar;
+                };
+            };
+
+            xdg.portal = {
+                xdgOpenUsePortal = true;
+                extraPortals = [ pkgs.xdg-desktop-portal-gtk ];
+                config.common = {
+                    default = [ "hyprland" "gtk" ];
+                    "org.freedesktop.impl.portal.FileChooser" = [ "gtk" ];
+                };
+            };
+        };
 
         configuration = { pkgs, nyx, ... }: {
             isNormalUser = true;
             extraGroups = [ "wheel" ];
-            shell = nyx.pkgs.nushell;
+            shell = nyx.pkgs.fish;
             packages = [
                 # Shell
+                nyx.pkgs.fish
                 nyx.pkgs.nushell
                 # Scripts
                 nyx.pkgs.tmuxss
@@ -54,14 +77,9 @@
 
                 # Custom overidden packages (homeless configs +/ sandbox)
                 nyx.pkgs.firefox
-                nyx.pkgs.fish
                 nyx.pkgs.fuzzel
                 nyx.pkgs.ghostty
-                (nyx.pkgs.hyprland.override {
-                    overridesOpts.monitors = nyx.host.monitors;
-                    hyprpaper = (nyx.pkgs.hyprpaper.override { overridesOpts.wallpaper = "/home/user/media/wallpaper"; });
-                    waybar = nyx.pkgs.waybar;
-                })
+                nyx.pkgs.kitty
                 nyx.pkgs.keepassxc
                 nyx.pkgs.monero-gui
                 nyx.pkgs.moonlight-stream
