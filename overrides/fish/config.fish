@@ -1,7 +1,13 @@
-#if status is-interactive
+if set -q XDG_RUNTIME_DIR
+    set -gx SSH_AUTH_SOCK "$XDG_RUNTIME_DIR/gnupg/S.gpg-agent.ssh"
+end
+
+if status is-interactive
     set -g fish_greeting
+    set -gx GPG_TTY (tty)
+    fish_config theme choose default --no-override
     fish_vi_key_bindings
-#end
+end
 
 function fish_prompt
     set -l user_char '$'
