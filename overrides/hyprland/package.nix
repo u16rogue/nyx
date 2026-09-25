@@ -1,7 +1,6 @@
 {
     inputs, pkgs, lib, writeText,
     hyprland, xwayland, grim, slurp, satty, wl-clipboard, jq,
-    xdg-desktop-portal-hyprland,
     hyprpaper, waybar,
     overridesOpts ? {}, ...
 }: let
@@ -21,7 +20,6 @@
             refreshrate = lib.optionalString (monitor.refreshrate != null) "@${toString monitor.refreshrate}";
             position = if monitor.position == null then "auto" else "${toString monitor.position.x}x${toString monitor.position.y}";
         in ''hl.monitor({ output = ${builtins.toJSON monitor.id}, mode = "${mode}${refreshrate}", position = "${position}", scale = ${toString monitor.scale} })'';
-    xdph = xdg-desktop-portal-hyprland;
     hyprland_config = writeText "hyprland.lua" ''
         local mainMod = "SUPER"
 
@@ -71,7 +69,7 @@
         })
 
         hl.permission({
-            binary = "${xdph}/libexec/.xdg-desktop-portal-hyprland-wrapped",
+            binary = "/nix/store/.*/libexec/.xdg-desktop-portal-hyprland-wrapped",
             type = "screencopy",
             mode = "allow",
         })
@@ -82,6 +80,7 @@
         })
 
         hl.on("hyprland.start", function()
+            hl.exec_cmd("${pkgs.dbus}/bin/dbus-update-activation-environment --systemd WAYLAND_DISPLAY HYPRLAND_INSTANCE_SIGNATURE XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP XDG_SESSION_TYPE")
             hl.exec_cmd("${hyprpaper}/bin/hyprpaper")
             hl.exec_cmd("${waybar}/bin/waybar")
         end)

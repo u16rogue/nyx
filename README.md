@@ -48,15 +48,21 @@ my nix slop
     * [assert_templates](./_nyx/assert_templates) - Ensure template lock files are in sync.
     * [overrides/firefox/addons-assert.sh](./overrides/firefox/addons-assert.sh) - Ensure addon configuration entries are valid addons.
 
+## Regressions
+* broken xdg portals (screenshare and document portal)
+* ~~moonlight wont run~~
+    * temporarily fixed by having an override opt of `use_jail_tmpfix`. this is a nixpak issue.
+* zellij in sandbox has broken tui
+
 ## TODO
+* have the `hyprland` override package as a standalone and should carry everything it needs such as portals where the mere execution and inclusion of the `nyx.pkgs.hyprland` serves a user the complete hyprland
+    * current issue is portals dont work properly. gave up. just delegate it to the nixos module instead which makes it a host concern instead of a per user package concern
 * `sbx-shell` +/ `sbx-develop` as a replacement to the current [`.devshellshook.sh` -> setup custom env -> bwrap] pipeline. `flake.nix` shouldn't be deploying development sandboxes.
     * side: get `devenv.sh` working with `bwrap` and figure out a way to have the project `flake.nix` and devenv sync locks.
     * find a way to safely bind the nix socket inside or an alternative to caching as to not duplicate `~/.local/nix/store` per project sandbox (it currently just binds it as ro)
 * `overrides.opencode` that carry my auth keys and config so i dont have to setup and auth opencode per project
     * the current setup might be a better idea. tedious but "clean"-er.
     * alt: setup a script+age that auto configures opencode for that project sandbox
-* outputs for `nyx` related entries such as `nyx.overrides`, `nyx.scripts` and aggregated to `nyx.packages` etc
-* dev templates to use 2 nixpkgs one that can move around and another pinned to my nixos rev
 * assert invalid preserve paths (`/` in host) and document special path (home `/` for users)
 * implement partial use the initrd and /sysroot
 * make languages an optional thing so the dev shell provides the lsp and other things instead of being part of neovim
@@ -67,7 +73,7 @@ my nix slop
         * pre: ~/
         * preserve: ~/.important-data
         * post ~/.important-data/useless-cache
-* Packages to port/implement (extra todo: is it really necessary to sandbox these things?):
+* Packages to port/implement:
     * ~~neovim~~
     * ~~fish~~
     * ~~nushell~~

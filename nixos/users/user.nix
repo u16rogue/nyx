@@ -38,7 +38,7 @@
         # package itself to be the core of its own instance. Can't get portals to work so in the mean
         # time we'll rely on the nixos module. TODO: make the `hyprland` override package itself manage
         # its own portals and session
-        host-configuration = { pkgs, nyx, ... }: {
+        host-configuration = { pkgs, nyx, lib, ... }: {
             programs.hyprland = {
                 enable = true;
                 package = nyx.pkgs.hyprland.override {
@@ -54,6 +54,16 @@
                 config.common = {
                     default = [ "hyprland" "gtk" ];
                     "org.freedesktop.impl.portal.FileChooser" = [ "gtk" ];
+                };
+            };
+
+            # Clanker: Hyprland is launched directly rather than through a display manager.
+            systemd.user.services.xdg-desktop-portal = {
+                wants = [ "xdg-desktop-portal-gtk.service" ];
+                after = [ "xdg-desktop-portal-gtk.service" ];
+                unitConfig = {
+                    PartOf = lib.mkForce [ "" ];
+                    Requisite = lib.mkForce [ "" ];
                 };
             };
         };
@@ -83,6 +93,7 @@
                 nyx.pkgs.keepassxc
                 nyx.pkgs.monero-gui
                 nyx.pkgs.moonlight-stream
+                (nyx.pkgs.moonlight-stream.override { overridesOpts.use_jail_tmpfix = true; })
                 nyx.pkgs.neovim
                 nyx.pkgs.remmina
                 nyx.pkgs.steamguard-cli

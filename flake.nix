@@ -11,6 +11,9 @@
             url = "github:nixpak/nixpak";
             inputs.nixpkgs.follows = "nixpkgs";
         };
+        jail-nix = {
+            url = "sourcehut:~alexdavid/jail.nix";
+        };
         disko = {
             url = "github:nix-community/disko";
             inputs.nixpkgs.follows = "nixpkgs";
