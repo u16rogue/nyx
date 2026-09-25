@@ -99,6 +99,7 @@
                 nyx.pkgs.steamguard-cli
                 nyx.pkgs.tmux
                 nyx.pkgs.vesktop
+                (nyx.pkgs.vesktop.override { overridesOpts.use_jail_tmpfix = true; })
                 nyx.pkgs.yazi
                 nyx.pkgs.zellij
 

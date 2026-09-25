@@ -1,30 +1,54 @@
-{ inputs, pkgs, lib, ... }: let
+{ inputs, pkgs, overridesOpts ? {}, ... }: let
     mkNixPak = inputs.nixpak.lib.nixpak {
         inherit (pkgs) lib;
         inherit pkgs;
     };
-in (mkNixPak {
-    config = { sloth, ... }: {
-        app.package = inputs.wrappers.lib.wrapPackage {
-            inherit pkgs;
-            package = pkgs.vesktop;
-            wrapper = { exePath, ... }: /*bash*/ ''
-                config_dir="$HOME/.config/vesktop"
-                ${pkgs.coreutils}/bin/mkdir -p "$config_dir/settings"
-                ${pkgs.coreutils}/bin/ln -sfnT "${./discord-settings.json}" "$config_dir/settings.json"
-                ${pkgs.coreutils}/bin/ln -sfnT "${./quickCss.css}" "$config_dir/settings/quickCss.css"
-                if [[ ! -e "$config_dir/state.json" ]]; then
-                    ${pkgs.coreutils}/bin/cp "${./state.json}" "$config_dir/state.json"
-                    ${pkgs.coreutils}/bin/chmod u+w "$config_dir/state.json"
-                fi
-                if [[ ! -e "$config_dir/settings/settings.json" ]]; then
-                    ${pkgs.coreutils}/bin/cp "${./vesktop-settings.json}" "$config_dir/settings/settings.json"
-                    ${pkgs.coreutils}/bin/chmod u+w "$config_dir/settings/settings.json"
-                fi
+    vesktop' = inputs.wrappers.lib.wrapPackage {
+        inherit pkgs;
+        package = pkgs.vesktop;
+        wrapper = { exePath, ... }: /*bash*/ ''
+            config_dir="$HOME/.config/vesktop"
+            ${pkgs.coreutils}/bin/mkdir -p "$config_dir/settings"
+            ${pkgs.coreutils}/bin/ln -sfnT "${./discord-settings.json}" "$config_dir/settings.json"
+            ${pkgs.coreutils}/bin/ln -sfnT "${./quickCss.css}" "$config_dir/settings/quickCss.css"
+            if [[ ! -e "$config_dir/state.json" ]]; then
+                ${pkgs.coreutils}/bin/cp "${./state.json}" "$config_dir/state.json"
+                ${pkgs.coreutils}/bin/chmod u+w "$config_dir/state.json"
+            fi
+            if [[ ! -e "$config_dir/settings/settings.json" ]]; then
+                ${pkgs.coreutils}/bin/cp "${./vesktop-settings.json}" "$config_dir/settings/settings.json"
+                ${pkgs.coreutils}/bin/chmod u+w "$config_dir/settings/settings.json"
+            fi
 
-                exec ${exePath} --enable-features=WebRTCPipeWireCapturer --ozone-platform=wayland "$@"
-            '';
-        };
+            exec ${exePath} --enable-features=WebRTCPipeWireCapturer --ozone-platform=wayland "$@"
+        '';
+    };
+    jailedVesktop = let
+        jail = inputs.jail-nix.lib.init pkgs;
+        vesktop'' = jail "vesktop-jail-nix-tmpfix" vesktop' (with jail.combinators; [
+                network
+                gui
+                gpu
+                pipewire
+                (rw-bind (noescape "~/.nyx/app-fake-root/vesktop/home/user") (noescape "~/"))
+            ]);
+        in pkgs.runCommand "vesktop-jailed" { meta.mainProgram = "vesktop-jail-nix-tmpfix"; } ''
+            mkdir -p $out/share/applications
+            ln -s ${vesktop''}/bin $out/bin
+            ln -s ${pkgs.vesktop}/share/icons $out/share/icons
+            cp ${pkgs.vesktop}/share/applications/vesktop.desktop \
+                $out/share/applications/vesktop-jail-nix-tmpfix.desktop
+            substituteInPlace $out/share/applications/vesktop-jail-nix-tmpfix.desktop \
+                --replace-fail 'Name=Vesktop' 'Name=Vesktop (jail.nix tmpfix)' \
+                --replace-fail 'Exec=vesktop' 'Exec=${vesktop''}/bin/vesktop-jail-nix-tmpfix'
+        ''
+    ;
+in if (overridesOpts.use_jail_tmpfix or false) then
+    jailedVesktop
+else
+    (mkNixPak {
+    config = { sloth, ... }: {
+        app.package = vesktop';
         app.binPath = "bin/vesktop";
         flatpak.appId = "dev.vencord.Vesktop";
         timeZone.enable = true;
