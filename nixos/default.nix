@@ -175,7 +175,7 @@
                             };
                         };
                     });
-                    default = [{ id = ""; }];
+                    default = [];
                 };
                 options.configuration = lib.mkOption {
                     description = "NixOs system for this host";
