@@ -34,13 +34,13 @@
             ];
         };
 
-        # The whole hyprland implementation is currently a workaround as i cannot get the hyprland
-        # package itself to be the core of its own instance. Can't get portals to work so in the mean
-        # time we'll rely on the nixos module. TODO: make the `hyprland` override package itself manage
-        # its own portals and session
-        host-configuration = { pkgs, nyx, lib, ... }: {
+        # Temporary workaround delagating hyprland management to the nixos module until a functioning standalone package
+        # with functioning portals can be done.
+        host-configuration = { nyx, ... }: {
             programs.hyprland = {
                 enable = true;
+                xwayland.enable = true;
+                withUWSM = true;
                 package = nyx.pkgs.hyprland.override {
                     overridesOpts.monitors = nyx.host.monitors;
                     hyprpaper = nyx.pkgs.hyprpaper.override { overridesOpts.wallpaper = "/home/user/media/wallpaper"; };
@@ -48,23 +48,11 @@
                 };
             };
 
-            xdg.portal = {
-                xdgOpenUsePortal = true;
-                extraPortals = [ pkgs.xdg-desktop-portal-gtk ];
-                config.common = {
-                    default = [ "hyprland" "gtk" ];
-                    "org.freedesktop.impl.portal.FileChooser" = [ "gtk" ];
-                };
-            };
-
-            # Clanker: Hyprland is launched directly rather than through a display manager.
-            systemd.user.services.xdg-desktop-portal = {
-                wants = [ "xdg-desktop-portal-gtk.service" ];
-                after = [ "xdg-desktop-portal-gtk.service" ];
-                unitConfig = {
-                    PartOf = lib.mkForce [ "" ];
-                    Requisite = lib.mkForce [ "" ];
-                };
+            xdg.portal.config.hyprland = {
+                default = [ "hyprland" "gtk" ];
+                "org.freedesktop.impl.portal.FileChooser" = [ "gtk" ];
+                "org.freedesktop.impl.portal.ScreenCast" = [ "hyprland" ];
+                "org.freedesktop.impl.portal.Screenshot" = [ "hyprland" ];
             };
         };
 
@@ -108,14 +96,6 @@
                 pkgs.jq
                 pkgs.bubblewrap
                 pkgs.btop
-            
-                (pkgs.writeShellApplication {
-                    name = "start-desktop";
-                    runtimeInputs = [];
-                    text = /*bash*/ ''
-                        exec start-hyprland
-                    '';
-                })
             ];
         };
     };

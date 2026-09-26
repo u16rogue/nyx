@@ -1,9 +1,16 @@
 {
     inputs, pkgs, lib, writeText,
-    hyprland, xwayland, grim, slurp, satty, wl-clipboard, jq,
+    hyprland,
     hyprpaper, waybar,
+    xwayland, grim, slurp, satty, wl-clipboard, jq, dbus, systemd,
     overridesOpts ? {}, ...
 }: let
+    desktopLauncher = pkgs.writeShellApplication {
+        name = "start-desktop";
+        text = /*bash*/ ''
+            exec ${pkgs.uwsm}/bin/uwsm start -eD Hyprland -- @hyprland@/bin/start-hyprland "$@"
+        '';
+    };
     monitors = overridesOpts.monitors or [{
         id = "";
         resolution = null;
@@ -80,9 +87,9 @@
         })
 
         hl.on("hyprland.start", function()
-            hl.exec_cmd("${pkgs.dbus}/bin/dbus-update-activation-environment --systemd WAYLAND_DISPLAY HYPRLAND_INSTANCE_SIGNATURE XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP XDG_SESSION_TYPE")
-            hl.exec_cmd("${hyprpaper}/bin/hyprpaper")
-            hl.exec_cmd("${waybar}/bin/waybar")
+            hl.exec_cmd("dbus-update-activation-environment --systemd WAYLAND_DISPLAY HYPRLAND_INSTANCE_SIGNATURE XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP XDG_SESSION_TYPE")
+            hl.exec_cmd("hyprpaper")
+            hl.exec_cmd("waybar")
         end)
 
         hl.bind(mainMod .. " + X", hl.dsp.exit())
@@ -135,14 +142,15 @@
             no_focus = true,
         })
     '';
-in inputs.wrappers.lib.wrapPackage {
+in (inputs.wrappers.lib.wrapPackage {
     inherit pkgs;
     package = hyprland;
     exePath = "${hyprland}/bin/start-hyprland";
     binName = "start-hyprland";
     runtimeInputs = [
-        hyprland xwayland
-        slurp grim satty wl-clipboard jq
+        hyprland
+        hyprpaper waybar
+        xwayland grim slurp satty wl-clipboard jq dbus systemd
     ];
     env = {
         NIXOS_OZONE_WL = "1";
@@ -150,5 +158,18 @@ in inputs.wrappers.lib.wrapPackage {
         XDG_SESSION_DESKTOP = "Hyprland";
         XDG_SESSION_TYPE = "wayland";
     };
+    preHook = /*bash*/ ''
+        busctl --user call \
+            org.freedesktop.portal.Documents /org/freedesktop/portal/documents \
+            org.freedesktop.portal.Documents GetMountPoint >/dev/null
+    '';
+    filesToPatch = [ "nix-support/*" "share/applications/*.desktop" "share/wayland-sessions/*.desktop" ];
+    patchHook = ''
+        substitute ${desktopLauncher}/bin/start-desktop "$out/bin/start-desktop" \
+            --replace-fail '@hyprland@' "$out"
+        chmod +x "$out/bin/start-desktop"
+    '';
     args = [ "--" "--config" hyprland_config "$@" ];
-}
+}).overrideAttrs (old: {
+    meta = old.meta // { mainProgram = "Hyprland"; };
+})

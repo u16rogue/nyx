@@ -32,7 +32,7 @@ printHelp() {
     host-apply-keys [path] [hostname]
         Applies the registered nyx host keys to the provided path for a given
         hostname
-        * path [optional] - defaults to \`/etc/ssh\`
+        * path [optional] - defaults to \`/persist/etc/ssh\`
         * hostname [optional] - overrides the detected hostname
     user-make-secret [user]
         Encrypt stdin for every host to which the user is assigned. The
@@ -303,7 +303,7 @@ modeHostApplyKeys() {
     assertCommands "nix" "rage" "sha256sum" "ssh-keygen" "mktemp" "chmod" "ln" "rm"
     assertInNyxCwd
 
-    local path_output="${1:-"/etc/ssh"}"
+    local path_output="${1:-"/persist/etc/ssh"}"
     if [[ ! -d "$path_output" ]]; then
         printErr "invalid output path"
         exit 1

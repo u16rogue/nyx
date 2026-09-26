@@ -31,11 +31,10 @@ my nix slop
     * `nyx` related options are defined in [nixos/default.nix](./nixos/default.nix)
     * Host configurations must provide the disks for the paths `/boot` and `/persist`. Hosts should follow the common `fileSystems` provided by `nyx`.
     * Systems/NixOS/Hosts are expected to use an ephemeral filesystem where each host and user are required to explicitly state which files and directories are to be preserved.
-        * `partial` preservation is planned but not implemented in the active flake. Do not rely on `partial.directories` entries until the generation and initrd implementation is merged and boot-tested.
     * [modules](./nixos/modules) - Set of flake-parts `nixos` modules. All `*.nix` are aggregated and imported to be available.
     * [hosts](./nixos/hosts) - Set of flake-parts+nyx modules specifically defining host machines.
         * All `*.nix` are aggregated and imported to be evaluated.
-        * Hosts are aggregated from `nyx.nixos.hosts.*`. Their `users` lists contain user objects from `nyx.nixos.users.*`, rather than user-name strings. A user object's `name` is generated from its `nyx.nixos.users` attribute and is used for the NixOS account and password secret.
+        * Hosts must derive its users from `nyx.nixos.users`.
         * `nixosSystem` are managed by `nyx` and the entries must ***not*** provide its own `flake.nixosConfigurations` attr.
         * All host must provide its own ed25519 keys. The `nyx` script provides multiple utilities for managing this.
     * [users](./nixos/users) - Set of flake-parts+nyx modules.
@@ -47,56 +46,3 @@ my nix slop
     * [assert_hosts](./_nyx/assert_hosts) - Checks host registration against `nixosConfigurations`, requires at least one uniquely named registered user object, verifies `networking.hostName`, ensures `/boot` and `/persist` are wired correctly, validates `keys.pub` and `keys.prv`, and verifies password recipients.
     * [assert_templates](./_nyx/assert_templates) - Ensure template lock files are in sync.
     * [overrides/firefox/addons-assert.sh](./overrides/firefox/addons-assert.sh) - Ensure addon configuration entries are valid addons.
-
-## Regressions
-* broken xdg portals (screenshare and document portal)
-* ~~moonlight wont run~~
-    * temporarily fixed by having an override opt of `use_jail_tmpfix`. this is a nixpak issue.
-* zellij in sandbox has broken tui
-
-## TODO
-* have the `hyprland` override package as a standalone and should carry everything it needs such as portals where the mere execution and inclusion of the `nyx.pkgs.hyprland` serves a user the complete hyprland
-    * current issue is portals dont work properly. gave up. just delegate it to the nixos module instead which makes it a host concern instead of a per user package concern
-* `sbx-shell` +/ `sbx-develop` as a replacement to the current [`.devshellshook.sh` -> setup custom env -> bwrap] pipeline. `flake.nix` shouldn't be deploying development sandboxes.
-    * side: get `devenv.sh` working with `bwrap` and figure out a way to have the project `flake.nix` and devenv sync locks.
-    * find a way to safely bind the nix socket inside or an alternative to caching as to not duplicate `~/.local/nix/store` per project sandbox (it currently just binds it as ro)
-* `overrides.opencode` that carry my auth keys and config so i dont have to setup and auth opencode per project
-    * the current setup might be a better idea. tedious but "clean"-er.
-    * alt: setup a script+age that auto configures opencode for that project sandbox
-* assert invalid preserve paths (`/` in host) and document special path (home `/` for users)
-* implement partial use the initrd and /sysroot
-* make languages an optional thing so the dev shell provides the lsp and other things instead of being part of neovim
-* `nyxos-generate-config` and maybe a generic host
-* `nyxos-install`
-* for partial directories either auto sort or have `pre` and `post` where pre mounts before preserve and post mounts after preserve which is useful for when:
-    * We have a partial home but permanent important-data except for the cache folder inside the important folder which is again partial
-        * pre: ~/
-        * preserve: ~/.important-data
-        * post ~/.important-data/useless-cache
-* Packages to port/implement:
-    * ~~neovim~~
-    * ~~fish~~
-    * ~~nushell~~
-    * ~~ghostty~~
-    * ~~wiremix~~
-    * ~~btop~~
-    * ~~firefox~~
-        * ~~ublock~~
-        * ~~sidebery~~
-        * ~~containers~~
-    * ~~fuzzel~~
-    * ~~hyprland~~
-    * ~~hyprpaper~~
-    * ~~keepassxc~~
-    * ~~kitty~~
-    * ~~monero-gui~~
-    * ~~moonlight-stream~~
-    * ~~remmina~~
-    * ~~steamguard-cli~~
-    * ~~tmux~~
-    * ~~vesktop~~
-    * ~~waybar~~
-    * obs
-    * ~~yazi~~
-    * ~~zellij~~
-* make assertion logs printout the fs type and other metadata info
