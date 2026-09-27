@@ -3,6 +3,7 @@
 !.gitignore
 !default.nix
 !git-cans/
+!git-log/
 !mkignore/
 !nix-develop/
 !nix-gc/

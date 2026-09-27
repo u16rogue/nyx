@@ -1,0 +1,5 @@
+**
+.*
+!.gitignore
+!git-log.nu
+!package.nix

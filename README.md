@@ -15,6 +15,7 @@ my nix slop
     * Each entry is treated as a package with its own dependencies and contains its own `package.nix` and the actual script itself as a plain file.
     * Script entries are aggregated by [scripts/default.nix](./scripts/default.nix) filtering for entries that have `package.nix` on them and added as a `packages` entry via flake-parts.
     * Entries are **not** flake-part modules and should be treated as their own standalone unit.
+    * A custom `writeNuShellApplication` that mirrors nix `writeShellApplication` is made available which creates the executable package and also installs it as a nushell module that becomes available to nushell. This is useful to preserve nushell data allowing nushell scripts that just runs while also having them as proper modules that can be used in a nu shell operation.
 
 * [overrides](./overrides) - A set of customized packages
     * Each entry is an override of an existing package exported via its own `package.nix`.

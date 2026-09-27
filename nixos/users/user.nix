@@ -59,7 +59,7 @@
         configuration = { pkgs, nyx, ... }: {
             isNormalUser = true;
             extraGroups = [ "wheel" ];
-            shell = nyx.pkgs.fish;
+            shell = nyx.pkgs.nushell;
             packages = [
                 # Shell
                 nyx.pkgs.fish
@@ -67,6 +67,7 @@
                 # Scripts
                 nyx.pkgs.tmuxss
                 nyx.pkgs.git-cans
+                nyx.pkgs.git-log
                 nyx.pkgs.mkignore
                 nyx.pkgs.nix-develop
                 nyx.pkgs.nix-gc
