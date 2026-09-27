@@ -1,6 +1,20 @@
 { config, ... }: {
     nyx.nixos.hosts.mistylake = {
         platform = "x86_64-linux";
+        monitors = let
+            left = {
+                id = "HDMI-A-5";
+                resolution = { x = 1440; y = 900; };
+                refreshrate = 75.11;
+                position = { x = 0; y = 0; };
+            };
+            right = {
+                id = "DP-3";
+                resolution = { x = 1920; y = 1080; };
+                refreshrate = 165;
+                position = { x = left.resolution.x; y = 0; };
+            };
+        in [ left right ];
         keys = {
             pub = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIE0ZgVVQZfW3BYIUT3fa9T1ncUnpIF+X8ZZysapPU5nQ root@mistylake";
             prv = {

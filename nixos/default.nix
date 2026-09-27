@@ -150,7 +150,7 @@
                             };
                             refreshrate = lib.mkOption {
                                 description = "Preferred refresh rate in hertz.";
-                                type = lib.types.nullOr lib.types.int;
+                                type = lib.types.nullOr lib.types.number;
                                 default = null;
                             };
                             position = lib.mkOption {
