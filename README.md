@@ -9,6 +9,12 @@ my nix slop
 
 * Q: Why a separate `nyx` "namespace" ? A: To query `#nyx` for the builtin scripts, to extend `nixosSystem` way beyond (especially `users.users.*.*`), to make things easier to assert, and to minimize duplication (eg. if the `users` extended options was implemented in nixosSystem).
 
+* Separation of concern. Things should go where they belong.
+    * The desktop is a user preference. It goes to the [user](./nixos/users/)
+    * Hardware is a host concern, therefore it goes to the hosts' configuration (hosts importing cpu-* and gpu-* modules) while audio (pipewire module) is a user concern and therefore it goes to the user who wants audio's `host-configuration`. (i think this is grammatically incorrect and im not delegating that judgement to a clanker)
+        * The thought process is as follows: if no user wants pipewire/audio there will be no host with pipewire/audio.
+    * Its okay to define these modules multiple times (per user and per host) as long as its clear. eg. gpg-agent module defined for a user because they use it for git and for a host because they use it to sign backups therefore the host and user will both import the `flake.modules.nixos.gpg-agent` module.
+
 ## Contents
 
 * [scripts](./scripts) - A set of custom scripts

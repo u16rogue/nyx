@@ -1,6 +1,7 @@
 { config, ... }: {
     nyx.nixos.hosts.mistylake = {
         platform = "x86_64-linux";
+
         monitors = let
             left = {
                 id = "HDMI-A-5";
@@ -15,6 +16,7 @@
                 position = { x = left.resolution.x; y = 0; };
             };
         in [ left right ];
+
         keys = {
             pub = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIE0ZgVVQZfW3BYIUT3fa9T1ncUnpIF+X8ZZysapPU5nQ root@mistylake";
             prv = {
@@ -67,9 +69,6 @@
                 cpu-intel
                 gpu-nvidia
                 luks
-                pipewire
-                openssh
-                gnupg
                 networkmanager
                 swraid
             ];

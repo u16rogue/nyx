@@ -1,6 +1,7 @@
 { config, ... }: {
     nyx.nixos.hosts.mistyriver = {
         platform = "x86_64-linux";
+
         monitors = [
             {
                 id = "eDP-1";
@@ -8,6 +9,7 @@
                 refreshrate = 60;
             }
         ];
+
         keys = {
             pub = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPYWxa99sHJ94Cb69bbD+dBknEJNcVRDerPmsgrEdwFW root@mistyriver";
             prv = {
@@ -60,9 +62,6 @@
                 cpu-amd
                 gpu-nvidia
                 luks
-                pipewire
-                openssh
-                gnupg
                 networkmanager
             ];
 

@@ -89,7 +89,7 @@
                     }
                 ];
             })
-            # Load user host configurations
+            # Host users host configuration
             { imports = lib.flip lib.mapAttrsToList nyxhost_users (_: nyxhost_user: nyxhost_user.host-configuration); }
             # User password builder
             ({ config, pkgs, ... }: let deriveAgeAttr = username: "nyx.secrets.user.${username}.password"; in {
@@ -246,8 +246,9 @@
                     readOnly = true;
                 };
                 options.host-configuration = lib.mkOption {
-                    description = "NixOS host configuration for this user.";
+                    description = "Shared NixOS integration required by this user's environment; settings apply to the host, not exclusively to this account.";
                     type = lib.types.deferredModule;
+                    default = {};
                 };
                 options.configuration = lib.mkOption {
                     description = "NixOS user configuration for this user.";

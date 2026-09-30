@@ -34,26 +34,12 @@
             ];
         };
 
-        # Temporary workaround delagating hyprland management to the nixos module until a functioning standalone package
-        # with functioning portals can be done.
-        host-configuration = { nyx, ... }: {
-            programs.hyprland = {
-                enable = true;
-                xwayland.enable = true;
-                withUWSM = true;
-                package = nyx.pkgs.hyprland.override {
-                    overridesOpts.monitors = nyx.host.monitors;
-                    hyprpaper = nyx.pkgs.hyprpaper.override { overridesOpts.wallpaper = "/home/user/media/wallpaper"; };
-                    waybar = nyx.pkgs.waybar;
-                };
-            };
-
-            xdg.portal.config.hyprland = {
-                default = [ "hyprland" "gtk" ];
-                "org.freedesktop.impl.portal.FileChooser" = [ "gtk" ];
-                "org.freedesktop.impl.portal.ScreenCast" = [ "hyprland" ];
-                "org.freedesktop.impl.portal.Screenshot" = [ "hyprland" ];
-            };
+        host-configuration = { self, ... }: {
+            imports = with self.modules.nixos; [
+                pipewire
+                gpg-agent
+                hyprland-prerequisites
+            ];
         };
 
         configuration = { pkgs, nyx, ... }: {
@@ -64,6 +50,12 @@
                 # Shell
                 nyx.pkgs.fish
                 nyx.pkgs.nushell
+                # Desktop
+                (nyx.pkgs.hyprland.override {
+                    overridesOpts.monitors = nyx.host.monitors;
+                    hyprpaper = nyx.pkgs.hyprpaper.override { overridesOpts.wallpaper = "/home/user/media/wallpaper"; };
+                    waybar = nyx.pkgs.waybar;
+                })
                 # Scripts
                 nyx.pkgs.tmuxss
                 nyx.pkgs.git-cans
@@ -73,8 +65,7 @@
                 nyx.pkgs.nix-gc
                 nyx.pkgs.nix-pkgvercmp
                 nyx.pkgs.nix-sync-lock-from-nixos
-
-                # Custom overidden packages (homeless configs +/ sandbox)
+                # Nyx packages
                 nyx.pkgs.firefox
                 nyx.pkgs.fuzzel
                 nyx.pkgs.ghostty
@@ -91,12 +82,12 @@
                 (nyx.pkgs.vesktop.override { overridesOpts.use_jail_tmpfix = true; })
                 nyx.pkgs.yazi
                 nyx.pkgs.zellij
-
                 # direct nixpkgs
                 pkgs.git
                 pkgs.jq
                 pkgs.bubblewrap
                 pkgs.btop
+                pkgs.wiremix
             ];
         };
     };

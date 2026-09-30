@@ -3,11 +3,12 @@
 !.gitignore
 !cpu-amd.nix
 !cpu-intel.nix
-!gnupg.nix
+!gpg-agent.nix
 !gpu-nvidia.nix
+!hyprland-prerequisites.nix
 !luks.nix
 !networkmanager.nix
-!openssh.nix
 !pipewire.nix
+!ssh-server.nix
 !swraid.nix
 !systemd-boot.nix

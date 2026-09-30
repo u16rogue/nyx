@@ -65,6 +65,7 @@ else
             clearEnv = true;
             newSession = true;
             dieWithParent = true;
+            bind.ro = [ [ "/etc/zoneinfo" "/usr/share/zoneinfo" ] ];
             sockets = {
                 wayland = true;
                 pipewire = true;
@@ -79,6 +80,7 @@ else
 
             env = {
                 HOME = sloth.env "HOME";
+                TZDIR = "/usr/share/zoneinfo";
                 XDG_RUNTIME_DIR = sloth.runtimeDir;
                 XDG_CURRENT_DESKTOP = sloth.env "XDG_CURRENT_DESKTOP";
                 XDG_SESSION_DESKTOP = sloth.env "XDG_SESSION_DESKTOP";

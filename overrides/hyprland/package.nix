@@ -2,14 +2,14 @@
     inputs, pkgs, lib, writeText,
     hyprland,
     hyprpaper, waybar,
-    xwayland, grim, slurp, satty, wl-clipboard, jq, dbus, systemd,
+    xwayland, grim, slurp, satty, wl-clipboard, jq, dbus, systemd, uwsm, xdg-utils,
     overridesOpts ? {}, ...
 }: let
     snippets = import ./snippets.nix { inherit lib; };
     desktop_launcher = pkgs.writeShellApplication {
         name = "start-desktop";
         text = /*bash*/ ''
-            exec ${pkgs.uwsm}/bin/uwsm start -eD Hyprland -- @hyprland@/bin/start-hyprland "$@"
+            exec ${pkgs.uwsm}/bin/uwsm start -U run -g -1 -eD Hyprland -- @hyprland@/bin/start-hyprland "$@"
         '';
     };
     monitors = overridesOpts.monitors or [];
@@ -32,6 +32,7 @@ in (inputs.wrappers.lib.wrapPackage {
         hyprland
         hyprpaper waybar
         xwayland grim slurp satty wl-clipboard jq dbus systemd
+        uwsm xdg-utils
     ];
     env = {
         NIXOS_OZONE_WL = "1";
@@ -49,6 +50,10 @@ in (inputs.wrappers.lib.wrapPackage {
         substitute ${desktop_launcher}/bin/start-desktop "$out/bin/start-desktop" \
             --replace-fail '@hyprland@' "$out"
         chmod +x "$out/bin/start-desktop"
+        substituteInPlace "$out/share/wayland-sessions/hyprland.desktop" \
+            --replace-fail "Exec=$out/bin/start-hyprland" "Exec=$out/bin/start-desktop"
+        rm "$out/share/wayland-sessions/hyprland-uwsm.desktop"
+        cp "$out/share/wayland-sessions/hyprland.desktop" "$out/share/wayland-sessions/hyprland-uwsm.desktop"
     '';
     args = [ "--" "--config" hyprland_config "$@" ];
 }).overrideAttrs (old: {
