@@ -115,6 +115,17 @@ in (mkNixPak {
         app.binPath = "bin/firefox";
         flatpak.appId = "org.mozilla.firefox";
         timeZone.enable = true;
+        fonts = {
+            enable = true;
+            fonts = with pkgs; [
+                dejavu_fonts
+                liberation_ttf
+                noto-fonts
+                noto-fonts-cjk-sans
+                noto-fonts-cjk-serif
+                noto-fonts-color-emoji
+            ];
+        };
         dbus.policies."org.freedesktop.portal.Desktop" = "talk";
         etc.sslCertificates.enable = true;
         gpu.enable = true;

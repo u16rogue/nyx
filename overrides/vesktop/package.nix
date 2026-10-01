@@ -1,4 +1,4 @@
-{ inputs, pkgs, overridesOpts ? {}, ... }: let
+{ inputs, pkgs, ... }: let
     mkNixPak = inputs.nixpak.lib.nixpak {
         inherit (pkgs) lib;
         inherit pkgs;
@@ -23,30 +23,7 @@
             exec ${exePath} --enable-features=WebRTCPipeWireCapturer --ozone-platform=wayland "$@"
         '';
     };
-    jailedVesktop = let
-        jail = inputs.jail-nix.lib.init pkgs;
-        vesktop'' = jail "vesktop-jail-nix-tmpfix" vesktop' (with jail.combinators; [
-                network
-                gui
-                gpu
-                pipewire
-                (rw-bind (noescape "~/.nyx/app-fake-root/vesktop/home/user") (noescape "~/"))
-            ]);
-        in pkgs.runCommand "vesktop-jailed" { meta.mainProgram = "vesktop-jail-nix-tmpfix"; } ''
-            mkdir -p $out/share/applications
-            ln -s ${vesktop''}/bin $out/bin
-            ln -s ${pkgs.vesktop}/share/icons $out/share/icons
-            cp ${pkgs.vesktop}/share/applications/vesktop.desktop \
-                $out/share/applications/vesktop-jail-nix-tmpfix.desktop
-            substituteInPlace $out/share/applications/vesktop-jail-nix-tmpfix.desktop \
-                --replace-fail 'Name=Vesktop' 'Name=Vesktop (jail.nix tmpfix)' \
-                --replace-fail 'Exec=vesktop' 'Exec=${vesktop''}/bin/vesktop-jail-nix-tmpfix'
-        ''
-    ;
-in if (overridesOpts.use_jail_tmpfix or false) then
-    jailedVesktop
-else
-    (mkNixPak {
+in (mkNixPak {
     config = { sloth, ... }: {
         app.package = vesktop';
         app.binPath = "bin/vesktop";
@@ -56,7 +33,17 @@ else
             "org.freedesktop.Notifications" = "talk";
             "org.freedesktop.portal.Desktop" = "talk";
         };
-        fonts.enable = true;
+        fonts = {
+            enable = true;
+            fonts = with pkgs; [
+                dejavu_fonts
+                liberation_ttf
+                noto-fonts
+                noto-fonts-cjk-sans
+                noto-fonts-cjk-serif
+                noto-fonts-color-emoji
+            ];
+        };
         etc.sslCertificates.enable = true;
         gpu.enable = true;
         bubblewrap = {
