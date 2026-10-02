@@ -35,6 +35,7 @@ my nix slop
 * [templates](./templates) - A set of templates with flakes. Mostly for development; includes a sandboxing shell hook.
 
 * [nixos](./nixos) - NixOS configurations.
+    * [nyxos-install](./nixos/nyxos-install) - Clanker-written, directly runnable installation script with automatic `nix shell` dependencies; bootstraps host identity and persistence, and can build a host-specific offline installer ISO.
     * `nyx` related options are defined in [nixos/default.nix](./nixos/default.nix)
     * Host configurations must provide the disks for the paths `/boot` and `/persist`. Hosts should follow the common `fileSystems` provided by `nyx`.
     * Systems/NixOS/Hosts are expected to use an ephemeral filesystem where each host and user are required to explicitly state which files and directories are to be preserved.

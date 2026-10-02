@@ -1,0 +1,323 @@
+#!/usr/bin/env bash
+# THIS WAS WRITTEN BY A CLANKER
+set -euo pipefail
+umask 077
+
+die() { printf 'nyxos-install: %s\n' "$*" >&2; exit 1; }
+info() { printf 'nyxos-install: %s\n' "$*" >&2; }
+usage() {
+    cat <<'EOF'
+nyxos-install --flake FLAKE#HOST [--root /mnt] [--host-key FILE]
+              [--no-bootloader] [--no-channel-copy] [--show-trace] [-v|--verbose]
+nyxos-install --build-image --flake FLAKE#HOST [--out-link ./result] [--dry-run]
+nyxos-install [--offline-bundle DIR] [--root /mnt] [--host-key FILE]
+
+Written by a clanker. Installs a registered Nyx host using nixos-install.
+Run this script directly; missing dependencies trigger a pinned nix shell.
+--build-image creates a bootable host-specific offline installer ISO (no root
+needed). On that ISO, nyxos-install automatically uses its prebuilt bundle.
+--dry-run checks the image build plan without downloading/building its closure.
+First partition, format, unlock and mount the target root, /persist and /boot
+(for example using disko). This command never formats disks.
+Restores the encrypted Nyx host key interactively, or verifies --host-key FILE.
+An existing matching persistent key is reused. Root authentication stays locked.
+Only the options listed above are accepted; --system and alternate stores would
+bypass the selected host's bootstrap checks and are deliberately unsupported.
+EOF
+}
+
+ensure_dependencies() {
+    local cmd missing=false
+    for cmd in nix nixos-install nixos-enter jq rage ssh-keygen sha256sum realpath findmnt mount mountpoint stat install mktemp systemd-tmpfiles flock; do
+        command -v "$cmd" >/dev/null || missing=true
+    done
+    [[ "$missing" == true ]] || return 0
+    [[ -z "$offline_bundle" ]] || die 'offline image is missing required tools; refusing to fetch dependencies'
+    [[ ${NYXOS_INSTALL_SHELL:-0} != 1 ]] || die 'dependencies are still missing after entering nix shell'
+    command -v nix >/dev/null || die 'Nix is required to bootstrap the script dependencies'
+    info "Entering nix shell with dependencies pinned by this checkout's flake.lock"
+    # No shell interpolation of Nix strings: --file supplies the expression,
+    # whose default pkgs argument uses the repository lock file directly.
+    exec nix shell --impure --file "$here/dependencies.nix" \
+        --command env NYXOS_INSTALL_SHELL=1 bash "$self" "${original_args[@]}"
+}
+
+load_offline_bundle() {
+    [[ -f "$offline_bundle/manifest.json" && -L "$offline_bundle/system" ]] || die 'invalid offline bundle: expected manifest.json and system'
+    cp -- "$offline_bundle/manifest.json" "$work/manifest.json"
+    metadata=$work/manifest.json
+    jq -e '.version == 1 and (.hostName | type == "string") and (.users | length > 0)' "$metadata" >/dev/null || die 'unsupported or incomplete offline manifest'
+    host=$(jq -er .hostName "$metadata")
+    system=$(jq -er .toplevel "$metadata")
+    [[ "$system" == /nix/store/* && "$system" == "$(readlink -f -- "$offline_bundle/system")" && -x "$system/activate" ]] || die 'offline bundle system is missing or differs from its manifest'
+    # Disable network substitution and remote builders for every child, including
+    # nixos-install's nix-env call. The source is the ISO's registered local store.
+    export NIX_CONFIG="${NIX_CONFIG:-}"$'\nsubstituters =\nbuilders =\nconnect-timeout = 1\n'
+    install_args+=(--no-channel-copy --option substituters '' --option builders '')
+    nix --offline --store auto --option substituters '' path-info --recursive "$system" > "$work/closure"
+    info "Using the prebuilt offline system for $host"
+}
+
+copy_offline_system() {
+    nix --offline --option substituters '' --option builders '' copy --from auto --to "$root" --no-check-sigs "$system"
+}
+verify_key() {
+    local key=$1 digest public expected type body rest
+    digest=$(sha256sum -- "$key"); digest=${digest%% *}
+    [[ "$digest" == "$(jq -r .keys.prv.sha256 "$metadata")" ]] || die 'private key SHA-256 differs from Nyx registration'
+    public=$(ssh-keygen -y -P '' -f "$key") || die 'host key must be an unencrypted OpenSSH private key'
+    read -r type body rest <<< "$public"; public="$type $body"
+    expected=$(jq -r .keys.pub "$metadata")
+    read -r type body rest <<< "$expected"
+    [[ "$type" == ssh-ed25519 && "$public" == "$type $body" ]] || die 'private key does not match the registered ED25519 public key'
+}
+
+safe_path() {
+    local path=$1 current=$root part
+    local -a parts
+    [[ "$path" == /* && "$path" != *'/../'* && "$path" != */.. ]] || die "unsafe target path: $path"
+    IFS=/ read -r -a parts <<< "$path"
+    for part in "${parts[@]}"; do
+        [[ -n "$part" ]] || continue
+        current+=/$part
+        [[ ! -L "$current" ]] || die "unexpected symlink: $current"
+    done
+}
+
+bind_state() {
+    local from=$1 to=$2
+    if mountpoint -q -- "$to"; then
+        [[ $(stat -c '%d:%i' -- "$from") == "$(stat -c '%d:%i' -- "$to")" ]] || die "$to is mounted from the wrong source"
+    else
+        if [[ -d "$to" ]]; then
+            [[ -z $(ls -A -- "$to") ]] || die "$to is nonempty; refusing to hide installation data"
+        else
+            [[ ! -s "$to" ]] || die "$to contains unpreserved state"
+        fi
+        mount --bind "$from" "$to"
+    fi
+}
+
+main() {
+root=/mnt flake_spec='' key_input='' work='' offline_bundle='' build_image=false out_link=./result image_dry_run=false
+original_args=("$@")
+install_args=() nix_args=()
+while (($#)); do
+    case "$1" in
+        --flake|--root|--host-key|--offline-bundle|--out-link)
+            (($# >= 2)) && [[ -n "$2" ]] || die "$1 requires a value"
+            case "$1" in
+                --flake) [[ -z "$flake_spec" ]] || die 'duplicate --flake'; flake_spec=$2 ;;
+                --root) root=$2 ;;
+                --host-key) key_input=$2 ;;
+                --offline-bundle) offline_bundle=$2 ;;
+                --out-link) out_link=$2 ;;
+            esac
+            shift 2 ;;
+        --no-bootloader|--no-channel-copy) install_args+=("$1"); shift ;;
+        --build-image) build_image=true; shift ;;
+        --dry-run) image_dry_run=true; shift ;;
+        --show-trace) nix_args+=("$1"); shift ;;
+        -v|--verbose) nix_args+=(--verbose); shift ;;
+        -h|--help) usage; exit 0 ;;
+        *) die "unknown option: $1 (see --help)" ;;
+    esac
+done
+export NIX_CONFIG="${NIX_CONFIG:-}"$'\nextra-experimental-features = nix-command flakes pipe-operators\n'
+if [[ -z "$flake_spec" && -z "$offline_bundle" && "$build_image" == false && -f /etc/nyxos-install/manifest.json ]]; then
+    offline_bundle=/etc/nyxos-install
+fi
+if [[ -n "$offline_bundle" ]]; then
+    [[ -z "$flake_spec" && "$build_image" == false ]] || die '--offline-bundle cannot be combined with --flake or --build-image'
+else
+    [[ "$flake_spec" == *#* ]] || die 'specify --flake FLAKE#HOST explicitly'
+    flake=${flake_spec%#*} host=${flake_spec##*#}
+    [[ -n "$flake" && "$host" =~ ^[a-zA-Z0-9][a-zA-Z0-9_-]*$ ]] || die 'invalid flake or host name'
+fi
+if [[ "$build_image" == true ]]; then
+    [[ -z "$key_input" && "$root" == /mnt && ${#install_args[@]} == 0 ]] || die '--build-image does not accept installation options or private keys'
+else
+    [[ "$out_link" == ./result && "$image_dry_run" == false ]] || die '--out-link and --dry-run require --build-image'
+    ((EUID == 0)) || die 'run as root from the installer environment'
+fi
+self=$(realpath -- "${BASH_SOURCE[0]}")
+here=$(dirname -- "$self")
+ensure_dependencies
+if [[ -z "$offline_bundle" ]]; then
+    info "Snapshotting $flake and evaluating $host"
+    source=$(nix flake archive --json --no-write-lock-file "${nix_args[@]}" "$flake" | jq -er .path)
+    args="{ flake = builtins.getFlake $(jq -Rn --arg s "$source" '$s'); hostName = $(jq -Rn --arg s "$host" '$s'); }"
+fi
+if [[ "$build_image" == true ]]; then
+    info "Building the prebuilt offline installer ISO for $host"
+    if [[ "$image_dry_run" == true ]]; then nix_args+=(--dry-run); fi
+    nix build --file "$here/image.nix" --arg flake "builtins.getFlake $(jq -Rn --arg s "$source" '$s')" \
+        --argstr hostName "$host" iso --out-link "$out_link" "${nix_args[@]}"
+    if [[ "$image_dry_run" == true ]]; then
+        info 'Image build plan checked; no ISO was written'
+    else
+        info "ISO available under $out_link/iso/; boot it, prepare the disks, then run sudo nyxos-install"
+    fi
+    return
+fi
+root=$(realpath -e -- "$root")
+[[ "$root" != / && -d "$root" ]] || die 'target root must be an existing directory other than /'
+[[ "$root" != *[$'\n\t ']* ]] || die 'target root cannot contain whitespace'
+mountpoint -q -- "$root" || die 'target root must already be a mountpoint'
+[[ $(findmnt -nro FSTYPE -M "$root") == tmpfs ]] || die 'target root must be tmpfs'
+
+# Refuse symlink traversal in paths written outside a chroot. Absolute symlinks
+# in the installed system must never accidentally resolve into the live system.
+for path in /persist /boot /nix /etc/ssh /etc/machine-id /var/lib/nixos /persist/nix /persist/etc/ssh/ssh_host_ed25519_key /persist/etc/ssh/ssh_host_ed25519_key.pub /persist/etc/machine-id /persist/var/lib/nixos; do
+    safe_path "$path"
+done
+
+work=$(mktemp -d /run/nyxos-install.XXXXXXXX)
+cleanup() { [[ -z "$work" ]] || rm -rf -- "$work"; }
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+if [[ -n "$offline_bundle" ]]; then
+    load_offline_bundle
+else
+    nix eval --json "${nix_args[@]}" --file "$here/manifest.nix" --apply "make: make $args" > "$work/manifest.json"
+    metadata=$work/manifest.json
+fi
+[[ "$(uname -m)-linux" == "$(jq -r .platform "$metadata")" ]] || die 'run from an installer matching the target platform'
+
+check_mount() {
+    local path=$1 expected_device expected_type actual_device options
+    mountpoint -q -- "$root$path" || die "$root$path must already be mounted"
+    expected_device=$(jq -er --arg p "$path" '.filesystems[$p].device' "$metadata")
+    expected_type=$(jq -er --arg p "$path" '.filesystems[$p].fsType' "$metadata")
+    [[ $(findmnt -nro FSTYPE -M "$root$path") == "$expected_type" ]] || die "$path filesystem type does not match configuration"
+    actual_device=$(findmnt -nro SOURCE -M "$root$path")
+    actual_device=${actual_device%%\[*}
+    [[ -b "$expected_device" && $(realpath -e -- "$actual_device") == "$(realpath -e -- "$expected_device")" ]] || die "$path is not mounted from configured device $expected_device"
+    options=,$(findmnt -nro OPTIONS -M "$root$path"),
+    [[ "$options" == *,rw,* ]] || die "$path is read-only"
+    # A different btrfs subvolume on the same device is still the wrong target.
+    local option
+    while IFS= read -r option; do
+        case "$option" in
+            subvol=*|subvolid=*) [[ "$options" == *",$option,"* ]] || die "$path is missing configured mount option $option" ;;
+        esac
+    done < <(jq -r --arg p "$path" '.filesystems[$p].options[]' "$metadata")
+}
+check_mount /persist
+check_mount /boot
+[[ ! "$root/persist" -ef /persist ]] || die 'target /persist is the running system persistence directory'
+# Serialize installers for this target. The lock lives on the mounted target,
+# so separate invocations with different --root aliases cannot race key writes.
+safe_path /persist/.nyxos-install.lock
+exec {lock_fd}> "$root/persist/.nyxos-install.lock"
+flock -n "$lock_fd" || die 'another nyxos-install is using this persistence filesystem'
+if [[ $(jq -r .efi "$metadata") == true && " ${install_args[*]} " != *' --no-bootloader '* ]]; then
+    mountpoint -q /sys/firmware/efi/efivars || die 'boot the installer in UEFI mode with efivarfs mounted'
+fi
+
+existing=$root/persist/etc/ssh/ssh_host_ed25519_key
+if [[ -e "$existing" ]]; then
+    [[ -f "$existing" ]] || die 'persistent host key is not a regular file'
+    cp -- "$existing" "$work/key"
+elif [[ -n "$key_input" ]]; then
+    [[ -f "$key_input" ]] || die '--host-key must name a regular private key file'
+    cp -- "$key_input" "$work/key"
+else
+    info 'Decrypting registered host key (age backup passphrase required)'
+    jq -r .keys.prv.age "$metadata" | rage --decrypt > "$work/key"
+fi
+chmod 0600 "$work/key"
+verify_key "$work/key"
+if [[ -n "$key_input" ]]; then verify_key "$key_input"; fi
+public_path=$existing.pub
+if [[ -e "$public_path" ]]; then
+    [[ -f "$public_path" ]] || die 'persistent public key is not a regular file'
+    read -r actual_type actual_body _ < "$public_path"
+    read -r expected_type expected_body _ <<< "$(jq -r .keys.pub "$metadata")"
+    [[ "$actual_type $actual_body" == "$expected_type $expected_body" ]] || die 'existing public host key differs from registration'
+fi
+# Prove the recovered identity can unlock every user's password before install.
+while IFS= read -r user; do
+    name=$(jq -r .name <<< "$user")
+    jq -r .password <<< "$user" | rage --decrypt -i "$work/key" > "$work/password"
+    password=$(< "$work/password")
+    [[ "$password" =~ ^\$(y|6|5|2[aby])\$[^[:space:]:]+$ ]] || die "user $name has an empty, locked or unsupported password hash"
+    unset password
+    rm -- "$work/password"
+done < <(jq -c '.users[]' "$metadata")
+
+info 'Bootstrapping persistent identity and installation state'
+install -d -m 0755 "$root/persist/nix" "$root/nix" "$root/persist/etc/ssh" "$root/etc/ssh" "$root/persist/var/lib/nixos" "$root/var/lib/nixos"
+if [[ ! -e "$existing" ]]; then
+    install -m 0600 "$work/key" "$existing"
+fi
+chown 0:0 "$existing"
+chmod 0600 "$existing"
+if [[ ! -e "$public_path" ]]; then jq -r .keys.pub "$metadata" > "$public_path"; fi
+chown 0:0 "$public_path"
+chmod 0644 "$public_path"
+machine_id=$root/persist/etc/machine-id
+if [[ ! -e "$machine_id" ]]; then
+    tr -d '-' < /proc/sys/kernel/random/uuid > "$machine_id"
+fi
+[[ -f "$machine_id" && $(< "$machine_id") =~ ^[0-9a-f]{32}$ && $(< "$machine_id") != 00000000000000000000000000000000 ]] || die 'invalid persistent machine-id'
+chmod 0444 "$machine_id"
+chown 0:0 "$machine_id"
+
+bind_state "$root/persist/nix" "$root/nix"
+bind_state "$root/persist/var/lib/nixos" "$root/var/lib/nixos"
+[[ -e "$root/etc/machine-id" ]] || touch "$root/etc/machine-id"
+bind_state "$machine_id" "$root/etc/machine-id"
+if [[ -n "$offline_bundle" ]]; then
+    info 'Copying the prebuilt closure from the ISO to the persistent target store'
+    copy_offline_system
+else
+    info 'Building the asserted system closure in the persistent target store'
+    nix build --store "$root" --extra-substituters 'auto?trusted=1' --no-write-lock-file "${nix_args[@]}" --out-link "$work/system" "$source#nixosConfigurations.\"$host\".config.system.build.toplevel"
+    system=$(readlink -f -- "$work/system")
+fi
+[[ "$system" == "$(jq -r .toplevel "$metadata")" ]] || die 'system closure differs from the validated manifest'
+[[ "$system" == /nix/store/* && -x "$root$system/activate" ]] || die 'build did not produce a target system closure'
+# Realizing the system also realizes age secret source files. Test all of them,
+# not only passwords; never print decrypted values or leave them on disk.
+while IFS= read -r secret; do
+    file=$(jq -r .file <<< "$secret")
+    [[ "$file" == /nix/store/* ]] || die 'age secret is not a store source file'
+    rage --decrypt -i "$work/key" "$root$file" > /dev/null || die "cannot decrypt age secret $(jq -r .name <<< "$secret")"
+done < <(jq -c '.secrets[]' "$metadata")
+# Activation uses /persist directly for agenix. SSH key links and other
+# preservation paths are prepared from evaluated rules after user creation.
+info "Installing $host into $root"
+nixos-install --root "$root" --system "$system" --no-root-passwd "${install_args[@]}"
+# nixos-enter's implicit activation ignores errors, and --no-bootloader skips
+# it altogether in nixos-install. Run a checked activation in either case.
+IN_NIXOS_ENTER=1 nixos-enter --root "$root" -- "$system/activate"
+jq -r .tmpfiles "$metadata" | systemd-tmpfiles --root="$root" --create -
+verify_key "$existing"
+[[ $(stat -c '%u:%g:%a' -- "$existing") == 0:0:600 ]] || die 'persistent private key permissions changed during activation'
+# Verify actual installed login hashes, rather than assuming activation used
+# the password files successfully. Never include hashes in diagnostics.
+safe_path /etc/shadow
+while IFS= read -r user; do
+    name=$(jq -r .name <<< "$user")
+    expected=$(jq -r .password <<< "$user" | rage --decrypt -i "$work/key")
+    found=false
+    while IFS=: read -r account hash _; do
+        if [[ "$account" == "$name" ]]; then
+            [[ "$hash" == "$expected" ]] || die "installed password for $name differs from the Nyx secret"
+            found=true
+            break
+        fi
+    done < "$root/etc/shadow"
+    [[ "$found" == true ]] || die "installed account $name is missing"
+    unset expected hash
+done < <(jq -c '.users[]' "$metadata")
+[[ -L "$root/nix/var/nix/profiles/system" ]] || die 'installed system profile is missing'
+sync
+info "Installed $host successfully. Target mounts are left mounted; unmount them before rebooting."
+}
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    main "$@"
+fi

@@ -1,0 +1,9 @@
+**
+.*
+!.gitignore
+!dependencies.nix
+!image.nix
+!manifest.nix
+!nyxos-install
+!README.md
+!test.sh
