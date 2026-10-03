@@ -57,7 +57,6 @@
                     hyprpaper = nyx.pkgs.hyprpaper.override { overridesOpts.wallpaper = "/home/user/media/wallpaper"; };
                     inherit (nyx.pkgs) waybar fuzzel ghostty;
                 })
-                nyx.pkgs.kitty
                 # Scripts
                 nyx.pkgs.tmuxss
                 nyx.pkgs.git-cans
