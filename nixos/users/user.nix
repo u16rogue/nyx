@@ -25,6 +25,7 @@
                 ".nyx/app-fake-root/firefox"
                 ".nyx/app-fake-root/monero-gui"
                 ".nyx/app-fake-root/moonlight-stream"
+                ".nyx/app-fake-root/obs-studio"
                 ".nyx/app-fake-root/remmina"
                 ".nyx/app-fake-root/steamguard-cli"
                 ".nyx/app-fake-root/vesktop"
@@ -54,8 +55,9 @@
                 (nyx.pkgs.hyprland.override {
                     overridesOpts.monitors = nyx.host.monitors;
                     hyprpaper = nyx.pkgs.hyprpaper.override { overridesOpts.wallpaper = "/home/user/media/wallpaper"; };
-                    waybar = nyx.pkgs.waybar;
+                    inherit (nyx.pkgs) waybar fuzzel ghostty;
                 })
+                nyx.pkgs.kitty
                 # Scripts
                 nyx.pkgs.tmuxss
                 nyx.pkgs.git-cans
@@ -67,14 +69,12 @@
                 nyx.pkgs.nix-sync-lock-from-nixos
                 # Nyx packages
                 nyx.pkgs.firefox
-                nyx.pkgs.fuzzel
-                nyx.pkgs.ghostty
-                nyx.pkgs.kitty
                 nyx.pkgs.keepassxc
                 nyx.pkgs.monero-gui
                 nyx.pkgs.moonlight-stream
                 (nyx.pkgs.moonlight-stream.override { overridesOpts.use_jail_tmpfix = true; })
                 nyx.pkgs.neovim
+                nyx.pkgs.obs-studio
                 nyx.pkgs.remmina
                 nyx.pkgs.steamguard-cli
                 nyx.pkgs.tmux

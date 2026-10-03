@@ -1,61 +1,49 @@
 {
     inputs, pkgs, lib, writeText,
     hyprland,
-    hyprpaper, waybar,
-    xwayland, grim, slurp, satty, wl-clipboard, jq, dbus, systemd, uwsm, xdg-utils,
+    hyprpaper, waybar, fuzzel, ghostty,
+    xwayland, grim, slurp, satty, wl-clipboard, procps, dbus, systemd, uwsm, xdg-utils,
     overridesOpts ? {}, ...
 }: let
     snippets = import ./snippets.nix { inherit lib; };
-    desktop_launcher = pkgs.writeShellApplication {
-        name = "start-desktop";
-        text = /*bash*/ ''
-            exec ${pkgs.uwsm}/bin/uwsm start -U run -g -1 -eD Hyprland -- @hyprland@/bin/start-hyprland "$@"
-        '';
-    };
     monitors = overridesOpts.monitors or [];
     hyprland_config =
         if (monitors != []) then # if need to write something extra to the config
             writeText "hyprland.lua" (
                 builtins.readFile ./hyprland.lua
-                + lib.optionalString (monitors != []) ("\n" + lib.concatMapStringsSep "\n" snippets.mkMonitor monitors + "\n")
+                + "\n" + lib.concatMapStringsSep "\n" snippets.mkMonitor monitors + "\n"
             )
         else # otherwise it can just directly import the file
             ./hyprland.lua
     ;
+    # AI-assisted: private session payload; the public launcher always enters UWSM.
+    # Keep this basename so UWSM loads its start-hyprland environment plugin.
+    session = pkgs.writeShellApplication {
+        name = "start-hyprland";
+        runtimeInputs = [
+            hyprland hyprpaper waybar fuzzel ghostty
+            xwayland grim slurp satty wl-clipboard procps dbus systemd uwsm xdg-utils
+        ];
+        text = /*bash*/ ''
+            export NIXOS_OZONE_WL=1
+            # Wait for $XDG_RUNTIME_DIR/doc before Nixpak apps bind it; failure aborts startup.
+            busctl --user call \
+                org.freedesktop.portal.Documents /org/freedesktop/portal/documents \
+                org.freedesktop.portal.Documents GetMountPoint >/dev/null
+            exec ${hyprland}/bin/start-hyprland -- --config ${hyprland_config} "$@"
+        '';
+    };
 
-in (inputs.wrappers.lib.wrapPackage {
+in inputs.wrappers.lib.wrapPackage {
     inherit pkgs;
     package = hyprland;
-    exePath = "${hyprland}/bin/start-hyprland";
+    exePath = "${uwsm}/bin/uwsm";
     binName = "start-hyprland";
-    runtimeInputs = [
-        hyprland
-        hyprpaper waybar
-        xwayland grim slurp satty wl-clipboard jq dbus systemd
-        uwsm xdg-utils
-    ];
-    env = {
-        NIXOS_OZONE_WL = "1";
-        XDG_CURRENT_DESKTOP = "Hyprland";
-        XDG_SESSION_DESKTOP = "Hyprland";
-        XDG_SESSION_TYPE = "wayland";
-    };
-    preHook = /*bash*/ ''
-        busctl --user call \
-            org.freedesktop.portal.Documents /org/freedesktop/portal/documents \
-            org.freedesktop.portal.Documents GetMountPoint >/dev/null
-    '';
+    args = [ "start" "-U" "run" "-g" "-1" "-eD" "Hyprland" "--" "${session}/bin/start-hyprland" "$@" ];
     filesToPatch = [ "nix-support/*" "share/applications/*.desktop" "share/wayland-sessions/*.desktop" ];
     patchHook = ''
-        substitute ${desktop_launcher}/bin/start-desktop "$out/bin/start-desktop" \
-            --replace-fail '@hyprland@' "$out"
-        chmod +x "$out/bin/start-desktop"
-        substituteInPlace "$out/share/wayland-sessions/hyprland.desktop" \
-            --replace-fail "Exec=$out/bin/start-hyprland" "Exec=$out/bin/start-desktop"
+        # Both entries use the managed launcher; the upstream UWSM entry would nest UWSM.
         rm "$out/share/wayland-sessions/hyprland-uwsm.desktop"
         cp "$out/share/wayland-sessions/hyprland.desktop" "$out/share/wayland-sessions/hyprland-uwsm.desktop"
     '';
-    args = [ "--" "--config" hyprland_config "$@" ];
-}).overrideAttrs (old: {
-    meta = old.meta // { mainProgram = "Hyprland"; };
-})
+}
