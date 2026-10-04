@@ -1,7 +1,0 @@
-**
-.*
-!.gitignore
-!configuration.nix
-!hyprland.settings.nix
-!install
-!ssh_host_ed25519_key.pub

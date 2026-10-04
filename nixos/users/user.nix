@@ -18,6 +18,8 @@
         ephemeralfs.preserve = {
             files = [];
             directories = [
+                ".ssh"
+                ".gnupg"
                 "downloads"
                 "media"
                 "documents"

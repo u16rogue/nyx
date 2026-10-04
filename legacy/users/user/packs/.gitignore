@@ -1,8 +1,0 @@
-**
-.*
-!.gitignore
-!fish/
-!fish/**
-!nushell/
-!nushell/**
-

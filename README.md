@@ -47,7 +47,7 @@ my nix slop
         * All host must provide its own ed25519 keys. The `nyx` script provides multiple utilities for managing this.
     * [users](./nixos/users) - Set of flake-parts+nyx modules.
 
-* [legacy](./legacy) - My old nixos config
+* [legacy](https://github.com/u16rogue/dotfiles/tree/nix/self) - My old nixos config (dropped from this repo)
 
 * [_nyx](./_nyx) + [workflows](./.github/workflows) - Meta folder(s). Contains scripts that are meant for automation. Mostly written by clankers.
     * Flake check

@@ -1,6 +1,0 @@
-**
-.*
-!.gitignore
-!configuration.nix
-!install
-!ssh_host_ed25519_key.pub
