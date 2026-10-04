@@ -11,10 +11,6 @@ toolbarbutton[class="titlebar-button titlebar-close"] { /* removes the close but
     display: none;
 }
 
-#sidebar-header {
-    display: none !important;
-}
-
-#nav-bar toolbarspacer[type="spring"] {
+#sidebar-header, #sidebar-panel-header, #nav-bar toolbarspacer[type="spring"] {
     display: none !important;
 }
