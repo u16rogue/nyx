@@ -4,7 +4,7 @@
         name = "${name}-${addon.version}.xpi";
         inherit (addon) url sha256;
     });
-    profile_seed = ./profile-seed;
+    profile_seed = ./seed-profile;
     mkNixPak = inputs.nixpak.lib.nixpak {
         inherit (pkgs) lib;
         inherit pkgs;

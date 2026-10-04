@@ -3,7 +3,7 @@
         inherit (pkgs) lib;
         inherit pkgs;
     };
-    config_seed = ./cconfig_seed;
+    config_seed = ./seed-config;
     vesktop' = inputs.wrappers.lib.wrapPackage {
         inherit pkgs;
         package = pkgs.vesktop;

@@ -1,10 +1,10 @@
 **
 .*
+!.gitignore
 !addons/
 !addons/**
-!profile-seed/
-!profile-seed/**
-!.gitignore
+!seed-profile/
+!seed-profile/**
 !addons-assert.sh
 !addons-update.sh
 !package.nix
