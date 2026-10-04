@@ -3,23 +3,23 @@
         inherit (pkgs) lib;
         inherit pkgs;
     };
+    config_seed = ./cconfig_seed;
     vesktop' = inputs.wrappers.lib.wrapPackage {
         inherit pkgs;
         package = pkgs.vesktop;
         wrapper = { exePath, ... }: /*bash*/ ''
             config_dir="$HOME/.config/vesktop"
             ${pkgs.coreutils}/bin/mkdir -p "$config_dir/settings"
-            ${pkgs.coreutils}/bin/ln -sfnT "${./discord-settings.json}" "$config_dir/settings.json"
-            ${pkgs.coreutils}/bin/ln -sfnT "${./quickCss.css}" "$config_dir/settings/quickCss.css"
+            ${pkgs.coreutils}/bin/ln -sfnT "${config_seed}/settings.json" "$config_dir/settings.json"
+            ${pkgs.coreutils}/bin/ln -sfnT "${config_seed}/settings/quickCss.css" "$config_dir/settings/quickCss.css"
             if [[ ! -e "$config_dir/state.json" ]]; then
-                ${pkgs.coreutils}/bin/cp "${./state.json}" "$config_dir/state.json"
+                ${pkgs.coreutils}/bin/cp "${config_seed}/state.json" "$config_dir/state.json"
                 ${pkgs.coreutils}/bin/chmod u+w "$config_dir/state.json"
             fi
             if [[ ! -e "$config_dir/settings/settings.json" ]]; then
-                ${pkgs.coreutils}/bin/cp "${./vesktop-settings.json}" "$config_dir/settings/settings.json"
+                ${pkgs.coreutils}/bin/cp "${config_seed}/settings/settings.json" "$config_dir/settings/settings.json"
                 ${pkgs.coreutils}/bin/chmod u+w "$config_dir/settings/settings.json"
             fi
-
             exec ${exePath} --enable-features=WebRTCPipeWireCapturer --ozone-platform=wayland "$@"
         '';
     };

@@ -1,8 +1,6 @@
 **
 .*
 !.gitignore
-!discord-settings.json
 !package.nix
-!quickCss.css
-!state.json
-!vesktop-settings.json
+!config-seed/
+!config-seed/**
