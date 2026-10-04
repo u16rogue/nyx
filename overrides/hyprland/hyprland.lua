@@ -4,12 +4,10 @@ hl.env("XCURSOR_SIZE", "24")
 hl.env("HYPRCURSOR_SIZE", "24")
 
 hl.on("hyprland.start", function()
-    -- Hyprland publishes its display environment; UWSM handles readiness and cleanup.
     hl.exec_cmd("hyprpaper")
     hl.exec_cmd("waybar")
 end)
 
--- Stop the session in order, rather than removing the compositor before its clients.
 hl.bind(mainMod .. " + X", hl.dsp.exec_cmd("uwsm stop"))
 hl.bind(mainMod .. " + TAB", hl.dsp.group.toggle())
 hl.bind(mainMod .. " + SHIFT + Q", hl.dsp.window.kill())

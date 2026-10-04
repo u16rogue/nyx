@@ -42,8 +42,6 @@ in (mkNixPak {
                 [ (sloth.mkdir (sloth.concat [ (sloth.env "HOME") "/.nyx/app-fake-root/obs-studio/" (sloth.env "HOME") ])) (sloth.env "HOME") ]
                 [ (sloth.mkdir (sloth.concat' sloth.runtimeDir "/nyx/obs-studio")) "/tmp" ]
                 (sloth.concat' sloth.runtimeDir "/doc") # Files selected through the document portal.
-                # OBS's default Videos directory maps to the user's preserved media directory.
-                [ (sloth.mkdir (sloth.concat' sloth.homeDir "/media/obs")) (sloth.concat' sloth.homeDir "/Videos") ]
             ];
             env = {
                 HOME = sloth.env "HOME";

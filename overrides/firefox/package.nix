@@ -105,6 +105,7 @@ in (mkNixPak {
                         "privacy.globalprivacycontrol.enabled".Value = true;
                         "signon.autofillForms".Value = false;
                         "signon.formlessCapture.enabled".Value = false;
+                        "browser.nova.enabled".Value = false;
                     };
                 };
             };
