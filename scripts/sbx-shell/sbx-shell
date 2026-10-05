@@ -21,6 +21,10 @@ printWarn() {
     printf '\033[37m[\033[93mwarn\033[37m]\033[0m %s\n' "$1" >&2
 }
 
+printLog() {
+    printf '\033[37m[log]\033[0m %s\n' "$1" >&2
+}
+
 mkPwdId() {
     echo "$PWD" | md5sum | cut -d' ' -f1
 }
@@ -69,6 +73,82 @@ if ! mkdir -p "$NYX_SBX_SHELL_DIR"; then
 fi
 
 [[ "${1:-}" == "gc" ]] && {
+    for sbx_ctx_path in "$NYX_SBX_SHELL_DIR"/*; do
+        if ! sbx_ctx_id="$(basename "$sbx_ctx_path")"; then
+            printErr "couldnt resolve id for $sbx_ctx_path."
+            exit 1
+        fi
+
+        [[ ! -d "$sbx_ctx_path/refs" ]] && {
+            printWarn "$sbx_ctx_id has no refs directory... ignoring..."
+            continue;
+        };
+
+        valid_refs=0
+        for ref_entry in "$sbx_ctx_path/refs"/*; do
+            [[ ! -L "$ref_entry" ]] && {
+                if ! rm "$ref_entry"; then
+                    printErr "failed to remove $ref_entry. please remove it as it is not a symlink. skipping."
+                    continue;
+                fi
+                printWarn "non symlink file inside refs was found and removed: $ref_entry"
+                continue;
+            };
+
+            if ! ref_real_path="$(realpath "$ref_entry")"; then
+                printErr "could not resolve path for reference '$ref_entry'... might lead to bad gc count... exiting"
+                exit 1
+            fi
+
+            if [[ ! -d "$ref_real_path" ]]; then
+                printErr "ref entry '$ref_entry' does not resolve to a directory... might lead to bad gc count... exiting"
+                exit 1
+            fi
+
+            ctx_ref_path="$ref_real_path/.nyx-sbx"
+            if [[ ! -e "$ctx_ref_path" ]]; then
+                printLog "stale reference (no ref): $ref_entry -> $ref_real_path"
+                if ! rm "$ref_entry"; then
+                    printErr "couldnt remove stale reference entry '$ref_entry'. please remove it yourself or try again... skipping..."
+                    continue # safe to continue as intended it does not add to gc count
+                fi
+                continue
+            fi
+
+            if [[ ! -L "$ctx_ref_path" ]]; then
+                printErr "ref entry '$ref_entry' points to an existing context ref that is not a symlink located at '$ctx_ref_path'... you might want to delete this... might lead to bad gc count... exiting"
+                exit 1
+            fi
+
+            if ! resolved_ctx_ref_path="$(realpath "$ctx_ref_path")"; then
+                printErr "couldn't resolve ref entry '$ref_entry' ref back at '$ctx_ref_path'... might lead to bad gc count... exiting"
+                exit 1
+            fi
+
+            if [[ "$resolved_ctx_ref_path" != "$sbx_ctx_path" ]]; then
+                printLog "stale reference (diff ref): $ref_entry -> $ref_real_path ~> $resolved_ctx_ref_path"
+                if ! rm "$ref_entry"; then
+                    printErr "couldnt remove stale reference entry '$ref_entry'. please remove it yourself or try again... skipping..."
+                    continue # safe to continue as intended it does not add to gc count
+                fi
+            fi
+
+            printLog "valid: $ref_entry"
+            ((valid_refs += 1))
+        done
+
+        printLog "$sbx_ctx_path has $valid_refs valid reference(s)"
+        if (( valid_refs == 0 )); then
+            [[ "$sbx_ctx_path" != "$NYX_SBX_SHELL_DIR"/* ]] && {
+                printErr "stale sandbox context at '$sbx_ctx_path' has a questionable path and might be malformed. aborted possibly dangerous 'rm -rf'. please investigate."
+                exit 1
+            }
+            if ! rm -rf "$sbx_ctx_path"; then
+                printErr "failed to remove stale sandbox context: $sbx_id_path"
+                continue
+            fi
+        fi
+    done 
     exit 0
 };
 
