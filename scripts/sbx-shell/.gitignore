@@ -1,0 +1,5 @@
+**
+.*
+!.gitignore
+!sbx-shell
+!package.nix

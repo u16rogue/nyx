@@ -1,0 +1,152 @@
+#!/usr/bin/env bash
+
+usage() {
+    echo \
+"--------------------------------------------------------------------------------
+sbx-shell <mode> [...args]
+--------------------------------------------------------------------------------
+[mode]:
+    enter [id; optional] - (default) enter a sandbox
+    gc-full - garbage collect all sandbox refs
+    help
+        Print this." >&2
+}
+[[ "${1:-}" == "help" ]] && { usage; exit 0; };
+
+printErr() {
+    printf '\033[37m[\033[91merr\033[37m]\033[0m %s\n' "$1" >&2
+}
+
+printWarn() {
+    printf '\033[37m[\033[93mwarn\033[37m]\033[0m %s\n' "$1" >&2
+}
+
+mkPwdId() {
+    echo "$PWD" | md5sum | cut -d' ' -f1
+}
+
+# Errors that have already been reported and just need the signal to be processed.
+# Use for collecting errors.
+has_reported_err=0;
+assertHasReportedErr() {
+    [[ $has_reported_err == 1 ]] && exit 1;
+}
+
+# Assert programs
+for prog in bwrap which realpath md5sum cut ln basename nologin; do
+    if ! command -v "$prog" &> /dev/null; then
+        has_reported_err=1
+        printErr "missing required program '$prog' is not available."
+    fi
+done
+unset prog
+
+# Assert envs
+for name in HOME SHELL PWD; do
+    if [[ ! -v "$name" ]]; then
+        has_reported_err=1
+        printErr "env '$name' is not set"
+        continue
+    fi
+
+    value="${!name}"
+    if [[ -z "$value" ]]; then
+        has_reported_err=1
+        printErr "env '$name' is set but empty"
+        continue
+    fi
+done
+unset name value
+
+assertHasReportedErr
+
+# Initialize - Context source
+[[ -z "${NYX_SBX_SHELL_DIR:-}" ]] && printWarn "NYX_SBX_SHELL_DIR is not set. Defaulting to \$HOME/.nyx/sbx-shell"
+NYX_SBX_SHELL_DIR="${NYX_SBX_SHELL_DIR:-"$HOME/.nyx/sbx-shell"}"
+if ! mkdir -p "$NYX_SBX_SHELL_DIR"; then
+    printErr "couldn't create directory: $NYX_SBX_SHELL_DIR"
+    exit 1
+fi
+
+# Initialize - Sandbox context dir
+CURRENT_SBX_DIR=
+sbx_id_path="$PWD/.nyx-sbx"
+if [[ -L "$sbx_id_path" ]]; then # exists? just resolve
+    if ! CURRENT_SBX_DIR="$(realpath "$sbx_id_path")"; then
+        printErr "failed to resolve sandbox id"
+        exit 1
+    fi
+elif [[ -e "$sbx_id_path" ]]; then # exists... but isnt a symlink
+    printErr "sandbox id exists in '$sbx_id_path' but is not a symlink"
+    exit 1
+else
+    # No sbx context yet. Create a new one.
+    if ! sbx_id="${2:-$(mkPwdId)}"; then # if no id is provided use PWD hash
+        printErr "failed to resolve a sandbox id to use"
+        exit 1
+    fi
+    [[ -z "${2:-}" ]] && printWarn "no sandbox id is available nor provided. using generated id: $sbx_id"
+
+    CURRENT_SBX_DIR="$NYX_SBX_SHELL_DIR/$sbx_id"
+
+    if [[ -e "$CURRENT_SBX_DIR" && ! -d "$CURRENT_SBX_DIR" ]]; then
+        printErr "resolved sandbox context located at '$CURRENT_SBX_DIR' exists but is not a directory"
+        exit 1
+    fi
+
+    if ! mkdir -p "$CURRENT_SBX_DIR"; then
+        printErr "failed to create sandbox context directory at '$CURRENT_SBX_DIR'"
+        exit 1
+    fi
+
+    if ! ln -sfnT "$CURRENT_SBX_DIR" "$sbx_id_path"; then
+        printErr "failed to create sandbox identifier symlink at '$sbx_id_path'"
+        exit 1
+    fi
+    unset sbx_id
+fi
+unset sbx_id_path
+
+[[ ! -d "$CURRENT_SBX_DIR" ]] && {
+    printErr "invalid sandbox context resolved from id: '$CURRENT_SBX_DIR'"
+    exit 1
+};
+
+[[ "$CURRENT_SBX_DIR" != "$NYX_SBX_SHELL_DIR"/* ]] && {
+    printErr "resolved sandbox context ($CURRENT_SBX_DIR) isnt located inside NYX_SBX_SHELL_DIR ($NYX_SBX_SHELL_DIR)"
+    exit 1
+};
+
+# Initialize - Ref link back context
+if ! pwd_id="$(mkPwdId)"; then
+    printErr "cant resolve PWD id"
+    exit 1
+fi
+ref_at="$CURRENT_SBX_DIR/refs/$pwd_id"
+if [[ ! -L "$ref_at" ]]; then
+    if ! mkdir -p "$CURRENT_SBX_DIR/refs"; then
+        printErr "failed to create ref directory for sandbox context"
+        exit 1
+    fi
+    if ! ln -sfnT "$PWD" "$ref_at"; then
+        printErr "failed to create a ref entry for the sandbox id"
+        exit 1
+    fi
+    printWarn "sandbox context did not have current context in its refs. added at $ref_at"
+else
+    # ensure the registered ref points to current
+    if ! ref_to="$(realpath "$CURRENT_SBX_DIR/refs/$pwd_id")"; then
+        printErr "failed to resolve ref for sandbox context"
+        exit 1
+    fi
+    [[ "$ref_to" != "$PWD" ]] && {
+        printErr "the registered ref link in the sandbox context does not match the working directory"
+        exit 1;
+    };
+    unset ref_to
+fi
+unset ref_at pwd_id
+
+# Initialize - Users
+# Initialize - Hostname
+# Build - Env

@@ -76,6 +76,7 @@
                 (nyx.pkgs.moonlight-stream.override { overridesOpts.use_jail_tmpfix = true; })
                 nyx.pkgs.neovim
                 nyx.pkgs.obs-studio
+                nyx.pkgs.opencode
                 nyx.pkgs.remmina
                 nyx.pkgs.steamguard-cli
                 nyx.pkgs.tmux

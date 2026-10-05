@@ -10,4 +10,5 @@
 !nix-pkgvercmp/
 !nix-sync-lock-from-nixos/
 !nyx/
+!sbx-shell/
 !tmuxss/
