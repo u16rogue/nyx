@@ -7,7 +7,7 @@ sbx-shell <mode> [...args]
 --------------------------------------------------------------------------------
 [mode]:
     enter [id; optional] - (default) enter a sandbox
-    gc-full - garbage collect all sandbox refs
+    gc - garbage collect sandbox refs
     help
         Print this." >&2
 }
@@ -68,6 +68,15 @@ if ! mkdir -p "$NYX_SBX_SHELL_DIR"; then
     exit 1
 fi
 
+[[ "${1:-}" == "gc" ]] && {
+    exit 0
+};
+
+[[ "${1:-enter}" != "enter" ]] && {
+    printErr "unknown command: ${1:-}"
+    exit 1
+};
+
 # Initialize - Sandbox context dir
 CURRENT_SBX_DIR=
 sbx_id_path="$PWD/.nyx-sbx"
@@ -76,6 +85,11 @@ if [[ -L "$sbx_id_path" ]]; then # exists? just resolve
         printErr "failed to resolve sandbox id"
         exit 1
     fi
+
+    [[ ! -z "${2:-}" ]] && {
+        printErr "a sandbox symlink exists but enter id was still set. treated as an error to prevent unintended behavior."
+        exit 1
+    };
 elif [[ -e "$sbx_id_path" ]]; then # exists... but isnt a symlink
     printErr "sandbox id exists in '$sbx_id_path' but is not a symlink"
     exit 1
@@ -147,6 +161,59 @@ else
 fi
 unset ref_at pwd_id
 
-# Initialize - Users
+# Initialize - Group and Users
+passwd_at="$CURRENT_SBX_DIR/passwd"
+if [[ ! -f "$passwd_at" ]]; then
+    printWarn "sandbox context does not have a passwd file. generating."
+    if ! bin_nologin="$(which nologin)"; then
+        printErr "couldnt resolve nologin binary"
+        exit 1
+    fi
+
+    if ! id_un="$(id -un)"; then
+        printErr "failed to resolve user name"
+        exit 1
+    fi
+
+    if ! id_u="$(id -u)"; then
+        printErr "failed to resolve user id"
+        exit 1
+    fi
+
+    if ! id_g="$(id -g)"; then
+        printErr "failed to resolve user group"
+        exit 1
+    fi
+
+    if ! printf "root:x:0:0:System administrator:/root:%s\n%s:x:%s:%s::%s:%s" "$bin_nologin" "$id_un" "$id_u" "$id_g" "$HOME" "$bin_nologin" > "$passwd_at"; then
+        printErr "failed to create passwd file"
+        exit 1
+    fi
+    unset id_g id_u id_un bin_nologin
+fi
+unset passwd_at
+
+group_at="$CURRENT_SBX_DIR/group"
+if [[ ! -f "$group_at" ]]; then
+    printWarn "sandbox context does not have a group file. generating."
+
+    if ! id_gn="$(id -gn)"; then
+        printErr "failed to resolve user group name"
+        exit 1
+    fi
+
+    if ! id_g="$(id -g)"; then
+        printErr "failed to resolve user group"
+        exit 1
+    fi
+
+    if ! printf "root:x:0:\n%s:x:%s:" "$id_gn" "$id_g" > "$group_at"; then
+        printErr "failed to create group file"
+        exit 1
+    fi
+    unset id_g id_gn
+fi
+unset group_at
+
 # Initialize - Hostname
 # Build - Env
