@@ -131,6 +131,7 @@ fi
                     printErr "couldnt remove stale reference entry '$ref_entry'. please remove it yourself or try again... skipping..."
                     continue # safe to continue as intended it does not add to gc count
                 fi
+                continue
             fi
 
             printLog "valid: $ref_entry"
