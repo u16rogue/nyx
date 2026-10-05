@@ -12,6 +12,11 @@ if $nu.is-interactive {
 $env.PROMPT_COMMAND = {||
     let user_char = if $env.USER == 'root' { '#' } else { '$' }
     let hostname = (hostname | str trim)
+    let sbx_label = if ("NYX_SBX_ID" in $env) and (($env.NYX_SBX_ID | str trim) != '') {
+        $" (ansi light_cyan)[sbx:($env.NYX_SBX_ID)](ansi reset)"
+    } else {
+        ''
+    }
     let branch = (git branch --show-current | complete)
     let git_prompt = if $branch.exit_code == 0 {
         let name = ($branch.stdout | str trim)
@@ -25,7 +30,7 @@ $env.PROMPT_COMMAND = {||
         ''
     }
 
-    $"(ansi light_magenta)($env.USER)(ansi reset)@(ansi light_blue)($hostname) (ansi light_yellow)($env.PWD)(ansi magenta)($git_prompt)(ansi reset)\n[($user_char)] "
+    $"(ansi light_magenta)($env.USER)(ansi reset)@(ansi light_blue)($hostname)(sbx_label) (ansi light_yellow)($env.PWD)(ansi magenta)($git_prompt)(ansi reset)\n[($user_char)] "
 }
 $env.PROMPT_INDICATOR = ''
 $env.PROMPT_COMMAND_RIGHT = ''
