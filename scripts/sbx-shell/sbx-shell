@@ -5,15 +5,26 @@ set -o pipefail
 usage() {
     echo \
 "--------------------------------------------------------------------------------
-sbx-shell <mode> [...args]
+sbx-shell [...args] <mode> [...mode args]
 --------------------------------------------------------------------------------
 [mode]:
-    enter [id; optional] - (default) enter a sandbox
-    gc - garbage collect sandbox refs
-        Preserves contexts with missing refs directories or inspection errors.
-        Returns nonzero if cleanup is incomplete.
+    enter [id] (default)
+        enter a sandbox. id is required when no ctxlink exists.
+        use '?' (quoted) to generate an id from the working-directory path.
+        omit id to reuse an existing ctxlink, or provide its matching id.
+    gc
+        garbage collect stale backlinks and unreferenced contexts. preserves
+        contexts with missing backlink directories or inspection errors.
+        returns nonzero if cleanup is
+        incomplete.
+
+        the ctxlink (\$PWD/.nyx-sbx) is the authoritative reference
+        to a context. backlinks (context/refs/<directory-id>) point to working
+        directories so gc can discover their ctxlinks. enter
+        repairs a missing backlink when the ctxlink still points
+        to that context.
     help
-        Print this." >&2
+        print this." >&2
 }
 [[ "${1:-}" == "help" ]] && { usage; exit 0; };
 
@@ -29,7 +40,7 @@ printLog() {
     printf '\033[37m[log]\033[0m %s\n' "$1" >&2
 }
 
-mkPwdId() {
+mkDirectoryId() {
     printf '%s\n' "$PWD" | md5sum | cut -d' ' -f1
 }
 
@@ -86,7 +97,7 @@ unset name value
 
 assertHasReportedErr
 
-# Initialize - Context source
+# Initialize - Context store
 [[ -z "${NYX_SBX_SHELL_DIR:-}" ]] && printWarn "NYX_SBX_SHELL_DIR is not set. Defaulting to \$HOME/.nyx/sbx-shell"
 NYX_SBX_SHELL_DIR="${NYX_SBX_SHELL_DIR:-"$HOME/.nyx/sbx-shell"}"
 if ! mkdir -p -- "$NYX_SBX_SHELL_DIR"; then
@@ -110,104 +121,106 @@ fi
         printErr "cannot inspect sandbox store: $NYX_SBX_SHELL_DIR"
         exit 1
     fi
-    for sbx_ctx_path in "$NYX_SBX_SHELL_DIR"/*; do
-        if [[ -L "$sbx_ctx_path" || ! -d "$sbx_ctx_path" || ! -x "$sbx_ctx_path" ]]; then
-            printWarn "not an inspectable context directory: $sbx_ctx_path; preserving"
+    for context_path in "$NYX_SBX_SHELL_DIR"/*; do
+        if [[ -L "$context_path" || ! -d "$context_path" || ! -x "$context_path" ]]; then
+            printWarn "not an inspectable context directory: $context_path; preserving"
             gc_status=1
             continue
         fi
 
-        if [[ -L "$sbx_ctx_path/refs" || ! -d "$sbx_ctx_path/refs" || ! -r "$sbx_ctx_path/refs" || ! -x "$sbx_ctx_path/refs" ]]; then
-            printWarn "$sbx_ctx_path has no inspectable, non-symlink refs directory; preserving (remove incomplete contexts manually)"
+        # Keep the on-disk name refs for compatibility with existing contexts.
+        backlinks_dir="$context_path/refs"
+        if [[ -L "$backlinks_dir" || ! -d "$backlinks_dir" || ! -r "$backlinks_dir" || ! -x "$backlinks_dir" ]]; then
+            printWarn "$context_path has no inspectable, non-symlink backlink directory; preserving (remove incomplete contexts manually)"
             gc_status=1
             continue
         fi
 
-        valid_refs=0
-        uncertain_refs=0
-        for ref_entry in "$sbx_ctx_path/refs"/*; do
-            [[ ! -L "$ref_entry" ]] && {
-                if ! rm -- "$ref_entry"; then
-                    printErr "failed to remove $ref_entry. please remove it as it is not a symlink. skipping."
-                    uncertain_refs=1
+        live_ctxlink_count=0
+        has_uncertain_backlinks=0
+        for backlink_path in "$backlinks_dir"/*; do
+            [[ ! -L "$backlink_path" ]] && {
+                if ! rm -- "$backlink_path"; then
+                    printErr "failed to remove $backlink_path. please remove it as it is not a symlink. skipping."
+                    has_uncertain_backlinks=1
                     gc_status=1
                     continue;
                 fi
-                printWarn "non symlink file inside refs was found and removed: $ref_entry"
+                printWarn "non-symlink file inside backlink directory was found and removed: $backlink_path"
                 continue;
             };
 
-            if ! ref_real_path="$(realpath -m -- "$ref_entry")" || ! canInspectPath "$ref_real_path"; then
-                printErr "cannot inspect reference '$ref_entry'; preserving context"
-                uncertain_refs=1
+            if ! directory_path="$(realpath -m -- "$backlink_path")" || ! canInspectPath "$directory_path"; then
+                printErr "cannot inspect backlink '$backlink_path'; preserving context"
+                has_uncertain_backlinks=1
                 gc_status=1
                 continue
             fi
 
-            if [[ ! -e "$ref_real_path" && ! -L "$ref_real_path" ]]; then
-                printLog "stale reference (missing project): $ref_entry -> $ref_real_path"
-                if ! rm -- "$ref_entry"; then
-                    printErr "couldn't remove stale reference: $ref_entry"
-                    uncertain_refs=1
+            if [[ ! -e "$directory_path" && ! -L "$directory_path" ]]; then
+                printLog "stale backlink (missing working directory): $backlink_path -> $directory_path"
+                if ! rm -- "$backlink_path"; then
+                    printErr "couldn't remove stale backlink: $backlink_path"
+                    has_uncertain_backlinks=1
                     gc_status=1
                 fi
                 continue
             fi
 
-            if ! ref_real_path="$(realpath -e -- "$ref_entry")" || [[ ! -d "$ref_real_path" || ! -x "$ref_real_path" ]]; then
-                printErr "reference '$ref_entry' is not an inspectable directory; preserving context"
-                uncertain_refs=1
+            if ! directory_path="$(realpath -e -- "$backlink_path")" || [[ ! -d "$directory_path" || ! -x "$directory_path" ]]; then
+                printErr "backlink '$backlink_path' does not point to an inspectable working directory; preserving context"
+                has_uncertain_backlinks=1
                 gc_status=1
                 continue
             fi
 
-            ctx_ref_path="$ref_real_path/.nyx-sbx"
-            if [[ ! -e "$ctx_ref_path" && ! -L "$ctx_ref_path" ]]; then
-                printLog "stale reference (no ref): $ref_entry -> $ref_real_path"
-                if ! rm -- "$ref_entry"; then
-                    printErr "couldnt remove stale reference entry '$ref_entry'. please remove it yourself or try again... skipping..."
-                    uncertain_refs=1
+            ctxlink_path="$directory_path/.nyx-sbx"
+            if [[ ! -e "$ctxlink_path" && ! -L "$ctxlink_path" ]]; then
+                printLog "stale backlink (missing ctxlink): $backlink_path -> $directory_path"
+                if ! rm -- "$backlink_path"; then
+                    printErr "couldn't remove stale backlink '$backlink_path'. please remove it yourself or try again... skipping..."
+                    has_uncertain_backlinks=1
                     gc_status=1
                 fi
                 continue
             fi
 
-            if [[ ! -L "$ctx_ref_path" ]]; then
-                printErr "context ref '$ctx_ref_path' is not a symlink; preserving context"
-                uncertain_refs=1
+            if [[ ! -L "$ctxlink_path" ]]; then
+                printErr "ctxlink '$ctxlink_path' is not a symlink; preserving context"
+                has_uncertain_backlinks=1
                 gc_status=1
                 continue
             fi
 
-            if ! resolved_ctx_ref_path="$(realpath -m -- "$ctx_ref_path")" || ! canInspectPath "$resolved_ctx_ref_path" || [[ -L "$resolved_ctx_ref_path" ]]; then
-                printErr "couldn't inspect backlink '$ctx_ref_path'; preserving context"
-                uncertain_refs=1
+            if ! linked_context_path="$(realpath -m -- "$ctxlink_path")" || ! canInspectPath "$linked_context_path" || [[ -L "$linked_context_path" ]]; then
+                printErr "couldn't inspect ctxlink '$ctxlink_path'; preserving context"
+                has_uncertain_backlinks=1
                 gc_status=1
                 continue
             fi
 
-            if [[ "$resolved_ctx_ref_path" != "$sbx_ctx_path" ]]; then
-                printLog "stale reference (diff ref): $ref_entry -> $ref_real_path ~> $resolved_ctx_ref_path"
-                if ! rm -- "$ref_entry"; then
-                    printErr "couldnt remove stale reference entry '$ref_entry'. please remove it yourself or try again... skipping..."
-                    uncertain_refs=1
+            if [[ "$linked_context_path" != "$context_path" ]]; then
+                printLog "stale backlink (ctxlink points to another context): $backlink_path -> $directory_path ~> $linked_context_path"
+                if ! rm -- "$backlink_path"; then
+                    printErr "couldn't remove stale backlink '$backlink_path'. please remove it yourself or try again... skipping..."
+                    has_uncertain_backlinks=1
                     gc_status=1
                 fi
                 continue
             fi
 
-            printLog "valid: $ref_entry"
-            ((valid_refs += 1))
+            printLog "live backlink: $backlink_path"
+            ((live_ctxlink_count += 1))
         done
 
-        printLog "$sbx_ctx_path has $valid_refs valid reference(s)"
-        if (( uncertain_refs != 0 )); then
-            printWarn "preserving $sbx_ctx_path because its reference count is unreliable"
+        printLog "$context_path has $live_ctxlink_count live ctxlink(s)"
+        if (( has_uncertain_backlinks != 0 )); then
+            printWarn "preserving $context_path because its live ctxlink count is unreliable"
             continue
         fi
-        if (( valid_refs == 0 )); then
-            if ! rm -rf -- "$sbx_ctx_path"; then
-                printErr "failed to remove stale sandbox context: $sbx_ctx_path"
+        if (( live_ctxlink_count == 0 )); then
+            if ! rm -rf -- "$context_path"; then
+                printErr "failed to remove unreferenced context: $context_path"
                 gc_status=1
                 continue
             fi
@@ -222,105 +235,129 @@ fi
     exit 1
 };
 
-# Initialize - Sandbox context dir
+# Initialize - Ctxlink and context
 if ! PWD="$(pwd -P)"; then
     printErr "couldn't resolve working directory"
     exit 1
 fi
-CURRENT_SBX_DIR=
-sbx_id_path="$PWD/.nyx-sbx"
-if [[ -L "$sbx_id_path" ]]; then # exists? just resolve
-    if ! CURRENT_SBX_DIR="$(realpath "$sbx_id_path")"; then
-        printErr "failed to resolve sandbox id"
+context_path=
+ctxlink_path="$PWD/.nyx-sbx"
+if [[ -L "$ctxlink_path" ]]; then # Resolve the existing ctxlink.
+    if ! context_path="$(realpath "$ctxlink_path")"; then
+        printErr "failed to resolve context from ctxlink"
         exit 1
     fi
 
-    [[ ! -z "${2:-}" ]] && {
-        printErr "a sandbox symlink exists but enter id was still set. treated as an error to prevent unintended behavior."
-        exit 1
-    };
-elif [[ -e "$sbx_id_path" ]]; then # exists... but isnt a symlink
-    printErr "sandbox id exists in '$sbx_id_path' but is not a symlink"
+    # if id was intentionally provided check if its correct
+    if (( $# >= 2 )); then
+        context_id="$2"
+        if [[ "$context_id" == '?' ]]; then
+            if ! context_id="$(mkDirectoryId)"; then
+                printErr "failed to generate a context id"
+                exit 1
+            fi
+        fi
+        if [[ -z "$context_id" || "$context_id" == . || "$context_id" == .. || "$context_id" == */* ]]; then
+            printErr "context id must be a single directory name other than '.' or '..'"
+            exit 1
+        fi
+        if [[ "$NYX_SBX_SHELL_DIR/$context_id" != "$context_path" ]]; then
+            printErr "provided context id '$context_id' does not match ctxlink target '$context_path'"
+            exit 1
+        fi
+        unset context_id
+    fi
+elif [[ -e "$ctxlink_path" ]]; then # The ctxlink must be a symlink.
+    printErr "ctxlink exists at '$ctxlink_path' but is not a symlink. in the off chance this is intentional... do something about it."
     exit 1
 else
-    # No sbx context yet. Create a new one.
-    if ! sbx_id="${2:-$(mkPwdId)}"; then # if no id is provided use PWD hash
-        printErr "failed to resolve a sandbox id to use"
+    # Register this working directory with an existing or new context.
+    if [[ -z "${2:-}" ]]; then
+        printErr "context id is required when no ctxlink exists. use \`enter ?\` to auto generate one."
         exit 1
     fi
-    [[ -z "${2:-}" ]] && printWarn "no sandbox id is available nor provided. using generated id: $sbx_id"
-
-    if [[ -z "$sbx_id" || "$sbx_id" == . || "$sbx_id" == .. || "$sbx_id" == */* ]]; then
-        printErr "sandbox id must be a single directory name other than '.' or '..'"
-        exit 1
+    context_id="$2"
+    if [[ "$context_id" == '?' ]]; then
+        if ! context_id="$(mkDirectoryId)"; then
+            printErr "failed to generate a context id"
+            exit 1
+        fi
+        printLog "using generated context id: $context_id"
     fi
 
-    CURRENT_SBX_DIR="$NYX_SBX_SHELL_DIR/$sbx_id"
-
-    if [[ -L "$CURRENT_SBX_DIR" || ( -e "$CURRENT_SBX_DIR" && ! -d "$CURRENT_SBX_DIR" ) ]]; then
-        printErr "resolved sandbox context located at '$CURRENT_SBX_DIR' exists but is not a directory"
-        exit 1
-    fi
-
-    if ! mkdir -p "$CURRENT_SBX_DIR"; then
-        printErr "failed to create sandbox context directory at '$CURRENT_SBX_DIR'"
+    if [[ -z "$context_id" || "$context_id" == . || "$context_id" == .. || "$context_id" == */* ]]; then
+        printErr "context id must be a single directory name other than '.' or '..'"
         exit 1
     fi
 
-    if ! ln -sfnT "$CURRENT_SBX_DIR" "$sbx_id_path"; then
-        printErr "failed to create sandbox identifier symlink at '$sbx_id_path'"
+    context_path="$NYX_SBX_SHELL_DIR/$context_id"
+
+    if [[ -L "$context_path" || ( -e "$context_path" && ! -d "$context_path" ) ]]; then
+        printErr "resolved context located at '$context_path' exists but is not a non-symlink directory"
         exit 1
     fi
-    unset sbx_id
+
+    if ! mkdir -p "$context_path"; then
+        printErr "failed to create context directory at '$context_path'"
+        exit 1
+    fi
+
+    if ! ln -sfnT "$context_path" "$ctxlink_path"; then
+        printErr "failed to create ctxlink at '$ctxlink_path'"
+        exit 1
+    fi
+    unset context_id
 fi
-unset sbx_id_path
+unset ctxlink_path
 
-[[ ! -d "$CURRENT_SBX_DIR" ]] && {
-    printErr "invalid sandbox context resolved from id: '$CURRENT_SBX_DIR'"
+[[ ! -d "$context_path" ]] && {
+    printErr "invalid context '$context_path' resolved from ctxlink '$ctxlink_path'. possibly stale, please remove the context link."
     exit 1
 };
 
-[[ "${CURRENT_SBX_DIR%/*}" != "$NYX_SBX_SHELL_DIR" ]] && {
-    printErr "resolved sandbox context ($CURRENT_SBX_DIR) isnt located inside NYX_SBX_SHELL_DIR ($NYX_SBX_SHELL_DIR)"
+[[ "${context_path%/*}" != "$NYX_SBX_SHELL_DIR" ]] && {
+    printErr "resolved context ($context_path) isnt located inside NYX_SBX_SHELL_DIR ($NYX_SBX_SHELL_DIR)"
     exit 1
 };
 
-# Initialize - Ref link back context
-if [[ -L "$CURRENT_SBX_DIR/refs" || ( -e "$CURRENT_SBX_DIR/refs" && ! -d "$CURRENT_SBX_DIR/refs" ) ]]; then
-    printErr "refs must be a non-symlink directory: $CURRENT_SBX_DIR/refs"
+# Initialize - Context backlink to the working directory
+# Keep the on-disk name refs for compatibility with existing contexts.
+backlinks_dir="$context_path/refs"
+if [[ -L "$backlinks_dir" || ( -e "$backlinks_dir" && ! -d "$backlinks_dir" ) ]]; then
+    printErr "backlink directory must be a non-symlink directory: $backlinks_dir"
     exit 1
 fi
-if ! pwd_id="$(mkPwdId)"; then
-    printErr "cant resolve PWD id"
+if ! directory_id="$(mkDirectoryId)"; then
+    printErr "can't resolve working-directory id"
     exit 1
 fi
-ref_at="$CURRENT_SBX_DIR/refs/$pwd_id"
-if [[ ! -L "$ref_at" ]]; then
-    if ! mkdir -p "$CURRENT_SBX_DIR/refs"; then
-        printErr "failed to create ref directory for sandbox context"
+backlink_path="$backlinks_dir/$directory_id"
+if [[ ! -L "$backlink_path" ]]; then
+    if ! mkdir -p "$backlinks_dir"; then
+        printErr "failed to create backlink directory for context"
         exit 1
     fi
-    if ! ln -sfnT "$PWD" "$ref_at"; then
-        printErr "failed to create a ref entry for the sandbox id"
+    if ! ln -sfnT "$PWD" "$backlink_path"; then
+        printErr "failed to create a backlink for the context"
         exit 1
     fi
-    printWarn "sandbox context did not have current context in its refs. added at $ref_at"
+    printWarn "context had no backlink to the working directory. added at $backlink_path"
 else
-    # ensure the registered ref points to current
-    if ! ref_to="$(realpath "$CURRENT_SBX_DIR/refs/$pwd_id")"; then
-        printErr "failed to resolve ref for sandbox context"
+    # Ensure the existing backlink points to the current working directory.
+    if ! directory_path="$(realpath "$backlink_path")"; then
+        printErr "failed to resolve backlink for context"
         exit 1
     fi
-    [[ "$ref_to" != "$PWD" ]] && {
-        printErr "the registered ref link in the sandbox context does not match the working directory"
+    [[ "$directory_path" != "$PWD" ]] && {
+        printErr "the context backlink does not point to the current working directory"
         exit 1;
     };
-    unset ref_to
+    unset directory_path
 fi
-unset ref_at pwd_id
+unset backlink_path directory_id backlinks_dir
 
 # Initialize - Group and Users
-passwd_at="$CURRENT_SBX_DIR/passwd"
+passwd_at="$context_path/passwd"
 if [[ ! -f "$passwd_at" ]]; then
     printWarn "sandbox context does not have a passwd file. generating."
     if ! bin_nologin="$(which nologin)"; then
@@ -351,7 +388,7 @@ if [[ ! -f "$passwd_at" ]]; then
 fi
 unset passwd_at
 
-group_at="$CURRENT_SBX_DIR/group"
+group_at="$context_path/group"
 if [[ ! -f "$group_at" ]]; then
     printWarn "sandbox context does not have a group file. generating."
 
