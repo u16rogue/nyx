@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+set -o pipefail
+
 usage() {
     echo \
 "--------------------------------------------------------------------------------
@@ -8,6 +10,8 @@ sbx-shell <mode> [...args]
 [mode]:
     enter [id; optional] - (default) enter a sandbox
     gc - garbage collect sandbox refs
+        Preserves contexts with missing refs directories or inspection errors.
+        Returns nonzero if cleanup is incomplete.
     help
         Print this." >&2
 }
@@ -26,18 +30,36 @@ printLog() {
 }
 
 mkPwdId() {
-    echo "$PWD" | md5sum | cut -d' ' -f1
+    printf '%s\n' "$PWD" | md5sum | cut -d' ' -f1
+}
+
+# Check traversal before treating a failed existence check as a missing path.
+# Paths passed here must be absolute and normalized.
+canInspectPath() {
+    local path="$1" parent
+    parent="${path%/*}"
+    [[ -z "$parent" ]] && parent=/
+    if [[ "$parent" != / ]]; then
+        canInspectPath "$parent" || return 1
+    fi
+    if [[ -d "$parent" ]]; then
+        [[ -x "$parent" ]]
+    else
+        [[ ! -e "$parent" && ! -L "$parent" ]]
+    fi
 }
 
 # Errors that have already been reported and just need the signal to be processed.
 # Use for collecting errors.
 has_reported_err=0;
 assertHasReportedErr() {
-    [[ $has_reported_err == 1 ]] && exit 1;
+    if [[ $has_reported_err == 1 ]]; then
+        exit 1
+    fi
 }
 
 # Assert programs
-for prog in bwrap which realpath md5sum cut ln basename nologin; do
+for prog in realpath mkdir rm bwrap which md5sum cut ln nologin id; do
     if ! command -v "$prog" &> /dev/null; then
         has_reported_err=1
         printErr "missing required program '$prog' is not available."
@@ -67,69 +89,109 @@ assertHasReportedErr
 # Initialize - Context source
 [[ -z "${NYX_SBX_SHELL_DIR:-}" ]] && printWarn "NYX_SBX_SHELL_DIR is not set. Defaulting to \$HOME/.nyx/sbx-shell"
 NYX_SBX_SHELL_DIR="${NYX_SBX_SHELL_DIR:-"$HOME/.nyx/sbx-shell"}"
-if ! mkdir -p "$NYX_SBX_SHELL_DIR"; then
+if ! mkdir -p -- "$NYX_SBX_SHELL_DIR"; then
     printErr "couldn't create directory: $NYX_SBX_SHELL_DIR"
     exit 1
 fi
+if ! NYX_SBX_SHELL_DIR="$(realpath -e -- "$NYX_SBX_SHELL_DIR")"; then
+    printErr "couldn't resolve sandbox store directory"
+    exit 1
+fi
+if [[ "$NYX_SBX_SHELL_DIR" == / ]]; then
+    printErr "the sandbox store must not be the filesystem root"
+    exit 1
+fi
 
+# gc mode
 [[ "${1:-}" == "gc" ]] && {
+    shopt -s nullglob dotglob
+    gc_status=0
+    if [[ ! -r "$NYX_SBX_SHELL_DIR" || ! -x "$NYX_SBX_SHELL_DIR" ]]; then
+        printErr "cannot inspect sandbox store: $NYX_SBX_SHELL_DIR"
+        exit 1
+    fi
     for sbx_ctx_path in "$NYX_SBX_SHELL_DIR"/*; do
-        if ! sbx_ctx_id="$(basename "$sbx_ctx_path")"; then
-            printErr "couldnt resolve id for $sbx_ctx_path."
-            exit 1
+        if [[ -L "$sbx_ctx_path" || ! -d "$sbx_ctx_path" || ! -x "$sbx_ctx_path" ]]; then
+            printWarn "not an inspectable context directory: $sbx_ctx_path; preserving"
+            gc_status=1
+            continue
         fi
 
-        [[ ! -d "$sbx_ctx_path/refs" ]] && {
-            printWarn "$sbx_ctx_id has no refs directory... ignoring..."
-            continue;
-        };
+        if [[ -L "$sbx_ctx_path/refs" || ! -d "$sbx_ctx_path/refs" || ! -r "$sbx_ctx_path/refs" || ! -x "$sbx_ctx_path/refs" ]]; then
+            printWarn "$sbx_ctx_path has no inspectable, non-symlink refs directory; preserving (remove incomplete contexts manually)"
+            gc_status=1
+            continue
+        fi
 
         valid_refs=0
+        uncertain_refs=0
         for ref_entry in "$sbx_ctx_path/refs"/*; do
             [[ ! -L "$ref_entry" ]] && {
-                if ! rm "$ref_entry"; then
+                if ! rm -- "$ref_entry"; then
                     printErr "failed to remove $ref_entry. please remove it as it is not a symlink. skipping."
+                    uncertain_refs=1
+                    gc_status=1
                     continue;
                 fi
                 printWarn "non symlink file inside refs was found and removed: $ref_entry"
                 continue;
             };
 
-            if ! ref_real_path="$(realpath "$ref_entry")"; then
-                printErr "could not resolve path for reference '$ref_entry'... might lead to bad gc count... exiting"
-                exit 1
+            if ! ref_real_path="$(realpath -m -- "$ref_entry")" || ! canInspectPath "$ref_real_path"; then
+                printErr "cannot inspect reference '$ref_entry'; preserving context"
+                uncertain_refs=1
+                gc_status=1
+                continue
             fi
 
-            if [[ ! -d "$ref_real_path" ]]; then
-                printErr "ref entry '$ref_entry' does not resolve to a directory... might lead to bad gc count... exiting"
-                exit 1
+            if [[ ! -e "$ref_real_path" && ! -L "$ref_real_path" ]]; then
+                printLog "stale reference (missing project): $ref_entry -> $ref_real_path"
+                if ! rm -- "$ref_entry"; then
+                    printErr "couldn't remove stale reference: $ref_entry"
+                    uncertain_refs=1
+                    gc_status=1
+                fi
+                continue
+            fi
+
+            if ! ref_real_path="$(realpath -e -- "$ref_entry")" || [[ ! -d "$ref_real_path" || ! -x "$ref_real_path" ]]; then
+                printErr "reference '$ref_entry' is not an inspectable directory; preserving context"
+                uncertain_refs=1
+                gc_status=1
+                continue
             fi
 
             ctx_ref_path="$ref_real_path/.nyx-sbx"
-            if [[ ! -e "$ctx_ref_path" ]]; then
+            if [[ ! -e "$ctx_ref_path" && ! -L "$ctx_ref_path" ]]; then
                 printLog "stale reference (no ref): $ref_entry -> $ref_real_path"
-                if ! rm "$ref_entry"; then
+                if ! rm -- "$ref_entry"; then
                     printErr "couldnt remove stale reference entry '$ref_entry'. please remove it yourself or try again... skipping..."
-                    continue # safe to continue as intended it does not add to gc count
+                    uncertain_refs=1
+                    gc_status=1
                 fi
                 continue
             fi
 
             if [[ ! -L "$ctx_ref_path" ]]; then
-                printErr "ref entry '$ref_entry' points to an existing context ref that is not a symlink located at '$ctx_ref_path'... you might want to delete this... might lead to bad gc count... exiting"
-                exit 1
+                printErr "context ref '$ctx_ref_path' is not a symlink; preserving context"
+                uncertain_refs=1
+                gc_status=1
+                continue
             fi
 
-            if ! resolved_ctx_ref_path="$(realpath "$ctx_ref_path")"; then
-                printErr "couldn't resolve ref entry '$ref_entry' ref back at '$ctx_ref_path'... might lead to bad gc count... exiting"
-                exit 1
+            if ! resolved_ctx_ref_path="$(realpath -m -- "$ctx_ref_path")" || ! canInspectPath "$resolved_ctx_ref_path" || [[ -L "$resolved_ctx_ref_path" ]]; then
+                printErr "couldn't inspect backlink '$ctx_ref_path'; preserving context"
+                uncertain_refs=1
+                gc_status=1
+                continue
             fi
 
             if [[ "$resolved_ctx_ref_path" != "$sbx_ctx_path" ]]; then
                 printLog "stale reference (diff ref): $ref_entry -> $ref_real_path ~> $resolved_ctx_ref_path"
-                if ! rm "$ref_entry"; then
+                if ! rm -- "$ref_entry"; then
                     printErr "couldnt remove stale reference entry '$ref_entry'. please remove it yourself or try again... skipping..."
-                    continue # safe to continue as intended it does not add to gc count
+                    uncertain_refs=1
+                    gc_status=1
                 fi
                 continue
             fi
@@ -139,26 +201,32 @@ fi
         done
 
         printLog "$sbx_ctx_path has $valid_refs valid reference(s)"
+        if (( uncertain_refs != 0 )); then
+            printWarn "preserving $sbx_ctx_path because its reference count is unreliable"
+            continue
+        fi
         if (( valid_refs == 0 )); then
-            [[ "$sbx_ctx_path" != "$NYX_SBX_SHELL_DIR"/* ]] && {
-                printErr "stale sandbox context at '$sbx_ctx_path' has a questionable path and might be malformed. aborted possibly dangerous 'rm -rf'. please investigate."
-                exit 1
-            }
-            if ! rm -rf "$sbx_ctx_path"; then
-                printErr "failed to remove stale sandbox context: $sbx_id_path"
+            if ! rm -rf -- "$sbx_ctx_path"; then
+                printErr "failed to remove stale sandbox context: $sbx_ctx_path"
+                gc_status=1
                 continue
             fi
         fi
     done 
-    exit 0
+    exit "$gc_status"
 };
 
+# Enter mode
 [[ "${1:-enter}" != "enter" ]] && {
     printErr "unknown command: ${1:-}"
     exit 1
 };
 
 # Initialize - Sandbox context dir
+if ! PWD="$(pwd -P)"; then
+    printErr "couldn't resolve working directory"
+    exit 1
+fi
 CURRENT_SBX_DIR=
 sbx_id_path="$PWD/.nyx-sbx"
 if [[ -L "$sbx_id_path" ]]; then # exists? just resolve
@@ -182,9 +250,14 @@ else
     fi
     [[ -z "${2:-}" ]] && printWarn "no sandbox id is available nor provided. using generated id: $sbx_id"
 
+    if [[ -z "$sbx_id" || "$sbx_id" == . || "$sbx_id" == .. || "$sbx_id" == */* ]]; then
+        printErr "sandbox id must be a single directory name other than '.' or '..'"
+        exit 1
+    fi
+
     CURRENT_SBX_DIR="$NYX_SBX_SHELL_DIR/$sbx_id"
 
-    if [[ -e "$CURRENT_SBX_DIR" && ! -d "$CURRENT_SBX_DIR" ]]; then
+    if [[ -L "$CURRENT_SBX_DIR" || ( -e "$CURRENT_SBX_DIR" && ! -d "$CURRENT_SBX_DIR" ) ]]; then
         printErr "resolved sandbox context located at '$CURRENT_SBX_DIR' exists but is not a directory"
         exit 1
     fi
@@ -207,12 +280,16 @@ unset sbx_id_path
     exit 1
 };
 
-[[ "$CURRENT_SBX_DIR" != "$NYX_SBX_SHELL_DIR"/* ]] && {
+[[ "${CURRENT_SBX_DIR%/*}" != "$NYX_SBX_SHELL_DIR" ]] && {
     printErr "resolved sandbox context ($CURRENT_SBX_DIR) isnt located inside NYX_SBX_SHELL_DIR ($NYX_SBX_SHELL_DIR)"
     exit 1
 };
 
 # Initialize - Ref link back context
+if [[ -L "$CURRENT_SBX_DIR/refs" || ( -e "$CURRENT_SBX_DIR/refs" && ! -d "$CURRENT_SBX_DIR/refs" ) ]]; then
+    printErr "refs must be a non-symlink directory: $CURRENT_SBX_DIR/refs"
+    exit 1
+fi
 if ! pwd_id="$(mkPwdId)"; then
     printErr "cant resolve PWD id"
     exit 1
