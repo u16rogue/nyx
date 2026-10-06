@@ -2,23 +2,29 @@
 
 set -o pipefail
 
+ctxlink_marker_name=".nyx-sbx"
+
 usage() {
     echo \
 "--------------------------------------------------------------------------------
 sbx-shell [...args] <mode> [...mode args]
 --------------------------------------------------------------------------------
-[mode]:
+<mode>:
     enter [id] (default)
         enter a sandbox. id is required when no ctxlink exists.
         use '?' (quoted) to generate an id from the working-directory path.
         omit id to reuse an existing ctxlink, or provide its matching id.
+    madd [id] <r,rw> [path]
+        adds a [path] to be mounted when entering the sandbox as either a
+        <r> read only or as <rw> readwrite.
+        ! todo !
     gc
         garbage collect stale backlinks and unreferenced contexts. preserves
         contexts with missing backlink directories or inspection errors.
         returns nonzero if cleanup is
         incomplete.
 
-        the ctxlink (\$PWD/.nyx-sbx) is the authoritative reference
+        the ctxlink (\$PWD/$ctxlink_marker_name) is the authoritative reference
         to a context. backlinks (context/refs/<directory-id>) point to working
         directories so gc can discover their ctxlinks. enter
         repairs a missing backlink when the ctxlink still points
@@ -174,7 +180,7 @@ fi
                 continue
             fi
 
-            ctxlink_path="$directory_path/.nyx-sbx"
+            ctxlink_path="$directory_path/$ctxlink_marker_name"
             if [[ ! -e "$ctxlink_path" && ! -L "$ctxlink_path" ]]; then
                 printLog "stale backlink (missing ctxlink): $backlink_path -> $directory_path"
                 if ! rm -- "$backlink_path"; then
@@ -241,7 +247,7 @@ if ! PWD="$(pwd -P)"; then
     exit 1
 fi
 context_path=
-ctxlink_path="$PWD/.nyx-sbx"
+ctxlink_path="$PWD/$ctxlink_marker_name"
 if [[ -L "$ctxlink_path" ]]; then # Resolve the existing ctxlink.
     if ! context_path="$(realpath "$ctxlink_path")"; then
         printErr "failed to resolve context from ctxlink"
