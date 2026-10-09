@@ -1,10 +1,10 @@
 { lib, stdenv, stdenvNoCC, fetchurl, autoPatchelfHook, makeWrapper, ripgrep, ... }: stdenvNoCC.mkDerivation (finalAttrs: {
     pname = "opencode";
-    version = "2.0.22";
+    version = "2.0.26";
 
     src = fetchurl {
         url = "https://registry.npmjs.org/@opencode/cli-linux-x64-baseline/-/cli-linux-x64-baseline-${finalAttrs.version}.tgz";
-        hash = "sha512-nwVyjnug68v1A0emkDf28GUM37m5PjiFgu2Xbn3ujNHdnSd0v43Yr5G7TD1XTvAbXg+Zv46hX0CvINJorLuOFA==";
+        hash = "sha512-A+OonlFxNQh4xh/dI/YcDQlG+iiRhnIMTakSsavIyUuHvKo0hIrTUuwGSzSmspS+22QYrxqKTQ7bmF7jJvGwGQ==";
     };
 
     nativeBuildInputs = [ autoPatchelfHook makeWrapper ];
@@ -19,7 +19,18 @@
         install -Dm755 bin/opencode "$out/bin/opencode"
         wrapProgram "$out/bin/opencode" \
             --prefix PATH : ${lib.makeBinPath [ ripgrep ]} \
-            --set OPENCODE_DISABLE_AUTOUPDATE true
+            --set OPENCODE_DISABLE_AUTOUPDATE true \
+            --set-default OPENCODE_CLI_CONFIG_CONTENT ${lib.escapeShellArg (builtins.toJSON {
+                theme.name = "catppuccin";
+                keybinds = {
+                    leader = "ctrl+w";
+                    "input.delete.word.backward" = "ctrl+backspace,alt+backspace";
+                    "session.tab.previous" = "alt+z";
+                    "session.tab.next" = "alt+x";
+                    "terminal.toggle" = "<leader>t";
+                    "session.sidebar.toggle" = "<leader>b";
+                };
+            })}
         runHook postInstall
     '';
 
