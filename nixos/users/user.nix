@@ -89,6 +89,7 @@
                 pkgs.bubblewrap
                 pkgs.btop
                 pkgs.wiremix
+                pkgs.mpv
             ];
         };
     };
