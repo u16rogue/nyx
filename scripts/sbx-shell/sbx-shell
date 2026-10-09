@@ -18,8 +18,7 @@ sbx-shell [...args] <mode> [...mode args]
         adds a [path] to be mounted when entering the sandbox as either a
         <r> read only, <rw> readwrite, or to use an <o> overlay. sandbox
         id must be provided and '?' is available to auto generate a
-        deterministic an id.
-        ! todo !
+        deterministic id.
     nix-develop [devshell shard]
         helper mode that similarly behaves to the devshell sandboxing mechanism
         scripts. uses the \$PWD's folder name as <id>, adds \$PWD as a <rw>
@@ -249,33 +248,58 @@ fi
 
 # madd mode
 [[ "${1:-}" == "madd" ]] && {
+    [[ -z "${2:-}" ]] && { printErr "no id provided"; exit 1; }
 
-    # todo allow `?`
-    [[ -z "${2:-}" ]] && { printErr "no id provided"; exit 1; };
-    context_id=
-    if [[ "${2:-}" == "?" ]]; then
+    context_id="$2"
+    if [[ "$context_id" == '?' ]]; then
         if ! context_id="$(mkDirectoryId)"; then
             printErr "can't resolve working-directory id"
             exit 1
         fi
+        printLog "using generated context id: $context_id"
+    fi
+    if [[ -z "$context_id" || "$context_id" == . || "$context_id" == .. || "$context_id" == */* ]]; then
+        printErr "context id must be a single directory name other than '.' or '..'"
+        exit 1
     fi
 
-    # prolly just implement this as a simple regex... performance?
-    [[ "${3:-}" != "r" && "${3:-}" != "ro" && "${3:-}" != "o" ]] && { printErr "invalid mount mode provided"; exit 1; }
-    mount_mode="$3"
-    [[ "${3:-}" == "o" ]] && { printErr "not implemented"; exit 1; };
+    mount_mode_raw="${3:-}"
+    case "$mount_mode_raw" in
+        r|ro) mount_mode="ro" ;;
+        rw) mount_mode="rw" ;;
+        o) mount_mode="o" ;;
+        *) printErr "invalid mount mode provided; expected one of: r, rw, o"; exit 1 ;;
+    esac
 
-    [[ -z "${4:-}" || ! -d "$4" ]] && { printErr "invalid path provided"; exit 1; }
-    # TODO: validae mount path
-    mount_path="$4"
-    if ! mount_path_id="$(mkHash "$mount_path")"; then
-        printErr "couldn't create id for mount path $mount_path"
+    mount_path="${4:-$PWD}"
+    if ! mount_path="$(realpath -e -- "$mount_path")"; then
+        printErr "invalid path provided: $mount_path"
+        exit 1
+    fi
+    if [[ ! -d "$mount_path" ]]; then
+        printErr "mount path is not a directory: $mount_path"
+        exit 1
     fi
 
-    [[ ! -d "$NYX_SBX_SHELL_DIR/$context_id" ]] && printWarn "context id provided $context_id does not exist. this will be created.";
-    ctx_mount_final_store_path="$NYX_SBX_SHELL_DIR/$context_id/mount/$mount_mode"
+    context_path="$NYX_SBX_SHELL_DIR/$context_id"
+    if [[ -L "$context_path" || ( -e "$context_path" && ! -d "$context_path" ) ]]; then
+        printErr "resolved context located at '$context_path' exists but is not a non-symlink directory"
+        exit 1
+    fi
+
+    if ! mkdir -p "$context_path"; then
+        printErr "failed to create context directory at '$context_path'"
+        exit 1
+    fi
+
+    ctx_mount_final_store_path="$context_path/mount/$mount_mode"
     if ! mkdir -p "$ctx_mount_final_store_path"; then
         printErr "failed to create mount context store path: $ctx_mount_final_store_path"
+        exit 1
+    fi
+
+    if ! mount_path_id="$(mkHash "$mount_path")"; then
+        printErr "couldn't create id for mount path $mount_path"
         exit 1
     fi
 
@@ -284,6 +308,7 @@ fi
         exit 1
     fi
 
+    printLog "registered $mount_mode mount '$mount_path' in context '$context_id'"
     exit 0
 };
 
