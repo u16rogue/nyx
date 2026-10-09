@@ -10,13 +10,21 @@ usage() {
 sbx-shell [...args] <mode> [...mode args]
 --------------------------------------------------------------------------------
 <mode>:
-    enter [id] (default)
+    enter [id,?] (default)
         enter a sandbox. id is required when no ctxlink exists.
         use '?' (quoted) to generate an id from the working-directory path.
         omit id to reuse an existing ctxlink, or provide its matching id.
-    madd [id] <r,rw> [path]
+    madd [id,?] <r,rw,o> [dir]
         adds a [path] to be mounted when entering the sandbox as either a
-        <r> read only or as <rw> readwrite.
+        <r> read only, <rw> readwrite, or to use an <o> overlay. sandbox
+        id must be provided and '?' is available to auto generate a
+        deterministic an id.
+        ! todo !
+    nix-develop [devshell shard]
+        helper mode that similarly behaves to the devshell sandboxing mechanism
+        scripts. uses the \$PWD's folder name as <id>, adds \$PWD as a <rw>
+        mount, enters a devshell shard while enforcing host \$SHELL and post
+        executing any available \`.devshellshook.sh\` and \`.devshellspkgs.ls\`
         ! todo !
     gc
         garbage collect stale backlinks and unreferenced contexts. preserves
@@ -46,8 +54,12 @@ printLog() {
     printf '\033[37m[log]\033[0m %s\n' "$1" >&2
 }
 
+mkHash() {
+    printf '%s\n' "$1" | md5sum | cut -d' ' -f1
+}
+
 mkDirectoryId() {
-    printf '%s\n' "$PWD" | md5sum | cut -d' ' -f1
+    mkHash "$PWD"
 }
 
 # Check traversal before treating a failed existence check as a missing path.
@@ -235,7 +247,47 @@ fi
     exit "$gc_status"
 };
 
-# Enter mode
+# madd mode
+[[ "${1:-}" == "madd" ]] && {
+
+    # todo allow `?`
+    [[ -z "${2:-}" ]] && { printErr "no id provided"; exit 1; };
+    context_id=
+    if [[ "${2:-}" == "?" ]]; then
+        if ! context_id="$(mkDirectoryId)"; then
+            printErr "can't resolve working-directory id"
+            exit 1
+        fi
+    fi
+
+    # prolly just implement this as a simple regex... performance?
+    [[ "${3:-}" != "r" && "${3:-}" != "ro" && "${3:-}" != "o" ]] && { printErr "invalid mount mode provided"; exit 1; }
+    mount_mode="$3"
+    [[ "${3:-}" == "o" ]] && { printErr "not implemented"; exit 1; };
+
+    [[ -z "${4:-}" || ! -d "$4" ]] && { printErr "invalid path provided"; exit 1; }
+    # TODO: validae mount path
+    mount_path="$4"
+    if ! mount_path_id="$(mkHash "$mount_path")"; then
+        printErr "couldn't create id for mount path $mount_path"
+    fi
+
+    [[ ! -d "$NYX_SBX_SHELL_DIR/$context_id" ]] && printWarn "context id provided $context_id does not exist. this will be created.";
+    ctx_mount_final_store_path="$NYX_SBX_SHELL_DIR/$context_id/mount/$mount_mode"
+    if ! mkdir -p "$ctx_mount_final_store_path"; then
+        printErr "failed to create mount context store path: $ctx_mount_final_store_path"
+        exit 1
+    fi
+
+    if ! ln -sfnT "$mount_path" "$ctx_mount_final_store_path/$mount_path_id"; then
+        printErr "failed to register mount path '$mount_path' for sandbox context '$context_id'"
+        exit 1
+    fi
+
+    exit 0
+};
+
+# enter mode
 [[ "${1:-enter}" != "enter" ]] && {
     printErr "unknown command: ${1:-}"
     exit 1
