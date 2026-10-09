@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 
+# todo:
+# * decide if user is a boundry since we just assume the one who created the context is the only user
+# * safely mount nix socket
+
 set -o pipefail
 
 ctxlink_marker_name=".nyx-sbx"
@@ -64,16 +68,16 @@ mkDirectoryId() {
 # Check traversal before treating a failed existence check as a missing path.
 # Paths passed here must be absolute and normalized.
 canInspectPath() {
-    local path="$1" parent
-    parent="${path%/*}"
-    [[ -z "$parent" ]] && parent=/
-    if [[ "$parent" != / ]]; then
-        canInspectPath "$parent" || return 1
+    local _path="$1" _parent
+    _parent="${_path%/*}"
+    [[ -z "$_parent" ]] && _parent=/
+    if [[ "$_parent" != / ]]; then
+        canInspectPath "$_parent" || return 1
     fi
-    if [[ -d "$parent" ]]; then
-        [[ -x "$parent" ]]
+    if [[ -d "$_parent" ]]; then
+        [[ -x "$_parent" ]]
     else
-        [[ ! -e "$parent" && ! -L "$parent" ]]
+        [[ ! -e "$_parent" && ! -L "$_parent" ]]
     fi
 }
 
@@ -87,30 +91,30 @@ assertHasReportedErr() {
 }
 
 # Assert programs
-for prog in realpath mkdir rm bwrap which md5sum cut ln nologin id; do
-    if ! command -v "$prog" &> /dev/null; then
+for _prog in realpath mkdir rm bwrap which md5sum cut ln nologin id; do
+    if ! command -v "$_prog" &> /dev/null; then
         has_reported_err=1
-        printErr "missing required program '$prog' is not available."
+        printErr "missing required program '$_prog' is not available."
     fi
 done
-unset prog
+unset _prog
 
 # Assert envs
-for name in HOME SHELL PWD; do
-    if [[ ! -v "$name" ]]; then
+for _name in HOME SHELL PWD USER PATH; do
+    if [[ ! -v "$_name" ]]; then
         has_reported_err=1
-        printErr "env '$name' is not set"
+        printErr "env '$_name' is not set"
         continue
     fi
 
-    value="${!name}"
-    if [[ -z "$value" ]]; then
+    _value="${!_name}"
+    if [[ -z "$_value" ]]; then
         has_reported_err=1
-        printErr "env '$name' is set but empty"
+        printErr "env '$_name' is set but empty"
         continue
     fi
 done
-unset name value
+unset _name _value
 
 assertHasReportedErr
 
@@ -133,123 +137,127 @@ fi
 # gc mode
 [[ "${1:-}" == "gc" ]] && {
     shopt -s nullglob dotglob
-    gc_status=0
+    _gc_status=0
     if [[ ! -r "$NYX_SBX_SHELL_DIR" || ! -x "$NYX_SBX_SHELL_DIR" ]]; then
         printErr "cannot inspect sandbox store: $NYX_SBX_SHELL_DIR"
         exit 1
     fi
-    for context_path in "$NYX_SBX_SHELL_DIR"/*; do
-        if [[ -L "$context_path" || ! -d "$context_path" || ! -x "$context_path" ]]; then
-            printWarn "not an inspectable context directory: $context_path; preserving"
-            gc_status=1
+    for _context_path in "$NYX_SBX_SHELL_DIR"/*; do
+        if [[ -L "$_context_path" || ! -d "$_context_path" || ! -x "$_context_path" ]]; then
+            printWarn "not an inspectable context directory: $_context_path; preserving"
+            _gc_status=1
             continue
         fi
 
         # Keep the on-disk name refs for compatibility with existing contexts.
-        backlinks_dir="$context_path/refs"
-        if [[ -L "$backlinks_dir" || ! -d "$backlinks_dir" || ! -r "$backlinks_dir" || ! -x "$backlinks_dir" ]]; then
-            printWarn "$context_path has no inspectable, non-symlink backlink directory; preserving (remove incomplete contexts manually)"
-            gc_status=1
+        _backlinks_dir="$_context_path/refs"
+        if [[ -L "$_backlinks_dir" || ! -d "$_backlinks_dir" || ! -r "$_backlinks_dir" || ! -x "$_backlinks_dir" ]]; then
+            printWarn "$_context_path has no inspectable, non-symlink backlink directory; preserving (remove incomplete contexts manually)"
+            _gc_status=1
             continue
         fi
 
-        live_ctxlink_count=0
-        has_uncertain_backlinks=0
-        for backlink_path in "$backlinks_dir"/*; do
-            [[ ! -L "$backlink_path" ]] && {
-                if ! rm -- "$backlink_path"; then
-                    printErr "failed to remove $backlink_path. please remove it as it is not a symlink. skipping."
-                    has_uncertain_backlinks=1
-                    gc_status=1
+        _live_ctxlink_count=0
+        _has_uncertain_backlinks=0
+        for _backlink_path in "$_backlinks_dir"/*; do
+            [[ ! -L "$_backlink_path" ]] && {
+                if ! rm -- "$_backlink_path"; then
+                    printErr "failed to remove $_backlink_path. please remove it as it is not a symlink. skipping."
+                    _has_uncertain_backlinks=1
+                    _gc_status=1
                     continue;
                 fi
-                printWarn "non-symlink file inside backlink directory was found and removed: $backlink_path"
+                printWarn "non-symlink file inside backlink directory was found and removed: $_backlink_path"
                 continue;
             };
 
-            if ! directory_path="$(realpath -m -- "$backlink_path")" || ! canInspectPath "$directory_path"; then
-                printErr "cannot inspect backlink '$backlink_path'; preserving context"
-                has_uncertain_backlinks=1
-                gc_status=1
+            if ! _directory_path="$(realpath -m -- "$_backlink_path")" || ! canInspectPath "$_directory_path"; then
+                printErr "cannot inspect backlink '$_backlink_path'; preserving context"
+                _has_uncertain_backlinks=1
+                _gc_status=1
                 continue
             fi
 
-            if [[ ! -e "$directory_path" && ! -L "$directory_path" ]]; then
-                printLog "stale backlink (missing working directory): $backlink_path -> $directory_path"
-                if ! rm -- "$backlink_path"; then
-                    printErr "couldn't remove stale backlink: $backlink_path"
-                    has_uncertain_backlinks=1
-                    gc_status=1
+            if [[ ! -e "$_directory_path" && ! -L "$_directory_path" ]]; then
+                printLog "stale backlink (missing working directory): $_backlink_path -> $_directory_path"
+                if ! rm -- "$_backlink_path"; then
+                    printErr "couldn't remove stale backlink: $_backlink_path"
+                    _has_uncertain_backlinks=1
+                    _gc_status=1
                 fi
                 continue
             fi
 
-            if ! directory_path="$(realpath -e -- "$backlink_path")" || [[ ! -d "$directory_path" || ! -x "$directory_path" ]]; then
-                printErr "backlink '$backlink_path' does not point to an inspectable working directory; preserving context"
-                has_uncertain_backlinks=1
-                gc_status=1
+            if ! _directory_path="$(realpath -e -- "$_backlink_path")" || [[ ! -d "$_directory_path" || ! -x "$_directory_path" ]]; then
+                printErr "backlink '$_backlink_path' does not point to an inspectable working directory; preserving context"
+                _has_uncertain_backlinks=1
+                _gc_status=1
                 continue
             fi
 
-            ctxlink_path="$directory_path/$ctxlink_marker_name"
-            if [[ ! -e "$ctxlink_path" && ! -L "$ctxlink_path" ]]; then
-                printLog "stale backlink (missing ctxlink): $backlink_path -> $directory_path"
-                if ! rm -- "$backlink_path"; then
-                    printErr "couldn't remove stale backlink '$backlink_path'. please remove it yourself or try again... skipping..."
-                    has_uncertain_backlinks=1
-                    gc_status=1
+            _ctxlink_path="$_directory_path/$ctxlink_marker_name"
+            if [[ ! -e "$_ctxlink_path" && ! -L "$_ctxlink_path" ]]; then
+                printLog "stale backlink (missing ctxlink): $_backlink_path -> $_directory_path"
+                if ! rm -- "$_backlink_path"; then
+                    printErr "couldn't remove stale backlink '$_backlink_path'. please remove it yourself or try again... skipping..."
+                    _has_uncertain_backlinks=1
+                    _gc_status=1
                 fi
                 continue
             fi
 
-            if [[ ! -L "$ctxlink_path" ]]; then
-                printErr "ctxlink '$ctxlink_path' is not a symlink; preserving context"
-                has_uncertain_backlinks=1
-                gc_status=1
+            if [[ ! -L "$_ctxlink_path" ]]; then
+                printErr "ctxlink '$_ctxlink_path' is not a symlink; preserving context"
+                _has_uncertain_backlinks=1
+                _gc_status=1
                 continue
             fi
 
-            if ! linked_context_path="$(realpath -m -- "$ctxlink_path")" || ! canInspectPath "$linked_context_path" || [[ -L "$linked_context_path" ]]; then
-                printErr "couldn't inspect ctxlink '$ctxlink_path'; preserving context"
-                has_uncertain_backlinks=1
-                gc_status=1
+            if ! _linked_context_path="$(realpath -m -- "$_ctxlink_path")" || ! canInspectPath "$_linked_context_path" || [[ -L "$_linked_context_path" ]]; then
+                printErr "couldn't inspect ctxlink '$_ctxlink_path'; preserving context"
+                _has_uncertain_backlinks=1
+                _gc_status=1
                 continue
             fi
 
-            if [[ "$linked_context_path" != "$context_path" ]]; then
-                printLog "stale backlink (ctxlink points to another context): $backlink_path -> $directory_path ~> $linked_context_path"
-                if ! rm -- "$backlink_path"; then
-                    printErr "couldn't remove stale backlink '$backlink_path'. please remove it yourself or try again... skipping..."
-                    has_uncertain_backlinks=1
-                    gc_status=1
+            if [[ "$_linked_context_path" != "$_context_path" ]]; then
+                printLog "stale backlink (ctxlink points to another context): $_backlink_path -> $_directory_path ~> $_linked_context_path"
+                if ! rm -- "$_backlink_path"; then
+                    printErr "couldn't remove stale backlink '$_backlink_path'. please remove it yourself or try again... skipping..."
+                    _has_uncertain_backlinks=1
+                    _gc_status=1
                 fi
                 continue
             fi
 
-            printLog "live backlink: $backlink_path"
-            ((live_ctxlink_count += 1))
+            printLog "live backlink: $_backlink_path"
+            ((_live_ctxlink_count += 1))
         done
 
-        printLog "$context_path has $live_ctxlink_count live ctxlink(s)"
-        if (( has_uncertain_backlinks != 0 )); then
-            printWarn "preserving $context_path because its live ctxlink count is unreliable"
+        printLog "$_context_path has $_live_ctxlink_count live ctxlink(s)"
+        if (( _has_uncertain_backlinks != 0 )); then
+            printWarn "preserving $_context_path because its live ctxlink count is unreliable"
             continue
         fi
-        if (( live_ctxlink_count == 0 )); then
-            if ! rm -rf -- "$context_path"; then
-                printErr "failed to remove unreferenced context: $context_path"
-                gc_status=1
+        if (( _live_ctxlink_count == 0 )); then
+            if ! rm -rf -- "$_context_path"; then
+                printErr "failed to remove unreferenced context: $_context_path"
+                _gc_status=1
                 continue
             fi
         fi
     done 
-    exit "$gc_status"
+    exit "$_gc_status"
 };
 
 # madd mode
 [[ "${1:-}" == "madd" ]] && {
     [[ -z "${2:-}" ]] && { printErr "no id provided"; exit 1; }
 
+    if ! PWD="$(pwd -P)"; then
+        printErr "couldn't resolve working directory"
+        exit 1
+    fi
     context_id="$2"
     if [[ "$context_id" == '?' ]]; then
         if ! context_id="$(mkDirectoryId)"; then
@@ -262,22 +270,21 @@ fi
         printErr "context id must be a single directory name other than '.' or '..'"
         exit 1
     fi
-
-    mount_mode_raw="${3:-}"
-    case "$mount_mode_raw" in
-        r|ro) mount_mode="ro" ;;
-        rw) mount_mode="rw" ;;
-        o) mount_mode="o" ;;
+    _mount_mode_raw="${3:-}"
+    case "$_mount_mode_raw" in
+        r|ro) _mount_mode="ro" ;;
+        rw) _mount_mode="rw" ;;
+        o) _mount_mode="o" ;;
         *) printErr "invalid mount mode provided; expected one of: r, rw, o"; exit 1 ;;
     esac
 
-    mount_path="${4:-$PWD}"
-    if ! mount_path="$(realpath -e -- "$mount_path")"; then
-        printErr "invalid path provided: $mount_path"
+    _mount_path="${4:-$PWD}"
+    if ! _mount_path="$(realpath -e -- "$_mount_path")"; then
+        printErr "invalid path provided: $_mount_path"
         exit 1
     fi
-    if [[ ! -d "$mount_path" ]]; then
-        printErr "mount path is not a directory: $mount_path"
+    if [[ ! -d "$_mount_path" ]]; then
+        printErr "mount path is not a directory: $_mount_path"
         exit 1
     fi
 
@@ -292,23 +299,23 @@ fi
         exit 1
     fi
 
-    ctx_mount_final_store_path="$context_path/mount/$mount_mode"
-    if ! mkdir -p "$ctx_mount_final_store_path"; then
-        printErr "failed to create mount context store path: $ctx_mount_final_store_path"
+    _ctx_mount_final_store_path="$context_path/mount/$_mount_mode"
+    if ! mkdir -p "$_ctx_mount_final_store_path"; then
+        printErr "failed to create mount context store path: $_ctx_mount_final_store_path"
         exit 1
     fi
 
-    if ! mount_path_id="$(mkHash "$mount_path")"; then
-        printErr "couldn't create id for mount path $mount_path"
+    if ! _mount_path_id="$(mkHash "$_mount_path")"; then
+        printErr "couldn't create id for mount path $_mount_path"
         exit 1
     fi
 
-    if ! ln -sfnT "$mount_path" "$ctx_mount_final_store_path/$mount_path_id"; then
-        printErr "failed to register mount path '$mount_path' for sandbox context '$context_id'"
+    if ! ln -sfnT "$_mount_path" "$_ctx_mount_final_store_path/$_mount_path_id"; then
+        printErr "failed to register mount path '$_mount_path' for sandbox context '$context_id'"
         exit 1
     fi
 
-    printLog "registered $mount_mode mount '$mount_path' in context '$context_id'"
+    printLog "registered $_mount_mode mount '$_mount_path' in context '$context_id'"
     exit 0
 };
 
@@ -318,61 +325,51 @@ fi
     exit 1
 };
 
-# Initialize - Ctxlink and context
 if ! PWD="$(pwd -P)"; then
     printErr "couldn't resolve working directory"
     exit 1
 fi
+context_id=
+if (( $# >= 2 )); then
+    context_id="$2"
+    if [[ "$context_id" == '?' ]]; then
+        if ! context_id="$(mkDirectoryId)"; then
+            printErr "can't resolve working-directory id"
+            exit 1
+        fi
+        printLog "using generated context id: $context_id"
+    fi
+    if [[ -z "$context_id" || "$context_id" == . || "$context_id" == .. || "$context_id" == */* ]]; then
+        printErr "context id must be a single directory name other than '.' or '..'"
+        exit 1
+    fi
+fi
+
+# Initialize - Ctxlink and context
 context_path=
-ctxlink_path="$PWD/$ctxlink_marker_name"
-if [[ -L "$ctxlink_path" ]]; then # Resolve the existing ctxlink.
-    if ! context_path="$(realpath "$ctxlink_path")"; then
+_ctxlink_path="$PWD/$ctxlink_marker_name"
+if [[ -L "$_ctxlink_path" ]]; then # Resolve the existing ctxlink.
+    if ! context_path="$(realpath "$_ctxlink_path")"; then
         printErr "failed to resolve context from ctxlink"
         exit 1
     fi
 
     # if id was intentionally provided check if its correct
     if (( $# >= 2 )); then
-        context_id="$2"
-        if [[ "$context_id" == '?' ]]; then
-            if ! context_id="$(mkDirectoryId)"; then
-                printErr "failed to generate a context id"
-                exit 1
-            fi
-        fi
-        if [[ -z "$context_id" || "$context_id" == . || "$context_id" == .. || "$context_id" == */* ]]; then
-            printErr "context id must be a single directory name other than '.' or '..'"
-            exit 1
-        fi
         if [[ "$NYX_SBX_SHELL_DIR/$context_id" != "$context_path" ]]; then
             printErr "provided context id '$context_id' does not match ctxlink target '$context_path'"
             exit 1
         fi
-        unset context_id
     fi
-elif [[ -e "$ctxlink_path" ]]; then # The ctxlink must be a symlink.
-    printErr "ctxlink exists at '$ctxlink_path' but is not a symlink. in the off chance this is intentional... do something about it."
+elif [[ -e "$_ctxlink_path" ]]; then # The ctxlink must be a symlink.
+    printErr "ctxlink exists at '$_ctxlink_path' but is not a symlink. in the off chance this is intentional... do something about it."
     exit 1
 else
     # Register this working directory with an existing or new context.
-    if [[ -z "${2:-}" ]]; then
+    if [[ -z "$context_id" ]]; then
         printErr "context id is required when no ctxlink exists. use \`enter ?\` to auto generate one."
         exit 1
     fi
-    context_id="$2"
-    if [[ "$context_id" == '?' ]]; then
-        if ! context_id="$(mkDirectoryId)"; then
-            printErr "failed to generate a context id"
-            exit 1
-        fi
-        printLog "using generated context id: $context_id"
-    fi
-
-    if [[ -z "$context_id" || "$context_id" == . || "$context_id" == .. || "$context_id" == */* ]]; then
-        printErr "context id must be a single directory name other than '.' or '..'"
-        exit 1
-    fi
-
     context_path="$NYX_SBX_SHELL_DIR/$context_id"
 
     if [[ -L "$context_path" || ( -e "$context_path" && ! -d "$context_path" ) ]]; then
@@ -385,16 +382,14 @@ else
         exit 1
     fi
 
-    if ! ln -sfnT "$context_path" "$ctxlink_path"; then
-        printErr "failed to create ctxlink at '$ctxlink_path'"
+    if ! ln -sfnT "$context_path" "$_ctxlink_path"; then
+        printErr "failed to create ctxlink at '$_ctxlink_path'"
         exit 1
     fi
-    unset context_id
 fi
-unset ctxlink_path
 
 [[ ! -d "$context_path" ]] && {
-    printErr "invalid context '$context_path' resolved from ctxlink '$ctxlink_path'. possibly stale, please remove the context link."
+    printErr "invalid context '$context_path' resolved from ctxlink '$_ctxlink_path'. possibly stale, please remove the context link."
     exit 1
 };
 
@@ -402,96 +397,141 @@ unset ctxlink_path
     printErr "resolved context ($context_path) isnt located inside NYX_SBX_SHELL_DIR ($NYX_SBX_SHELL_DIR)"
     exit 1
 };
+unset _ctxlink_path
+context_id="${context_path##*/}"
 
 # Initialize - Context backlink to the working directory
 # Keep the on-disk name refs for compatibility with existing contexts.
-backlinks_dir="$context_path/refs"
-if [[ -L "$backlinks_dir" || ( -e "$backlinks_dir" && ! -d "$backlinks_dir" ) ]]; then
-    printErr "backlink directory must be a non-symlink directory: $backlinks_dir"
+_backlinks_dir="$context_path/refs"
+if [[ -L "$_backlinks_dir" || ( -e "$_backlinks_dir" && ! -d "$_backlinks_dir" ) ]]; then
+    printErr "backlink directory must be a non-symlink directory: $_backlinks_dir"
     exit 1
 fi
-if ! directory_id="$(mkDirectoryId)"; then
+if ! _directory_id="$(mkDirectoryId)"; then
     printErr "can't resolve working-directory id"
     exit 1
 fi
-backlink_path="$backlinks_dir/$directory_id"
-if [[ ! -L "$backlink_path" ]]; then
-    if ! mkdir -p "$backlinks_dir"; then
+_backlink_path="$_backlinks_dir/$_directory_id"
+if [[ ! -L "$_backlink_path" ]]; then
+    if ! mkdir -p "$_backlinks_dir"; then
         printErr "failed to create backlink directory for context"
         exit 1
     fi
-    if ! ln -sfnT "$PWD" "$backlink_path"; then
+    if ! ln -sfnT "$PWD" "$_backlink_path"; then
         printErr "failed to create a backlink for the context"
         exit 1
     fi
-    printWarn "context had no backlink to the working directory. added at $backlink_path"
+    printWarn "context had no backlink to the working directory. added at $_backlink_path"
 else
     # Ensure the existing backlink points to the current working directory.
-    if ! directory_path="$(realpath "$backlink_path")"; then
+    if ! _directory_path="$(realpath "$_backlink_path")"; then
         printErr "failed to resolve backlink for context"
         exit 1
     fi
-    [[ "$directory_path" != "$PWD" ]] && {
+    [[ "$_directory_path" != "$PWD" ]] && {
         printErr "the context backlink does not point to the current working directory"
         exit 1;
     };
-    unset directory_path
+    unset _directory_path
 fi
-unset backlink_path directory_id backlinks_dir
+unset _backlink_path _directory_id _backlinks_dir
 
 # Initialize - Group and Users
 passwd_at="$context_path/passwd"
 if [[ ! -f "$passwd_at" ]]; then
     printWarn "sandbox context does not have a passwd file. generating."
-    if ! bin_nologin="$(which nologin)"; then
+    if ! _bin_nologin="$(which nologin)"; then
         printErr "couldnt resolve nologin binary"
         exit 1
     fi
 
-    if ! id_un="$(id -un)"; then
+    if ! _id_un="$(id -un)"; then
         printErr "failed to resolve user name"
         exit 1
     fi
 
-    if ! id_u="$(id -u)"; then
+    if ! _id_u="$(id -u)"; then
         printErr "failed to resolve user id"
         exit 1
     fi
 
-    if ! id_g="$(id -g)"; then
+    if ! _id_g="$(id -g)"; then
         printErr "failed to resolve user group"
         exit 1
     fi
 
-    if ! printf "root:x:0:0:System administrator:/root:%s\n%s:x:%s:%s::%s:%s" "$bin_nologin" "$id_un" "$id_u" "$id_g" "$HOME" "$bin_nologin" > "$passwd_at"; then
+    if ! printf "root:x:0:0:System administrator:/root:%s\n%s:x:%s:%s::%s:%s" "$_bin_nologin" "$_id_un" "$_id_u" "$_id_g" "$HOME" "$_bin_nologin" > "$passwd_at"; then
         printErr "failed to create passwd file"
         exit 1
     fi
-    unset id_g id_u id_un bin_nologin
+    unset _id_g _id_u _id_un _bin_nologin
 fi
-unset passwd_at
 
 group_at="$context_path/group"
 if [[ ! -f "$group_at" ]]; then
     printWarn "sandbox context does not have a group file. generating."
 
-    if ! id_gn="$(id -gn)"; then
+    if ! _id_gn="$(id -gn)"; then
         printErr "failed to resolve user group name"
         exit 1
     fi
 
-    if ! id_g="$(id -g)"; then
+    if ! _id_g="$(id -g)"; then
         printErr "failed to resolve user group"
         exit 1
     fi
 
-    if ! printf "root:x:0:\n%s:x:%s:" "$id_gn" "$id_g" > "$group_at"; then
+    if ! printf "root:x:0:\n%s:x:%s:" "$_id_gn" "$_id_g" > "$group_at"; then
         printErr "failed to create group file"
         exit 1
     fi
-    unset id_g id_gn
+    unset _id_g _id_gn
 fi
-unset group_at
 
-# Initialize - Hostname
-# Build - Env
+ffs_root="$context_path/fs-root" # fake filesystem root -- note to self: i didnt create the root dir separately since we can just create the entire required path with the code below
+if [[ -z "${HOME:-}" ]] || ! mkdir -p -- "$ffs_root/$HOME"; then
+    printErr "couldn't create fake root and home directory for context"
+fi
+
+# Initialize bwrap
+args_for_bwrap=(                      \
+    --unshare-all                     \
+    --clearenv                        \
+    --die-with-parent                 \
+    --chdir "$PWD"                    \
+    --setenv NYX_SBX_ID "$context_id" \
+);
+
+# Setup root and fs
+args_for_bwrap+=(                                                           \
+    --bind "$ffs_root" "/"                                                  \
+    --ro-bind "/nix" "/nix"                                                 \
+    --dev /dev                                                              \
+    --proc /proc                                                            \
+    --tmpfs /tmp                                                            \
+    --ro-bind "$group_at" "/etc/group"                                      \
+    --ro-bind "$passwd_at" "/etc/passwd"                                    \
+    --ro-bind "/run/current-system/sw" "/run/current-system/sw"             \
+    --ro-bind "/etc/profiles/per-user/$USER" "/etc/profiles/per-user/$USER" \
+);
+
+# Setup env
+args_for_bwrap+=( \
+    --setenv PATH "$PATH"
+    --setenv USER "$USER"
+    --setenv HOME "$HOME"
+    --setenv SHELL "$SHELL"
+);
+
+args_for_bwrap+=(--ro-bind "$PWD/$ctxlink_marker_name" "$PWD/$ctxlink_marker_name"); # ensure that the ctx link is not modifiable todo: only do this if mounted
+
+# Bind mount registered paths and verify that path doesnt mount context store
+
+# Start bwrap
+if ! printf '%s' "exec bwrap ${args_for_bwrap[*]} -- $SHELL" > "$context_path/enter.sh"; then
+    printErr "failed to create enter script"
+    exit 1
+fi
+
+# shellcheck disable=SC1091
+source "$context_path/enter.sh"
