@@ -20,15 +20,22 @@
         wrapProgram "$out/bin/opencode" \
             --prefix PATH : ${lib.makeBinPath [ ripgrep ]} \
             --set OPENCODE_DISABLE_AUTOUPDATE true \
+            --set-default OPENCODE_CONFIG_CONTENT ${lib.escapeShellArg (builtins.toJSON {
+                permissions = [
+                    { action = "external_directory"; resource = "/nix/store/*"; effect = "allow"; }
+                    { action = "read"; resource = "/nix/store/*"; effect = "allow"; }
+                    { action = "edit"; resource = "/nix/store/*"; effect = "deny"; }
+                ];
+            })} \
             --set-default OPENCODE_CLI_CONFIG_CONTENT ${lib.escapeShellArg (builtins.toJSON {
                 theme.name = "catppuccin";
                 keybinds = {
-                    leader = "ctrl+w";
+                    leader = "space";
                     "input.delete.word.backward" = "ctrl+backspace,alt+backspace";
                     "session.tab.previous" = "alt+z";
                     "session.tab.next" = "alt+x";
-                    "terminal.toggle" = "<leader>t";
-                    "session.sidebar.toggle" = "<leader>b";
+                    "session.tab.close" = "alt+c";
+                    "session.list" = "<leader>f";
                 };
             })}
         runHook postInstall
