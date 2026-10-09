@@ -22,7 +22,7 @@ function fish_prompt
     if test "$git_prompt" = ""
         set git_prompt ''
     end
-    printf '%s%s%s@%s%s%s %s%s%s%s%s\n[%s] ' \
+    printf '%s%s%s@%s%s%s%s %s%s%s%s%s\n[%s] ' \
         (set_color brmagenta) $USER        \
         (set_color normal)                 \
         (set_color brblue) $hostname       \

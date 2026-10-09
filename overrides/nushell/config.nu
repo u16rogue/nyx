@@ -30,7 +30,7 @@ $env.PROMPT_COMMAND = {||
         ''
     }
 
-    $"(ansi light_magenta)($env.USER)(ansi reset)@(ansi light_blue)($hostname)(sbx_label) (ansi light_yellow)($env.PWD)(ansi magenta)($git_prompt)(ansi reset)\n[($user_char)] "
+    $"(ansi light_magenta)($env.USER)(ansi reset)@(ansi light_blue)($hostname)($sbx_label) (ansi light_yellow)($env.PWD)(ansi magenta)($git_prompt)(ansi reset)\n[($user_char)] "
 }
 $env.PROMPT_INDICATOR = ''
 $env.PROMPT_COMMAND_RIGHT = ''

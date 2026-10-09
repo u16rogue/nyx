@@ -30,7 +30,7 @@
             --set-default OPENCODE_CLI_CONFIG_CONTENT ${lib.escapeShellArg (builtins.toJSON {
                 theme.name = "catppuccin";
                 keybinds = {
-                    leader = "space";
+                    leader = "ctrl+space";
                     "input.delete.word.backward" = "ctrl+backspace,alt+backspace";
                     "session.tab.previous" = "alt+z";
                     "session.tab.next" = "alt+x";
