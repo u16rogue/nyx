@@ -14,10 +14,11 @@ usage() {
 sbx-shell [...args] <mode> [...mode args]
 --------------------------------------------------------------------------------
 <mode>:
-    enter [id,?] (default)
+    enter [id,?] [-- shell args...] (default)
         enter a sandbox. id is required when no ctxlink exists.
         use '?' (quoted) to generate an id from the working-directory path.
-        omit id to reuse an existing ctxlink, or provide its matching id.
+        omit id to reuse an existing ctxlink, or provide its matching id. to
+        forward args to the shell use the \`--\` as a separator.
     madd [id,?] <r,rw,o> [dir]
         adds a [path] to be mounted when entering the sandbox as either a
         <r> read only, <rw> readwrite, or to use an <o> overlay. sandbox
@@ -320,6 +321,21 @@ fi
 };
 
 # enter mode
+# Split shell arguments at the first separator, independently of mode arguments.
+_mode_args=()
+shell_args=()
+while (( $# > 0 )); do
+    if [[ "$1" == -- ]]; then
+        shift
+        shell_args=("$@")
+        break
+    fi
+    _mode_args+=("$1")
+    shift
+done
+set -- "${_mode_args[@]}"
+unset _mode_args
+
 [[ "${1:-enter}" != "enter" ]] && {
     printErr "unknown command: ${1:-}"
     exit 1
@@ -438,6 +454,7 @@ unset _backlink_path _directory_id _backlinks_dir
 
 # Initialize - Group and Users
 passwd_at="$context_path/passwd"
+[[ -L "$passwd_at" || ( -e "$passwd_at" && ! -f "$passwd_at" ) ]] && { printErr "passwd must be a non-symlink regular file: $passwd_at"; exit 1; };
 if [[ ! -f "$passwd_at" ]]; then
     printWarn "sandbox context does not have a passwd file. generating."
     if ! _bin_nologin="$(which nologin)"; then
@@ -468,6 +485,7 @@ if [[ ! -f "$passwd_at" ]]; then
 fi
 
 group_at="$context_path/group"
+[[ -L "$group_at" || ( -e "$group_at" && ! -f "$group_at" ) ]] && { printErr "group must be a non-symlink regular file: $group_at"; exit 1; };
 if [[ ! -f "$group_at" ]]; then
     printWarn "sandbox context does not have a group file. generating."
 
@@ -528,10 +546,10 @@ args_for_bwrap+=(--ro-bind "$PWD/$ctxlink_marker_name" "$PWD/$ctxlink_marker_nam
 # Bind mount registered paths and verify that path doesnt mount context store
 
 # Start bwrap
-if ! printf '%s' "exec bwrap ${args_for_bwrap[*]} -- $SHELL" > "$context_path/enter.sh"; then
+if ! printf '%q ' exec bwrap "${args_for_bwrap[@]}" -- "$SHELL" "${shell_args[@]}" > "$context_path/enter"; then
     printErr "failed to create enter script"
     exit 1
 fi
 
 # shellcheck disable=SC1091
-source "$context_path/enter.sh"
+source "$context_path/enter"
