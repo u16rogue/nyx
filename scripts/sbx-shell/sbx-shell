@@ -586,21 +586,28 @@ modeOf_enter() {
         --unshare-all                     \
         --clearenv                        \
         --die-with-parent                 \
-        --share-net                       \
         --chdir "$PWD"                    \
         --setenv NYX_SBX_ID "$context_id" \
     );
 
     # Setup root and fs
-    args_for_bwrap+=(                                                           \
-        --bind "$ffs_root" "/"                                                  \
-        --ro-bind "/nix" "/nix"                                                 \
-        --dev /dev                                                              \
-        --proc /proc                                                            \
-        --tmpfs /tmp                                                            \
-        --ro-bind "$group_at" "/etc/group"                                      \
-        --ro-bind "$passwd_at" "/etc/passwd"                                    \
+    args_for_bwrap+=(                        \
+        --bind "$ffs_root" "/"               \
+        --ro-bind "/nix" "/nix"              \
+        --dev /dev                           \
+        --proc /proc                         \
+        --tmpfs /tmp                         \
+        --ro-bind "$group_at" "/etc/group"   \
+        --ro-bind "$passwd_at" "/etc/passwd" \
 
+    );
+
+    # Setup network
+    args_for_bwrap+=(                               \
+        --share-net                                 \
+        --ro-bind /etc/resolv.conf /etc/resolv.conf \
+        --ro-bind /etc/ssl /etc/ssl                 \
+        --ro-bind /etc/static/ssl /etc/static/ssl   \
     );
 
     # Setup env
@@ -621,7 +628,6 @@ modeOf_enter() {
         "/nix/var/nix/profiles/default/bin"  \
         "/run/current-system/sw/bin"         \
     );
-
     local path resolved_path sandboxed_path=
     for path in "${known_paths[@]}"; do
         sandboxed_path="${sandboxed_path:+$sandboxed_path:}$path"
