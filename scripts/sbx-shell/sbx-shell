@@ -35,8 +35,7 @@ $prog_name [...args] <mode> [...mode args]
         ex: \`$prog_name mcover . node_modules\` - setup an overlay for the
         node_modules folder which routes all fs into the sandbox context
         specifically for this context link.
-        ! todo ! will also have to change refs to use a folder+symlink instead
-        of direct symlink
+        ! todo !
     nix-develop [devshell shard]
         helper mode that similarly behaves to the devshell sandboxing mechanism
         scripts. uses the \$PWD's folder name as <id>, adds \$PWD as a <rw>
@@ -48,8 +47,8 @@ $prog_name [...args] <mode> [...mode args]
         garbage collect stale backlinks and unreferenced contexts. preserves
         contexts with missing backlink directories or inspection errors.
         returns nonzero if cleanup is incomplete.
-        the ctxlink (\$PWD/$ctxlink_marker_name) is the authoritative reference
-        to a context. backlinks (context/refs/<directory-id>) point to working
+        the ctxlink (\$PWD/$ctxlink_marker_name/ptr) is the authoritative reference
+        to a context. backlinks (context/refs/<directory-id>/ptr) point to working
         directories so gc can discover their ctxlinks. enter
         repairs a missing backlink when the ctxlink still points
         to that context.
@@ -168,7 +167,6 @@ modeOf_gc() {
             continue
         fi
 
-        # Keep the on-disk name refs for compatibility with existing contexts.
         local backlinks_dir="$context_path/refs"
         if [[ -L "$backlinks_dir" || ! -d "$backlinks_dir" || ! -r "$backlinks_dir" || ! -x "$backlinks_dir" ]]; then
             printWarn "$context_path has no inspectable, non-symlink backlink directory; preserving (remove incomplete contexts manually)"
@@ -180,19 +178,22 @@ modeOf_gc() {
         local has_uncertain_backlinks=0
         local backlink_path
         for backlink_path in "$backlinks_dir"/*; do
-            [[ ! -L "$backlink_path" ]] && {
-                if ! rm -- "$backlink_path"; then
-                    printErr "failed to remove $backlink_path. please remove it as it is not a symlink. skipping."
-                    has_uncertain_backlinks=1
-                    gc_status=1
-                    continue;
-                fi
-                printWarn "non-symlink file inside backlink directory was found and removed: $backlink_path"
-                continue;
-            };
+            if [[ -L "$backlink_path" || ! -d "$backlink_path" || ! -x "$backlink_path" ]]; then
+                printErr "backlink '$backlink_path' is not an inspectable, non-symlink directory; preserving context"
+                has_uncertain_backlinks=1
+                gc_status=1
+                continue
+            fi
+            local backlink_ptr="$backlink_path/ptr"
+            if [[ ! -L "$backlink_ptr" ]]; then
+                printErr "backlink '$backlink_path' has no ptr symlink; preserving context"
+                has_uncertain_backlinks=1
+                gc_status=1
+                continue
+            fi
 
             local directory_path
-            if ! directory_path="$(realpath -m -- "$backlink_path")" || ! canInspectPath "$directory_path"; then
+            if ! directory_path="$(realpath -m -- "$backlink_ptr")" || ! canInspectPath "$directory_path"; then
                 printErr "cannot inspect backlink '$backlink_path'; preserving context"
                 has_uncertain_backlinks=1
                 gc_status=1
@@ -201,7 +202,7 @@ modeOf_gc() {
 
             if [[ ! -e "$directory_path" && ! -L "$directory_path" ]]; then
                 printLog "stale backlink (missing working directory): $backlink_path -> $directory_path"
-                if ! rm -- "$backlink_path"; then
+                if ! rm -rf -- "$backlink_path"; then
                     printErr "couldn't remove stale backlink: $backlink_path"
                     has_uncertain_backlinks=1
                     gc_status=1
@@ -209,7 +210,7 @@ modeOf_gc() {
                 continue
             fi
 
-            if ! directory_path="$(realpath -e -- "$backlink_path")" || [[ ! -d "$directory_path" || ! -x "$directory_path" ]]; then
+            if ! directory_path="$(realpath -e -- "$backlink_ptr")" || [[ ! -d "$directory_path" || ! -x "$directory_path" ]]; then
                 printErr "backlink '$backlink_path' does not point to an inspectable working directory; preserving context"
                 has_uncertain_backlinks=1
                 gc_status=1
@@ -219,7 +220,7 @@ modeOf_gc() {
             local ctxlink_path="$directory_path/$ctxlink_marker_name"
             if [[ ! -e "$ctxlink_path" && ! -L "$ctxlink_path" ]]; then
                 printLog "stale backlink (missing ctxlink): $backlink_path -> $directory_path"
-                if ! rm -- "$backlink_path"; then
+                if ! rm -rf -- "$backlink_path"; then
                     printErr "couldn't remove stale backlink '$backlink_path'. please remove it yourself or try again... skipping..."
                     has_uncertain_backlinks=1
                     gc_status=1
@@ -227,15 +228,22 @@ modeOf_gc() {
                 continue
             fi
 
-            if [[ ! -L "$ctxlink_path" ]]; then
-                printErr "ctxlink '$ctxlink_path' is not a symlink; preserving context"
+            if [[ -L "$ctxlink_path" || ! -d "$ctxlink_path" || ! -x "$ctxlink_path" ]]; then
+                printErr "ctxlink '$ctxlink_path' is not an inspectable, non-symlink directory; preserving context"
+                has_uncertain_backlinks=1
+                gc_status=1
+                continue
+            fi
+            local ctxlink_ptr="$ctxlink_path/ptr"
+            if [[ ! -L "$ctxlink_ptr" ]]; then
+                printErr "ctxlink '$ctxlink_path' has no ptr symlink; preserving context"
                 has_uncertain_backlinks=1
                 gc_status=1
                 continue
             fi
 
             local linked_context_path
-            if ! linked_context_path="$(realpath -m -- "$ctxlink_path")" || ! canInspectPath "$linked_context_path" || [[ -L "$linked_context_path" ]]; then
+            if ! linked_context_path="$(realpath -m -- "$ctxlink_ptr")" || ! canInspectPath "$linked_context_path" || [[ -L "$linked_context_path" ]]; then
                 printErr "couldn't inspect ctxlink '$ctxlink_path'; preserving context"
                 has_uncertain_backlinks=1
                 gc_status=1
@@ -244,7 +252,7 @@ modeOf_gc() {
 
             if [[ "$linked_context_path" != "$context_path" ]]; then
                 printLog "stale backlink (ctxlink points to another context): $backlink_path -> $directory_path ~> $linked_context_path"
-                if ! rm -- "$backlink_path"; then
+                if ! rm -rf -- "$backlink_path"; then
                     printErr "couldn't remove stale backlink '$backlink_path'. please remove it yourself or try again... skipping..."
                     has_uncertain_backlinks=1
                     gc_status=1
@@ -287,21 +295,7 @@ modeOf_madd() {
     fi
     local context_id="$2"
     if [[ "$context_id" == . ]]; then
-        local ctxlink_path="$PWD/$ctxlink_marker_name"
-        if [[ ! -L "$ctxlink_path" ]]; then
-            printErr "madd '.' requires a working-directory ctxlink: $ctxlink_path"
-            exit 1
-        fi
-        local context_path
-        if ! context_path="$(realpath -e -- "$ctxlink_path")"; then
-            printErr "failed to resolve existing context from ctxlink '$ctxlink_path'"
-            exit 1
-        fi
-        if [[ "${context_path%/*}" != "$NYX_SBX_SHELL_DIR" ]]; then
-            printErr "resolved context ($context_path) isnt located inside NYX_SBX_SHELL_DIR ($NYX_SBX_SHELL_DIR)"
-            exit 1
-        fi
-        context_id="${context_path##*/}"
+        context_id="$(resolveCtxlink "$PWD/$ctxlink_marker_name")" || exit 1
     fi
     validateContextId "$context_id" || exit 1
     local mount_mode
@@ -349,13 +343,17 @@ modeOf_madd() {
     exit 0
 };
 
-# Print the context id resolved from the supplied ctxlink path.
+# Print the context id resolved from the supplied ctxlink directory's ptr.
 resolveCtxlink() {
     if (( $# != 1 )) || [[ -z "$1" ]]; then
         printErr "resolveCtxlink requires a ctxlink path"
         return 1
     fi
-    local ctxlink_path="$1"
+    if [[ -L "$1" || ! -d "$1" || ! -x "$1" ]]; then
+        printErr "a non-symlink ctxlink directory is required at '$1'. use init to establish one."
+        return 1
+    fi
+    local ctxlink_path="$1/ptr"
     if [[ ! -L "$ctxlink_path" ]]; then
         printErr "a ctxlink symlink is required at '$ctxlink_path'. use init to establish one."
         return 1
@@ -406,11 +404,21 @@ createBacklink() {
         return 1
     fi
 
+    local backlink_path="$backlinks_dir/$backlink_id"
+    if [[ -L "$backlink_path" || ( -e "$backlink_path" && ! -d "$backlink_path" ) ]]; then
+        printErr "backlink must be a non-symlink directory: $backlink_path"
+        return 1
+    fi
+    if ! mkdir -p "$backlink_path"; then
+        printErr "failed to create backlink directory: $backlink_path"
+        return 1
+    fi
+
     # considering backlink id's are hash based i guess checking if it exists already doesnt matter
     # since collisions are unlikely and a tampered backlink is non of my concern. like why would
     # you set it to point somewhere else and expect not to break things. this should overwrite it
     # regardless
-    if ! ln -sfnT "$backlink_target" "$backlinks_dir/$backlink_id"; then
+    if ! ln -sfnT "$backlink_target" "$backlink_path/ptr"; then
         printErr "failed to create a backlink for the context"
         return 1
     fi
@@ -456,7 +464,11 @@ modeOf_init() {
         exit 1
     fi
 
-    if ! ln -sT "$context_path" "$ctxlink_path"; then
+    if ! mkdir -- "$ctxlink_path"; then
+        printErr "failed to create ctxlink directory at '$ctxlink_path'"
+        exit 1
+    fi
+    if ! ln -sT "$context_path" "$ctxlink_path/ptr"; then
         printErr "failed to create ctxlink at '$ctxlink_path'"
         exit 1
     fi
@@ -503,12 +515,16 @@ modeOf_enter() {
     fi
 
     local backlink_path="$backlinks_dir/$backlink_id"
-    if [[ ! -L "$backlink_path" ]]; then
+    if [[ -L "$backlink_path" || ( -e "$backlink_path" && ! -d "$backlink_path" ) ]]; then
+        printErr "backlink must be a non-symlink directory: $backlink_path"
+        exit 1
+    fi
+    if [[ ! -L "$backlink_path/ptr" ]]; then
         createBacklink "$context_id" "$PWD" || exit 1
         printWarn "context had no backlink to '$PWD'. added at $backlink_path"
     else
         local resolved_backlink_target
-        if ! resolved_backlink_target="$(realpath "$backlink_path")"; then
+        if ! resolved_backlink_target="$(realpath "$backlink_path/ptr")"; then
             printErr "failed to resolve backlink for context"
             exit 1
         fi
@@ -637,8 +653,12 @@ modeOf_enter() {
     done
     args_for_bwrap+=(--setenv PATH "$sandboxed_path")
 
-    # ensure that the ctx link is not modifiable todo: only do this if mounted
-    args_for_bwrap+=(--ro-bind "$PWD/$ctxlink_marker_name" "$PWD/$ctxlink_marker_name");
+    # Hide the context link within the sandbox
+    # Q: why `tmpfs` instead of `ro-bind` ?
+    # A: because the previous `.devshellshook` implementation that stored some extra context
+    # info in the same `$PWD` that did so caused nix evaluation with `path:.` to copy that folder into
+    # the nix store. this just outright prevents it.
+    args_for_bwrap+=(--tmpfs "$PWD/$ctxlink_marker_name");
 
     # Bind mount registered paths and verify that path doesnt mount context store
 
