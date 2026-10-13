@@ -1,28 +1,35 @@
 local mainMod = "SUPER"
 
+local function resolvePathCommand(name)
+    return '"$(PATH="${NYX_HYPR_PATH:+$NYX_HYPR_PATH:}$PATH" command -v ' .. name .. ')"'
+end
+
 hl.env("XCURSOR_SIZE", "24")
 hl.env("HYPRCURSOR_SIZE", "24")
 
 hl.on("hyprland.start", function()
-    hl.exec_cmd("hyprpaper")
-    hl.exec_cmd("waybar")
+    hl.exec_cmd(resolvePathCommand("hyprpaper"))
+    hl.exec_cmd(resolvePathCommand("waybar"))
 end)
 
-hl.bind(mainMod .. " + X", hl.dsp.exec_cmd("uwsm stop"))
+hl.bind(mainMod .. " + X", hl.dsp.exec_cmd(resolvePathCommand("uwsm") .. " stop"))
 hl.bind(mainMod .. " + TAB", hl.dsp.group.toggle())
 hl.bind(mainMod .. " + SHIFT + Q", hl.dsp.window.kill())
 hl.bind(mainMod .. " + SHIFT + SPACE", hl.dsp.window.float({ action = "toggle" }))
-hl.bind(mainMod .. " + SHIFT + GRAVE", hl.dsp.exec_cmd("ghostty"))
-hl.bind(mainMod .. " + GRAVE", hl.dsp.exec_cmd("fuzzel"))
+hl.bind(mainMod .. " + SHIFT + GRAVE", hl.dsp.exec_cmd(resolvePathCommand("ghostty")))
+hl.bind(mainMod .. " + GRAVE", hl.dsp.exec_cmd(resolvePathCommand("fuzzel")))
 hl.bind(mainMod .. " + F1", hl.dsp.dpms({ action = "toggle" }))
-hl.bind("CTRL + PRINT", hl.dsp.exec_cmd([=[grim -g "$(slurp -o -r -c '##ff0000ff')" -t png - | satty -f - -o - --fullscreen --actions-on-enter save-to-file --early-exit | wl-copy]=]))
+hl.bind("CTRL + PRINT", hl.dsp.exec_cmd(string.format(
+    [=[%s -g "$(%s -o -r -c '##ff0000ff')" -t png - | %s -f - -o - --fullscreen --actions-on-enter save-to-file --early-exit | %s]=],
+    resolvePathCommand("grim"), resolvePathCommand("slurp"), resolvePathCommand("satty"), resolvePathCommand("wl-copy")
+)))
 
 hl.bind(mainMod .. " + D", hl.dsp.focus({ direction = "r" }))
 hl.bind(mainMod .. " + A", hl.dsp.focus({ direction = "l" }))
 hl.bind(mainMod .. " + W", hl.dsp.focus({ direction = "u" }))
 hl.bind(mainMod .. " + S", hl.dsp.focus({ direction = "d" }))
 
-local waybarSignal = hl.dsp.exec_cmd("pkill -SIGUSR1 waybar")
+local waybarSignal = hl.dsp.exec_cmd(resolvePathCommand("pkill") .. " -SIGUSR1 waybar")
 -- Waybar starts hidden: toggle on modifier press, then toggle back on release.
 hl.bind(mainMod .. " + SUPER_L", waybarSignal, { ignore_mods = true, transparent = true })
 hl.bind(mainMod .. " + SUPER_L", waybarSignal, { ignore_mods = true, transparent = true, release = true })

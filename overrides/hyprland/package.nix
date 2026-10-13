@@ -20,17 +20,18 @@
     # Keep this basename so UWSM loads its start-hyprland environment plugin.
     session = pkgs.writeShellApplication {
         name = "start-hyprland";
-        runtimeInputs = [
+        # Config commands use this for lookup without exporting it as PATH to apps.
+        runtimeEnv.NYX_HYPR_PATH = lib.makeBinPath [
             hyprland hyprpaper waybar fuzzel ghostty
             xwayland grim slurp satty wl-clipboard procps dbus systemd uwsm xdg-utils
         ];
         text = /*bash*/ ''
             export NIXOS_OZONE_WL=1
             # Wait for $XDG_RUNTIME_DIR/doc before Nixpak apps bind it; failure aborts startup.
-            busctl --user call \
+            ${systemd}/bin/busctl --user call \
                 org.freedesktop.portal.Documents /org/freedesktop/portal/documents \
                 org.freedesktop.portal.Documents GetMountPoint >/dev/null
-            exec ${hyprland}/bin/start-hyprland -- --config ${hyprland_config} "$@"
+            exec ${hyprland}/bin/start-hyprland --path ${hyprland}/bin/Hyprland -- --config ${hyprland_config} "$@"
         '';
     };
 
