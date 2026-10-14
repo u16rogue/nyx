@@ -9,6 +9,7 @@ set -o pipefail
 prog_name="sbx-shell"
 ctxlink_marker_name=".nyx-sbx"
 
+# Clanker modified: madd/mcover help text
 modeOf_help() {
     echo \
 "--------------------------------------------------------------------------------
@@ -24,18 +25,20 @@ $prog_name [...args] <mode> [...mode args]
     enter [-- shell args...] (default)
         enter the sandbox selected by an existing, valid ctxlink.
         forward args to the shell using \`--\` as a separator.
-    madd <id|.> <r,rw,o> [dir]
-        adds a [dir] to be mounted when entering the sandbox as either a
+    madd <id|.> <r,rw,o> <dir>
+        adds a <dir> to be mounted when entering the sandbox as either a
         <r> read only, <rw> readwrite, or to use an <o> overlay. sandbox
         id must name an existing context. use '.' to select the context from
-        the working-directory ctxlink.
-    mcover <ctxlink> [path]
-        applies an overlay for a context linked target for the specified path
-        which only activates for this specific target when entered.
-        ex: \`$prog_name mcover . node_modules\` - setup an overlay for the
-        node_modules folder which routes all fs into the sandbox context
-        specifically for this context link.
-        ! todo !
+        the working-directory ctxlink. e.g. \`$prog_name madd . rw .\`.
+    mcover <id|ctxlink> <path>
+        covers a directory with an initially empty, persistent directory stored
+        in the context. host contents are hidden, not used as an overlay lower.
+        selects an existing context by id or ctxlink; use './name' for a linked
+        directory whose name could be an id. path is a required sandbox target;
+        relative paths use the working directory, regardless of the selector.
+        covers are shared across all ctxlinks to that context and do not add refs.
+        root, runtime-critical paths and context metadata cannot be covered.
+        ex: \`$prog_name mcover . node_modules\`
     nix-develop [devshell shard]
         helper mode that similarly behaves to the devshell sandboxing mechanism
         scripts. uses the \$PWD's folder name as <id>, adds \$PWD as a <rw>
@@ -106,7 +109,7 @@ assertEnvironment() {
 
     # Assert programs
     local prog
-    for prog in realpath mkdir rm bwrap which md5sum cut ln nologin id; do
+    for prog in realpath mkdir rm bwrap which md5sum cut ln nologin id getent readlink sort; do
         if ! command -v "$prog" &> /dev/null; then
             has_reported_err=1
             printErr "missing required program '$prog' is not available."
@@ -136,8 +139,8 @@ assertEnvironment() {
 assertEnvironment || exit 1
 
 # Initialize - Context store
-[[ -z "${NYX_SBX_SHELL_DIR:-}" ]] && printWarn "NYX_SBX_SHELL_DIR is not set. Defaulting to \$HOME/.nyx/sbx-shell"
-NYX_SBX_SHELL_DIR="${NYX_SBX_SHELL_DIR:-"$HOME/.nyx/sbx-shell"}"
+[[ -z "${NYX_SBX_SHELL_DIR:-}" ]] && printWarn "NYX_SBX_SHELL_DIR is not set. Defaulting to \$HOME/.nyx/$prog_name"
+NYX_SBX_SHELL_DIR="${NYX_SBX_SHELL_DIR:-"$HOME/.nyx/$prog_name"}"
 if ! mkdir -p -- "$NYX_SBX_SHELL_DIR"; then
     printErr "couldn't create directory: $NYX_SBX_SHELL_DIR"
     exit 1
@@ -280,12 +283,146 @@ modeOf_gc() {
     exit "$gc_status"
 };
 
+# Clanker implemented
+# Fill the supplied array with account homes as well as HOME. Changing HOME
+# must not make the account's real home mountable.
+readHomePaths() {
+    local -n home_paths_result="$1"
+    local accounts home _
+    if ! accounts="$(getent passwd)"; then
+        printErr "couldn't enumerate account home directories"
+        return 1
+    fi
+    home_paths_result=("$HOME")
+    while IFS=: read -r _ _ _ _ _ home _; do
+        [[ "$home" == /* ]] && home_paths_result+=("$home")
+    done <<< "$accounts"
+
+    local i
+    for i in "${!home_paths_result[@]}"; do
+        if ! home_paths_result[i]="$(realpath -m -- "${home_paths_result[$i]}")"; then
+            printErr "couldn't resolve account home directory"
+            return 1
+        fi
+    done
+}
+
+# Clanker implemented
+# The first argument is an absolute, normalized path; the rest are protected
+# homes. A home may contain projects, but must not be mounted whole.
+validateMountPath() {
+    local path="$1"
+    shift
+    if [[ "$path" != /* || "${path%/*}" == "" ]]; then
+        printErr "cannot mount the root or a top-level directory: $path"
+        return 1
+    fi
+    if [[ "${path%/*}" == /home ]]; then
+        printErr "cannot mount a home directory: $path"
+        return 1
+    fi
+    case "$path/" in
+        /bin/*|/sbin/*|/lib/*|/lib32/*|/lib64/*|/libx32/*|/boot/*|/dev/*|/etc/*|/proc/*|/run/*|/sys/*|/usr/*|/nix/*|/var/*)
+            printErr "cannot mount a host system directory: $path"
+            return 1 ;;
+        */"$ctxlink_marker_name"/*)
+            printErr "cannot mount ctxlink metadata: $path"
+            return 1 ;;
+    esac
+    if [[ "$path" == "$NYX_SBX_SHELL_DIR" || "$path" == "$NYX_SBX_SHELL_DIR/"* || "$NYX_SBX_SHELL_DIR" == "$path/"* ]]; then
+        printErr "cannot mount the sandbox store, its contents, or its parents: $path"
+        return 1
+    fi
+    local home
+    for home in "$@"; do
+        if [[ "$path" == "$home" || "$home" == "$path/"* ]]; then
+            printErr "cannot mount a home directory or its parents: $path"
+            return 1
+        fi
+    done
+}
+
+# Clanker implemented
+# Check both the requested host path and its symlink target. The remaining
+# arguments are protected homes, just like validateMountPath.
+resolveMountPath() {
+    local path="$1"
+    shift
+    path="$(realpath -ms -- "$path")" || return 1
+    validateMountPath "$path" "$@" || return 1
+    path="$(realpath -m -- "$path")" || return 1
+    validateMountPath "$path" "$@" || return 1
+    printf '%s\n' "$path"
+}
+
+# Clanker implemented
+# Cover destinations are sandbox paths, not host sources. Keep metadata and
+# the runtime needed to enter the sandbox out of their reach.
+validateCoverTarget() {
+    local path="$1" reserved_path
+    if [[ "$path" != /* || "$path" == / ]]; then
+        printErr "cover target must be an absolute, non-root sandbox path: $path"
+        return 1
+    fi
+    case "$path/" in
+        */"$ctxlink_marker_name"/*)
+            printErr "cannot cover ctxlink metadata: $path"
+            return 1 ;;
+    esac
+    for reserved_path in "$NYX_SBX_SHELL_DIR" /dev /proc /sys /nix \
+        /etc/passwd /etc/group /etc/resolv.conf /etc/ssl /etc/static/ssl \
+        /run/wrappers/bin /run/current-system/sw/bin \
+        "$HOME/.nix-profile/bin" "$HOME/.local/state/nix/profile/bin" \
+        "/etc/profiles/per-user/$USER/bin"; do
+        if [[ "$path" == "$reserved_path" || "$path" == "$reserved_path/"* || "$reserved_path" == "$path/"* ]]; then
+            printErr "cover target overlaps a reserved sandbox path '$reserved_path': $path"
+            return 1
+        fi
+    done
+}
+
+# Clanker implemented
+# Normalize the destination without resolving symlinks in the host filesystem:
+# only paths actually mounted in the sandbox affect its destination lookup.
+resolveCoverTarget() {
+    local path
+    path="$(realpath -ms -- "$1")" || return 1
+    validateCoverTarget "$path" || return 1
+    printf '%s\n' "$path"
+}
+
+# Clanker implemented
+# Allow missing components, but require every existing component to be a
+# searchable, non-symlink directory. The input must be absolute and normalized.
+dirPathAssert() {
+    local path="$1"
+    while [[ "$path" != / ]]; do
+        if [[ -L "$path" || ( -e "$path" && ( ! -d "$path" || ! -x "$path" ) ) ]]; then
+            printErr "expected a searchable, non-symlink directory: $path"
+            return 1
+        fi
+        path="${path%/*}"
+        [[ -z "$path" ]] && path=/
+    done
+}
+
+# Clanker implemented
+dirPathCreate() {
+    dirPathAssert "$1" || return 1
+    if ! mkdir -p -- "$1"; then
+        printErr "couldn't create directory: $1"
+        return 1
+    fi
+}
+
 # madd mode
 modeOf_madd() {
-    if (( $# < 3 || $# > 4 )); then
-        printErr "usage: sbx-shell madd <id|.> <r,rw,o> [dir]"
+    # BEGIN CLANKER EDIT: require an explicit madd directory
+    if (( $# != 4 )) || [[ -z "$4" ]]; then
+        printErr "usage: $prog_name madd <id|.> <r,rw,o> <dir> (use '.' for the working directory)"
         exit 1
     fi
+    # END CLANKER EDIT: require an explicit madd directory
     [[ -z "${2:-}" ]] && { printErr "no id provided"; exit 1; }
 
     local PWD
@@ -306,11 +443,12 @@ modeOf_madd() {
         *) printErr "invalid mount mode provided; expected one of: r, rw, o"; exit 1 ;;
     esac
 
-    local mount_path="${4:-$PWD}"
-    if ! mount_path="$(realpath -e -- "$mount_path")"; then
-        printErr "invalid path provided: $mount_path"
-        exit 1
-    fi
+    # BEGIN CLANKER EDIT: validate madd source
+    local -a home_paths=()
+    readHomePaths home_paths || exit 1
+    local mount_path
+    mount_path="$(resolveMountPath "$4" "${home_paths[@]}")" || exit 1
+    # END CLANKER EDIT: validate madd source
     if [[ ! -d "$mount_path" ]]; then
         printErr "mount path is not a directory: $mount_path"
         exit 1
@@ -323,10 +461,13 @@ modeOf_madd() {
     fi
 
     local ctx_mount_final_store_path="$context_path/mount/$mount_mode"
-    if ! mkdir -p "$ctx_mount_final_store_path"; then
-        printErr "failed to create mount context store path: $ctx_mount_final_store_path"
-        exit 1
-    fi
+    # BEGIN CLANKER EDIT: validate mount registration directories
+    local mode
+    for mode in ro rw o; do
+        dirPathAssert "$context_path/mount/$mode" || exit 1
+    done
+    dirPathCreate "$ctx_mount_final_store_path" || exit 1
+    # END CLANKER EDIT: validate mount registration directories
 
     local mount_path_id
     if ! mount_path_id="$(mkHash "$mount_path")"; then
@@ -334,14 +475,51 @@ modeOf_madd() {
         exit 1
     fi
 
-    if ! ln -sfnT "$mount_path" "$ctx_mount_final_store_path/$mount_path_id"; then
+    # BEGIN CLANKER EDIT: register and replace mount mode
+    if ! ln -sfnT -- "$mount_path" "$ctx_mount_final_store_path/$mount_path_id"; then
         printErr "failed to register mount path '$mount_path' for sandbox context '$context_id'"
         exit 1
     fi
 
+    for mode in ro rw o; do
+        [[ "$mode" == "$mount_mode" ]] && continue
+        if ! rm -f -- "$context_path/mount/$mode/$mount_path_id"; then
+            printErr "couldn't remove previous mount mode for '$mount_path'"
+            exit 1
+        fi
+    done
+    # END CLANKER EDIT: register and replace mount mode
+
     printLog "registered $mount_mode mount '$mount_path' in context '$context_id'"
     exit 0
 };
+
+# BEGIN CLANKER: mcover mode
+# mcover mode
+# Clanker implemented
+modeOf_mcover() {
+    if (( $# != 3 )) || [[ -z "$2" || -z "$3" ]]; then
+        printErr "usage: $prog_name mcover <id|ctxlink> <path>"
+        exit 1
+    fi
+
+    local context_id
+    context_id="$(resolveContextSelector "$2")" || exit 1
+    local cover_target
+    cover_target="$(resolveCoverTarget "$3")" || exit 1
+
+    local cover_id cover_directory
+    cover_id="$(mkHash "$cover_target")" || exit 1
+    cover_directory="$NYX_SBX_SHELL_DIR/$context_id/cover/$cover_id"
+    dirPathCreate "$cover_directory/upper" || exit 1
+    if ! ln -sfnT -- "$cover_target" "$cover_directory/ptr"; then
+        printErr "couldn't register cover for '$cover_target'"
+        exit 1
+    fi
+    printLog "registered cover '$cover_target' in context '$context_id'"
+    exit 0
+};
+# END CLANKER: mcover mode
 
 # Print the context id resolved from the supplied ctxlink directory's ptr.
 resolveCtxlink() {
@@ -373,6 +551,35 @@ resolveCtxlink() {
     fi
     local context_id="${context_path##*/}"
     validateContextId "$context_id" || return 1
+    printf '%s\n' "$context_id"
+}
+
+# Clanker implemented
+# Resolve an existing context without creating or repairing any references.
+# Bare alphanumeric selectors are ids; use './name' to select a directory.
+resolveContextSelector() {
+    local selector="$1" context_id context_path ctxlink_path
+    local LC_ALL=C
+    if [[ -z "$selector" ]]; then
+        printErr "a context id or ctxlink is required"
+        return 1
+    fi
+    if [[ "$selector" =~ ^[A-Za-z0-9]+$ ]]; then
+        context_id="$selector"
+    else
+        ctxlink_path="$(realpath -ms -- "$selector")" || return 1
+        if [[ "${ctxlink_path##*/}" != "$ctxlink_marker_name" ]]; then
+            ctxlink_path="$(realpath -e -- "$selector")/$ctxlink_marker_name" || return 1
+        fi
+        context_id="$(resolveCtxlink "$ctxlink_path")" || return 1
+    fi
+    validateContextId "$context_id" || return 1
+    context_path="$NYX_SBX_SHELL_DIR/$context_id"
+    dirPathAssert "$context_path" || return 1
+    if [[ ! -d "$context_path" ]]; then
+        printErr "context must already exist: $context_path"
+        return 1
+    fi
     printf '%s\n' "$context_id"
 }
 
@@ -427,7 +634,7 @@ createBacklink() {
 # init mode
 modeOf_init() {
     if (( $# != 2 )); then
-        printErr "usage: sbx-shell init <id,?>"
+        printErr "usage: $prog_name init <id,?>"
         exit 1
     fi
 
@@ -478,7 +685,272 @@ modeOf_init() {
     exit 0
 };
 
+# BEGIN CLANKER: mount loading and entry validation helpers
+# Clanker implemented
+# List immediate directory entries into the supplied array, including hidden
+# entries. Missing directories produce an empty array; inspection errors fail.
+dirEntriesRead() {
+    local directory_path="$1" entry
+    local -n listed_entries="$2"
+    listed_entries=()
+    dirPathAssert "$directory_path" || return 1
+    [[ ! -d "$directory_path" ]] && return 0
+    if [[ ! -r "$directory_path" || ! -x "$directory_path" ]]; then
+        printErr "cannot read directory: $directory_path"
+        return 1
+    fi
+
+    # Glob settings change only in the discovery subprocess. The caller reads
+    # the resulting entries through its supplied array name.
+    # shellcheck disable=SC2034
+    mapfile -d '' -t listed_entries < <(
+        shopt -u failglob
+        unset GLOBIGNORE
+        shopt -s nullglob dotglob
+        for entry in "$directory_path"/*; do
+            printf '%s\0' "$entry"
+        done
+    )
+}
+
+# Clanker implemented
+# Read a registration's absolute, normalized target and verify its path id.
+# Mount and cover readers apply their respective source/destination policies.
+readRegistrationTarget() {
+    local ptr="$1" path_id="$2" path resolved_path
+    if [[ ! -L "$ptr" ]]; then
+        printErr "registration must be a symlink: $ptr"
+        return 1
+    fi
+    path="$(readlink -- "$ptr")" || return 1
+    resolved_path="$(realpath -ms -- "$path")" || return 1
+    if [[ "$path" != /* || "$path" != "$resolved_path" ]]; then
+        printErr "registration target must be absolute and normalized: $ptr"
+        return 1
+    fi
+    local expected_id
+    expected_id="$(mkHash "$path")" || return 1
+    if [[ "$path_id" != "$expected_id" ]]; then
+        printErr "registration has an incorrect path id: $ptr"
+        return 1
+    fi
+    printf '%s\n' "$path"
+}
+
+# Clanker implemented
+# Read madd registrations into the mode and state arrays supplied by name.
+# The home-policy array is also passed by name.
+readMountRegistrations() {
+    local registry_path="$1" mount_mode="$2" state_store_path="$3"
+    local -n registered_modes="$4" registered_states="$5"
+    local -n registry_homes="$6"
+    local -a entries=()
+    dirEntriesRead "$registry_path" entries || return 1
+    local entry mount_path resolved_path
+    for entry in "${entries[@]}"; do
+        mount_path="$(readRegistrationTarget "$entry" "${entry##*/}")" || return 1
+        resolved_path="$(resolveMountPath "$mount_path" "${registry_homes[@]}")" || return 1
+        if [[ "$mount_path" != "$resolved_path" ]]; then
+            printErr "registered mount path has changed; register it again: $mount_path"
+            return 1
+        fi
+        if [[ ! -d "$mount_path" ]]; then
+            printErr "registered mount directory is missing: $mount_path"
+            return 1
+        fi
+        if [[ -n "${registered_modes[$mount_path]:-}" ]]; then
+            printErr "path has multiple registered mount modes; register it again: $mount_path"
+            return 1
+        fi
+        registered_modes["$mount_path"]="$mount_mode"
+        # The caller reads this output through the supplied array name.
+        # shellcheck disable=SC2034
+        registered_states["$mount_path"]="$state_store_path/${entry##*/}"
+    done
+}
+
+# Clanker implemented
+# Covers belong to the whole context. Map each absolute target to its own upper
+# directory; neither the entering ctxlink nor a madd mode determines activation.
+readCoverRegistrations() {
+    local cover_store_path="$1"
+    local -n cover_backings="$2"
+    local -a entries=()
+    dirEntriesRead "$cover_store_path" entries || return 1
+    local entry target_path
+    for entry in "${entries[@]}"; do
+        dirPathAssert "$entry/upper" || return 1
+        if [[ ! -d "$entry/upper" ]]; then
+            printErr "cover backing directory is missing: $entry/upper"
+            return 1
+        fi
+        target_path="$(readRegistrationTarget "$entry/ptr" "${entry##*/}")" || return 1
+        validateCoverTarget "$target_path" || return 1
+        # The caller reads this output through the supplied array name.
+        # shellcheck disable=SC2034
+        cover_backings["$target_path"]="$entry/upper"
+    done
+}
+
+# Clanker implemented
+# Covers bind their persistent contents directly, without reading host files
+# or creating OverlayFS work directories. The output array is passed by name.
+appendCoverBwrapArgs() {
+    local target_path="$1" backing_path="$2"
+    local -n cover_args="$3"
+    dirPathAssert "$backing_path" || return 1
+    if [[ ! -d "$backing_path" ]]; then
+        printErr "cover backing directory is missing: $backing_path"
+        return 1
+    fi
+    cover_args+=(--bind "$backing_path" "$target_path")
+}
+
+# Clanker implemented
+# Bubblewrap cannot create a missing cover mountpoint inside a read-only bind.
+# When needed, create those directories in a temporary overlay, then make the
+# parent read-only before binding the covers. No host directories are created.
+appendReadonlyMountBwrapArgs() {
+    local mount_path="$1" target_path
+    local -n readonly_covers="$2" readonly_args="$3"
+    local -a missing_cover_paths=()
+    for target_path in "${!readonly_covers[@]}"; do
+        if [[ "$target_path" == "$mount_path/"* && ! -d "$target_path" ]]; then
+            missing_cover_paths+=("$target_path")
+        fi
+    done
+
+    if (( ${#missing_cover_paths[@]} == 0 )); then
+        readonly_args+=(--ro-bind "$mount_path" "$mount_path")
+        return 0
+    fi
+
+    readonly_args+=(--overlay-src "$mount_path" --tmp-overlay "$mount_path")
+    for target_path in "${missing_cover_paths[@]}"; do
+        readonly_args+=(--dir "$target_path")
+    done
+    readonly_args+=(--remount-ro "$mount_path")
+}
+
+# Clanker implemented
+# A previous sandbox can leave symlinks in its persistent home. Check the
+# backing path before placing another mount beneath that home.
+validateHomeMountDestination() {
+    local context_path="$1" path="$2" candidate
+    if [[ "$path" == "$HOME/"* ]]; then
+        candidate="$context_path/fs-root/$HOME/${path#"$HOME/"}"
+        dirPathAssert "$candidate" || return 1
+    fi
+}
+
+# Clanker implemented
+# Check the nearest mounted parent, whose source determines how the sandbox
+# resolves this destination. An overlay also has a host lower layer to check.
+validateMountDestination() {
+    local context_path="$1" path="$2" parent candidate nearest_parent=
+    local -n parent_backings="$3"
+    for parent in "${!parent_backings[@]}"; do
+        if [[ "$path" == "$parent/"* && ${#parent} -gt ${#nearest_parent} ]]; then
+            nearest_parent="$parent"
+        fi
+    done
+    if [[ -z "$nearest_parent" ]]; then
+        validateHomeMountDestination "$context_path" "$path" || return 1
+        return 0
+    fi
+    candidate="${parent_backings[$nearest_parent]}/${path#"$nearest_parent/"}"
+    dirPathAssert "$candidate" || return 1
+    if (( $# > 3 )); then
+        local -n parent_lowers="$4"
+        if [[ -n "${parent_lowers[$nearest_parent]:-}" ]]; then
+            candidate="${parent_lowers[$nearest_parent]}/${path#"$nearest_parent/"}"
+            dirPathAssert "$candidate" || return 1
+        fi
+    fi
+}
+
+# Clanker implemented
+# Reject paths that contain, are within, or equal the sandbox store.
+assertNoStoreOverlap() {
+    local path resolved_path
+    for path in "$@"; do
+        resolved_path="$(realpath -e -- "$path")" || return 1
+        if [[ "$resolved_path" == / || "$resolved_path" == "$NYX_SBX_SHELL_DIR" || "$resolved_path" == "$NYX_SBX_SHELL_DIR/"* || "$NYX_SBX_SHELL_DIR" == "$resolved_path/"* ]]; then
+            printErr "path overlaps the sandbox store: $path"
+            return 1
+        fi
+    done
+}
+
+# Clanker implemented
+# Append to the caller's array by name. Keep the policy and temporary mount
+# tables local, passing them explicitly to the helpers that need them.
+appendContextBwrapArgs() {
+    local context_path="$1"
+    local -n bwrap_args="$2"
+    local -a home_paths=()
+    readHomePaths home_paths || return 1
+    validateCoverTarget "$PWD" || return 1
+
+    # Read and validate every active registration before appending mounts.
+    local -A mount_modes=() mount_states=()
+    local -A covers=()
+    local -A mounted_backings=()
+    local -A mounted_lowers=()
+    local -a sorted_target_paths=()
+    local mount_mode
+    for mount_mode in ro rw o; do
+        readMountRegistrations "$context_path/mount/$mount_mode" "$mount_mode" "$context_path/overlay" \
+            mount_modes mount_states home_paths || return 1
+    done
+    readCoverRegistrations "$context_path/cover" covers || return 1
+
+    # Order mounts and covers together so a parent cannot hide a child.
+    # NUL separators preserve spaces and newlines in directory names.
+    if (( ${#mount_modes[@]} > 0 || ${#covers[@]} > 0 )); then
+        mapfile -d '' -t sorted_target_paths < <(printf '%s\0' "${!mount_modes[@]}" "${!covers[@]}" | LC_ALL=C sort -zu)
+    fi
+    local target_path overlay_path
+    for target_path in "${sorted_target_paths[@]}"; do
+        validateMountDestination "$context_path" "$target_path" mounted_backings mounted_lowers || return 1
+        # A cover replaces any madd registration at the same absolute path.
+        if [[ -n "${covers[$target_path]:-}" ]]; then
+            appendCoverBwrapArgs "$target_path" "${covers[$target_path]}" "$2" || return 1
+            mounted_backings["$target_path"]="${covers[$target_path]}"
+            continue
+        fi
+        case "${mount_modes[$target_path]}" in
+            ro)
+                appendReadonlyMountBwrapArgs "$target_path" covers "$2" || return 1
+                mounted_backings["$target_path"]="$target_path"
+                ;;
+            rw)
+                bwrap_args+=(--bind "$target_path" "$target_path")
+                mounted_backings["$target_path"]="$target_path"
+                ;;
+            o)
+                overlay_path="${mount_states[$target_path]}"
+                dirPathCreate "$overlay_path/upper" || return 1
+                dirPathCreate "$overlay_path/work" || return 1
+                bwrap_args+=(--overlay-src "$target_path" --overlay "$overlay_path/upper" "$overlay_path/work" "$target_path")
+                # validateMountDestination reads this array by name.
+                # shellcheck disable=SC2034
+                mounted_backings["$target_path"]="$overlay_path/upper"
+                # validateMountDestination reads this array by name.
+                # shellcheck disable=SC2034
+                mounted_lowers["$target_path"]="$target_path"
+                ;;
+        esac
+    done
+
+    # The caller masks the ctxlink after these mounts. Validate its destination
+    # while the backing-directory table is still in scope.
+    validateMountDestination "$context_path" "$PWD/$ctxlink_marker_name" mounted_backings mounted_lowers || return 1
+}
+# END CLANKER: mount loading and entry validation helpers
+
 # enter mode (default)
+# Clanker modified: filesystem setup, mount validation and context mounts/covers
 modeOf_enter() {
     [[ "${1:-}" == enter ]] && shift
     local -a shell_args=()
@@ -592,10 +1064,14 @@ modeOf_enter() {
         fi
     fi
 
-    local ffs_root="$context_path/fs-root" # fake filesystem root -- note to self: i didnt create the root dir separately since we can just create the entire required path with the code below
-    if [[ -z "${HOME:-}" ]] || ! mkdir -p -- "$ffs_root/$HOME"; then
-        printErr "couldn't create fake root and home directory for context"
+    # BEGIN CLANKER EDIT: persistent home initialization
+    local ffs_root="$context_path/fs-root"
+    if [[ "$HOME" != /* || "$HOME" == / || "$(realpath -ms -- "$HOME")" != "$HOME" ]]; then
+        printErr "HOME must be an absolute, normalized non-root path"
+        exit 1
     fi
+    dirPathCreate "$ffs_root/$HOME" || exit 1
+    # END CLANKER EDIT: persistent home initialization
 
     # Initialize bwrap
     local -a args_for_bwrap=(             \
@@ -606,16 +1082,21 @@ modeOf_enter() {
         --setenv NYX_SBX_ID "$context_id" \
     );
 
+    # BEGIN CLANKER: validate fixed runtime mount sources
+    assertNoStoreOverlap /nix /etc/resolv.conf /etc/ssl /etc/static/ssl || exit 1
+    # END CLANKER: validate fixed runtime mount sources
+
     # Setup root and fs
+    # Clanker modified: persistent root with fresh runtime mounts
     args_for_bwrap+=(                        \
         --bind "$ffs_root" "/"               \
         --ro-bind "/nix" "/nix"              \
         --dev /dev                           \
         --proc /proc                         \
+        --tmpfs /run                         \
         --tmpfs /tmp                         \
         --ro-bind "$group_at" "/etc/group"   \
         --ro-bind "$passwd_at" "/etc/passwd" \
-
     );
 
     # Setup network
@@ -648,19 +1129,22 @@ modeOf_enter() {
     for path in "${known_paths[@]}"; do
         sandboxed_path="${sandboxed_path:+$sandboxed_path:}$path"
         if resolved_path="$(realpath -e -- "$path" 2>/dev/null)"; then
+            # Clanker implemented: runtime mount validation
+            assertNoStoreOverlap "$resolved_path" || exit 1
+            validateHomeMountDestination "$context_path" "$path" || exit 1
             args_for_bwrap+=(--ro-bind-try "$resolved_path" "$path")
         fi
     done
     args_for_bwrap+=(--setenv PATH "$sandboxed_path")
 
+    appendContextBwrapArgs "$context_path" args_for_bwrap || exit 1
+
     # Hide the context link within the sandbox
     # Q: why `tmpfs` instead of `ro-bind` ?
     # A: because the previous `.devshellshook` implementation that stored some extra context
-    # info in the same `$PWD` that did so caused nix evaluation with `path:.` to copy that folder into
+    # info in the same `$PWD` caused nix evaluation with `path:.` to copy that folder into
     # the nix store. this just outright prevents it.
     args_for_bwrap+=(--tmpfs "$PWD/$ctxlink_marker_name");
-
-    # Bind mount registered paths and verify that path doesnt mount context store
 
     # Start bwrap
     if ! printf '%q ' exec bwrap "${args_for_bwrap[@]}" -- "$SHELL" "${shell_args[@]}" > "$context_path/enter"; then
@@ -677,6 +1161,8 @@ case "${1:-enter}" in
     init) modeOf_init "$@" ;;
     enter|--) modeOf_enter "$@" ;;
     madd) modeOf_madd "$@" ;;
+    # Clanker implemented: mcover dispatch
+    mcover) modeOf_mcover "$@" ;;
     gc) modeOf_gc "$@" ;;
-    *) printErr "unknown command: $1. see \`sbx-shell help\`."; exit 1 ;;
+    *) printErr "unknown command: $1. see \`$prog_name help\`."; exit 1 ;;
 esac

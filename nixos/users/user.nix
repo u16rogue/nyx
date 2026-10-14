@@ -24,6 +24,7 @@
                 "media"
                 "documents"
                 "projects"
+                ".nyx/sbx-shell"
                 ".nyx/app-fake-root/firefox"
                 ".nyx/app-fake-root/monero-gui"
                 ".nyx/app-fake-root/moonlight-stream"
@@ -61,6 +62,7 @@
                 })
                 # Scripts
                 nyx.pkgs.tmuxss
+                nyx.pkgs.sbx-shell
                 nyx.pkgs.git-cans
                 nyx.pkgs.git-log
                 nyx.pkgs.mkignore
