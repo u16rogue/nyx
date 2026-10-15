@@ -24,7 +24,10 @@
                 "media"
                 "documents"
                 "projects"
+
                 ".nyx/sbx-shell"
+
+                ".local/share/flatpak/db"
                 ".nyx/app-fake-root/firefox"
                 ".nyx/app-fake-root/monero-gui"
                 ".nyx/app-fake-root/moonlight-stream"
