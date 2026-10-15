@@ -24,13 +24,4 @@ if ! tmux new-session -d -s "$SESSION_NAME" -A -c "$SESSION_DIR"; then
     exit 1
 fi
 
-if [[ -d "$SESSION_DIR/.devshells" ]]; then
-    if command -v nix-develop &> /dev/null; then
-        if ! tmux send-keys -t "$SESSION_NAME" "nix-develop" C-m; then
-            echo "[error] failed to load dev env" >&2
-            exit 1
-        fi
-    fi
-fi
-
 exit 0

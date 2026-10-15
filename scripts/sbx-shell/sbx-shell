@@ -20,8 +20,8 @@ $prog_name [...args] <mode> [...mode args]
         initialize the working-directory ctxlink and its backlink, creating
         the context if needed. use '?' (quoted) to generate an id from the
         working-directory path. ids must contain only A-Z, a-z, and 0-9.
-        an existing ctxlink must be removed manually
-        before initializing again.
+        accepts an existing .nyx-sbx directory containing project config,
+        but an existing ptr must be removed manually before initializing again.
     enter [-- shell args...] (default)
         enter the sandbox selected by an existing, valid ctxlink.
         forward args to the shell using \`--\` as a separator.
@@ -39,13 +39,12 @@ $prog_name [...args] <mode> [...mode args]
         covers are shared across all ctxlinks to that context and do not add refs.
         root, runtime-critical paths and context metadata cannot be covered.
         ex: \`$prog_name mcover . node_modules\`
-    nix-develop [devshell shard]
-        helper mode that similarly behaves to the devshell sandboxing mechanism
-        scripts. uses the \$PWD's folder name as <id>, adds \$PWD as a <rw>
-        mount, enters a devshell shard while enforcing host \$SHELL and post
-        executing any available \`.devshellshook.sh\` and \`.devshellspkgs.ls\`
-        should also pin resolved project packages.
-        ! todo !
+    nix-develop [fragment] [-- shell args...]
+        enter the current ctxlink's sandbox with the local flake's devshell
+        (fragment defaults to 'default'). requires flake.nix and the same
+        mount setup as enter. pins the realized devshell in the context.
+        load the dev environment inside the sandbox, restore host \$SHELL,
+        then source .nyx-sbx/dev-hook.sh if present before starting the shell.
     gc
         garbage collect stale backlinks and unreferenced contexts. preserves
         contexts with missing backlink directories or inspection errors.
@@ -154,6 +153,31 @@ if [[ "$NYX_SBX_SHELL_DIR" == / ]]; then
     exit 1
 fi
 
+# BEGIN CLANKER: prune nix-develop roots of stale backlinks
+# Roots are keyed by the same directory id as backlinks. Once a backlink is
+# gone (stale or never discoverable), its project's pins no longer count.
+pruneDevRoots() {
+    local context_path="$1" roots_dir="$1/nix-develop" roots_path project_id status=0
+    [[ ! -e "$roots_dir" && ! -L "$roots_dir" ]] && return 0
+    if [[ -L "$roots_dir" || ! -d "$roots_dir" || ! -r "$roots_dir" || ! -x "$roots_dir" ]]; then
+        printErr "nix-develop roots are not an inspectable, non-symlink directory: $roots_dir; preserving"
+        return 1
+    fi
+    for roots_path in "$roots_dir"/*; do
+        project_id="${roots_path##*/}"
+        if [[ -e "$context_path/refs/$project_id" || -L "$context_path/refs/$project_id" ]]; then
+            continue
+        fi
+        printLog "stale nix-develop roots (no backlink): $roots_path"
+        if ! rm -rf -- "$roots_path"; then
+            printErr "couldn't remove stale nix-develop roots: $roots_path"
+            status=1
+        fi
+    done
+    return "$status"
+}
+# END CLANKER: prune nix-develop roots of stale backlinks
+
 # gc mode
 modeOf_gc() {
     local gc_status=0
@@ -238,6 +262,15 @@ modeOf_gc() {
                 continue
             fi
             local ctxlink_ptr="$ctxlink_path/ptr"
+            if [[ ! -e "$ctxlink_ptr" && ! -L "$ctxlink_ptr" ]]; then
+                printLog "stale backlink (config-only ctxlink directory): $backlink_path -> $directory_path"
+                if ! rm -rf -- "$backlink_path"; then
+                    printErr "couldn't remove stale backlink: $backlink_path"
+                    has_uncertain_backlinks=1
+                    gc_status=1
+                fi
+                continue
+            fi
             if [[ ! -L "$ctxlink_ptr" ]]; then
                 printErr "ctxlink '$ctxlink_path' has no ptr symlink; preserving context"
                 has_uncertain_backlinks=1
@@ -268,6 +301,12 @@ modeOf_gc() {
         done
 
         printLog "$context_path has $live_ctxlink_count live ctxlink(s)"
+        # BEGIN CLANKER: prune pins of contexts that are kept
+        # Per-id check: uncertain backlinks still exist, so their roots stay.
+        if (( live_ctxlink_count > 0 || has_uncertain_backlinks != 0 )); then
+            pruneDevRoots "$context_path" || gc_status=1
+        fi
+        # END CLANKER: prune pins of contexts that are kept
         if (( has_uncertain_backlinks != 0 )); then
             printWarn "preserving $context_path because its live ctxlink count is unreliable"
             continue
@@ -655,8 +694,12 @@ modeOf_init() {
     validateContextId "$context_id" || exit 1
 
     local ctxlink_path="$PWD/$ctxlink_marker_name"
-    if [[ -e "$ctxlink_path" || -L "$ctxlink_path" ]]; then
-        printErr "ctxlink path already exists at '$ctxlink_path'; remove it before initializing."
+    if [[ -L "$ctxlink_path" || ( -e "$ctxlink_path" && ! -d "$ctxlink_path" ) ]]; then
+        printErr "ctxlink must be a non-symlink directory: $ctxlink_path"
+        exit 1
+    fi
+    if [[ -e "$ctxlink_path/ptr" || -L "$ctxlink_path/ptr" ]]; then
+        printErr "ctxlink ptr already exists at '$ctxlink_path/ptr'; remove it before initializing."
         exit 1
     fi
 
@@ -671,7 +714,7 @@ modeOf_init() {
         exit 1
     fi
 
-    if ! mkdir -- "$ctxlink_path"; then
+    if ! mkdir -p -- "$ctxlink_path"; then
         printErr "failed to create ctxlink directory at '$ctxlink_path'"
         exit 1
     fi
@@ -882,6 +925,26 @@ assertNoStoreOverlap() {
     done
 }
 
+# BEGIN CLANKER: devshell project mount preflight
+assertDevProjectMount() {
+    local project_path="$1" flake_path="$1/flake.nix" target nearest_target=
+    local -n project_mount_modes="$2" project_covers="$3"
+    for target in "${!project_mount_modes[@]}" "${!project_covers[@]}"; do
+        if [[ ( "$flake_path" == "$target" || "$flake_path" == "$target/"* ) && ${#target} -gt ${#nearest_target} ]]; then
+            nearest_target="$target"
+        fi
+    done
+    if [[ -z "$nearest_target" ]]; then
+        printErr "project directory is not mounted in this context: $project_path; register it manually with '$prog_name madd . rw .'"
+        return 1
+    fi
+    if [[ -n "${project_covers[$nearest_target]:-}" ]]; then
+        printErr "cover '$nearest_target' hides the project or its flake.nix; adjust the context mounts manually before nix-develop"
+        return 1
+    fi
+}
+# END CLANKER: devshell project mount preflight
+
 # Clanker implemented
 # Append to the caller's array by name. Keep the policy and temporary mount
 # tables local, passing them explicitly to the helpers that need them.
@@ -904,6 +967,12 @@ appendContextBwrapArgs() {
             mount_modes mount_states home_paths || return 1
     done
     readCoverRegistrations "$context_path/cover" covers || return 1
+
+    # BEGIN CLANKER: require a registered project mount for devshell entry
+    if [[ -n "${3:-}" ]]; then
+        assertDevProjectMount "$3" mount_modes covers || return 1
+    fi
+    # END CLANKER: require a registered project mount for devshell entry
 
     # Order mounts and covers together so a parent cannot hide a child.
     # NUL separators preserve spaces and newlines in directory names.
@@ -949,10 +1018,52 @@ appendContextBwrapArgs() {
 }
 # END CLANKER: mount loading and entry validation helpers
 
+# BEGIN CLANKER: devshell environment preparation and GC roots
+# Resolve on the host side, where Nix can build and register GC roots. Only
+# the generated environment crosses into the sandbox; shellHook runs there.
+# Roots are keyed by project (the same id as its backlink, for gc) and fragment.
+prepareDevEnvironment() {
+    local context_path="$1" fragment="$2" project_id fragment_id roots
+    local -n dev_environment_result="$3"
+    command -v nix &>/dev/null || { printErr "nix is required for nix-develop"; return 1; }
+    if [[ ! -f "$PWD/flake.nix" ]]; then
+        printErr "nix-develop requires $PWD/flake.nix"
+        return 1
+    fi
+
+    project_id="$(mkDirectoryId)" || return 1
+    fragment_id="$(mkHash "$fragment")" || return 1
+    roots="$context_path/nix-develop/$project_id/$fragment_id"
+    dirPathCreate "$roots" || return 1
+    # Output is returned through a nameref.
+    # shellcheck disable=SC2034
+    if ! dev_environment_result="$(nix --extra-experimental-features 'nix-command flakes' \
+        print-dev-env --profile "$roots/devshell" ".#$fragment")"; then
+        printErr "failed to load devshell fragment: $fragment"
+        return 1
+    fi
+}
+# END CLANKER: devshell environment preparation and GC roots
+
 # enter mode (default)
-# Clanker modified: filesystem setup, mount validation and context mounts/covers
 modeOf_enter() {
-    [[ "${1:-}" == enter ]] && shift
+    # BEGIN CLANKER: nix-develop mode and fragment selection
+    local develop_fragment=
+    if [[ "${1:-}" == nix-develop ]]; then
+        shift
+        develop_fragment=default
+        if (( $# > 0 )) && [[ "$1" != -- ]]; then
+            develop_fragment="${1#\#}"
+            shift
+            if [[ -z "$develop_fragment" || "$develop_fragment" == -* ]]; then
+                printErr "usage: $prog_name nix-develop [fragment] [-- shell args...]"
+                exit 1
+            fi
+        fi
+    elif [[ "${1:-}" == enter ]]; then
+        shift
+    fi
+    # END CLANKER: nix-develop mode and fragment selection
     local -a shell_args=()
     if (( $# > 0 )); then
         if [[ "$1" != -- ]]; then
@@ -1064,14 +1175,12 @@ modeOf_enter() {
         fi
     fi
 
-    # BEGIN CLANKER EDIT: persistent home initialization
     local ffs_root="$context_path/fs-root"
     if [[ "$HOME" != /* || "$HOME" == / || "$(realpath -ms -- "$HOME")" != "$HOME" ]]; then
         printErr "HOME must be an absolute, normalized non-root path"
         exit 1
     fi
-    dirPathCreate "$ffs_root/$HOME" || exit 1
-    # END CLANKER EDIT: persistent home initialization
+    dirPathCreate "$ffs_root/$HOME" || exit 1 # can create the home dir and root dir in oneshot
 
     # Initialize bwrap
     local -a args_for_bwrap=(             \
@@ -1087,7 +1196,6 @@ modeOf_enter() {
     # END CLANKER: validate fixed runtime mount sources
 
     # Setup root and fs
-    # Clanker modified: persistent root with fresh runtime mounts
     args_for_bwrap+=(                        \
         --bind "$ffs_root" "/"               \
         --ro-bind "/nix" "/nix"              \
@@ -1109,9 +1217,14 @@ modeOf_enter() {
 
     # Setup env
     args_for_bwrap+=(                                                    \
-        --setenv USER "$USER"                                            \
-        --setenv HOME "$HOME"                                            \
-        --setenv SHELL "$SHELL"                                          \
+        --setenv USER "${USER:-}"                                        \
+        --setenv HOME "${HOME:-}"                                        \
+        --setenv SHELL "${SHELL:-}"                                      \
+        --setenv TERM "${TERM:-}"                                        \
+        --setenv COLORTERM "${COLORTERM:-}"                              \
+        --setenv LANG "${LANG:-}"                                        \
+        --setenv LC_ALL "${LC_ALL:-}"                                    \
+        --setenv LC_CTYPE "${LC_CTYPE:-}"                                \
         --setenv NIX_CONFIG "experimental-features = nix-command flakes" \
     );
 
@@ -1129,7 +1242,6 @@ modeOf_enter() {
     for path in "${known_paths[@]}"; do
         sandboxed_path="${sandboxed_path:+$sandboxed_path:}$path"
         if resolved_path="$(realpath -e -- "$path" 2>/dev/null)"; then
-            # Clanker implemented: runtime mount validation
             assertNoStoreOverlap "$resolved_path" || exit 1
             validateHomeMountDestination "$context_path" "$path" || exit 1
             args_for_bwrap+=(--ro-bind-try "$resolved_path" "$path")
@@ -1137,17 +1249,72 @@ modeOf_enter() {
     done
     args_for_bwrap+=(--setenv PATH "$sandboxed_path")
 
-    appendContextBwrapArgs "$context_path" args_for_bwrap || exit 1
+    # BEGIN CLANKER: registered context mounts and covers
+    appendContextBwrapArgs "$context_path" args_for_bwrap "${develop_fragment:+$PWD}" || exit 1
+    # END CLANKER: registered context mounts and covers
 
     # Hide the context link within the sandbox
     # Q: why `tmpfs` instead of `ro-bind` ?
     # A: because the previous `.devshellshook` implementation that stored some extra context
     # info in the same `$PWD` caused nix evaluation with `path:.` to copy that folder into
     # the nix store. this just outright prevents it.
-    args_for_bwrap+=(--tmpfs "$PWD/$ctxlink_marker_name");
+    [[ -e "$PWD/$ctxlink_marker_name" ]] && args_for_bwrap+=(--tmpfs "$PWD/$ctxlink_marker_name");
+
+    # BEGIN CLANKER: shell or devshell entry command
+    local -a entry_command=("$SHELL" "${shell_args[@]}")
+    if [[ -n "$develop_fragment" ]]; then
+        # BEGIN CLANKER: prepare and expose the Nix environment
+        local dev_environment dev_environment_fd
+        prepareDevEnvironment "$context_path" "$develop_fragment" dev_environment || exit 1
+        # A private descriptor avoids shared startup files racing between
+        # simultaneous entries and keeps context metadata outside the sandbox.
+        exec {dev_environment_fd}<<< "$dev_environment"
+        args_for_bwrap+=(--ro-bind-data "$dev_environment_fd" /run/nyx-dev-environment)
+        # END CLANKER: prepare and expose the Nix environment
+
+        # BEGIN CLANKER: expose selected project config files
+        local config_file config_fd
+        for config_file in dev-hook.sh zellij.kdl; do
+            config_file="$PWD/$ctxlink_marker_name/$config_file"
+            if [[ -e "$config_file" || -L "$config_file" ]]; then
+                if [[ ! -f "$config_file" || ! -r "$config_file" ]]; then
+                    printErr "cannot read project config: $config_file"
+                    exit 1
+                fi
+                exec {config_fd}< "$config_file" || exit 1
+                args_for_bwrap+=(--ro-bind-data "$config_fd" "$config_file")
+            fi
+        done
+        # END CLANKER: expose selected project config files
+
+        # BEGIN CLANKER: in-sandbox devshell startup stub
+        # The startup fragment expands only after entering the sandbox.
+        # shellcheck disable=SC2016
+        entry_command=("$BASH" --noprofile --norc -c '
+            sbx_host_shell="$1"
+            sbx_fragment="$2"
+            shift 2
+            readonly -a sbx_shell_args=("$@")
+            if [[ ! -f "$PWD/flake.nix" ]]; then
+                echo "[err] flake.nix is not visible in the sandbox; register the project with madd" >&2
+                exit 1
+            fi
+            readonly sbx_host_shell sbx_fragment
+            source /run/nyx-dev-environment || exit $?
+            export SHELL="$sbx_host_shell"
+            export NIX_FRAGMENT="${NIX_FRAGMENT:-$sbx_fragment}"
+            set -- "${sbx_shell_args[@]}"
+            if [[ -f "$PWD/.nyx-sbx/dev-hook.sh" ]]; then
+                source "$PWD/.nyx-sbx/dev-hook.sh" "${sbx_shell_args[@]}" || exit $?
+            fi
+            exec "$SHELL" "${sbx_shell_args[@]}"
+        ' "$prog_name nix-develop" "$SHELL" "$develop_fragment" "${shell_args[@]}")
+        # END CLANKER: in-sandbox devshell startup stub
+    fi
+    # END CLANKER: shell or devshell entry command
 
     # Start bwrap
-    if ! printf '%q ' exec bwrap "${args_for_bwrap[@]}" -- "$SHELL" "${shell_args[@]}" > "$context_path/enter"; then
+    if ! printf '%q ' exec bwrap "${args_for_bwrap[@]}" -- "${entry_command[@]}" > "$context_path/enter"; then
         printErr "failed to create enter script"
         exit 1
     fi
@@ -1159,7 +1326,7 @@ modeOf_enter() {
 # Dispatch with the original arguments, including the mode name.
 case "${1:-enter}" in
     init) modeOf_init "$@" ;;
-    enter|--) modeOf_enter "$@" ;;
+    enter|--|nix-develop) modeOf_enter "$@" ;;
     madd) modeOf_madd "$@" ;;
     # Clanker implemented: mcover dispatch
     mcover) modeOf_mcover "$@" ;;

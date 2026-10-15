@@ -236,18 +236,13 @@ collect_template_paths() {
 
 TEMPLATE_PATHS=()
 
-collect_template_paths ".devshellshook.sh" TEMPLATE_PATHS
-echo "[check] .devshellshook.sh"
+collect_template_paths ".nyx-sbx/dev-hook.sh" TEMPLATE_PATHS
+echo "[check] .nyx-sbx/dev-hook.sh"
 compare_diff \
     "${TEMPLATE_PATHS[@]}"
 
-collect_template_paths ".devshellspkgs.ls" TEMPLATE_PATHS
-echo "[check] .devshellspkgs.ls"
-compare_diff \
-    "${TEMPLATE_PATHS[@]}"
-
-collect_template_paths ".zellij.kdl" TEMPLATE_PATHS
-echo "[check] .zellij.kdl"
+collect_template_paths ".nyx-sbx/zellij.kdl" TEMPLATE_PATHS
+echo "[check] .nyx-sbx/zellij.kdl"
 compare_diff \
     "${TEMPLATE_PATHS[@]}"
 

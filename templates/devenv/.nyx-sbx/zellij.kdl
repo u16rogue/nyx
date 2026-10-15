@@ -32,14 +32,12 @@ layout {
     }
 
     tab name=" " split_direction="horizontal" {
-        pane start_suspended=true command="$SHELL" /* name="default" cwd="" {
-            args ""
-        }*/
+        pane start_suspended=true command="$SHELL"
     }
 
     tab name="󱚠 " split_direction="horizontal" {
-        pane name="clanker" borderless=true start_suspended=true command="nix" {
-            args "--extra-experimental-features" "flakes" "--extra-experimental-features" "nix-command" "run" "--inputs-from" "." "nixpkgs#opencode"
+        pane name="clanker" borderless=true start_suspended=true command="opencode" {
+            args "--standalone"
         }
     }
 }

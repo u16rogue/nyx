@@ -8,3 +8,4 @@
 !dev-cpp/**
 !devenv/
 !devenv/**
+**/.nyx-sbx/ptr

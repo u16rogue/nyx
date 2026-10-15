@@ -42,15 +42,8 @@
         systems = [ "x86_64-linux" ];
         perSystem = { self', config, pkgs, ... }: {
             devShells.default = pkgs.mkShellNoCC {
-                packages = [];
-                shellHook = /*bash*/ ''
-                    export NIX_FRAGMENT="default"
-                    if [[ -f "$PWD/.devshellshook.sh" ]]; then
-                        source "$PWD/.devshellshook.sh"
-                    elif command -v "sbx-shell" &> /dev/null; then
-                        exec sbx-shell
-                    fi
-                '';
+                packages = with pkgs; [ rage ];
+                shellHook = /*bash*/ ''export NIX_FRAGMENT="default"'';
             };
         };
     });

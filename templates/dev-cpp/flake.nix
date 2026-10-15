@@ -18,9 +18,6 @@
                 ];
                 shellHook = /*bash*/ ''
                     export NIX_FRAGMENT="default"
-                    if [[ -f "$PWD/.devshellshook.sh" ]]; then
-                        source "$PWD/.devshellshook.sh"
-                    fi
                 '';
             };
         };
