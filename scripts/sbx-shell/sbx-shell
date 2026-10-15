@@ -45,6 +45,8 @@ $prog_name [...args] <mode> [...mode args]
         mount setup as enter. pins the realized devshell in the context.
         load the dev environment inside the sandbox, restore host \$SHELL,
         then source .nyx-sbx/dev-hook.sh if present before starting the shell.
+        in every mode, .nyx-sbx/share/ is mounted read-only if present; the
+        rest of .nyx-sbx stays hidden.
     gc
         garbage collect stale backlinks and unreferenced contexts. preserves
         contexts with missing backlink directories or inspection errors.
@@ -1260,6 +1262,17 @@ modeOf_enter() {
     # the nix store. this just outright prevents it.
     [[ -e "$PWD/$ctxlink_marker_name" ]] && args_for_bwrap+=(--tmpfs "$PWD/$ctxlink_marker_name");
 
+    # BEGIN CLANKER: expose the project's shared config directory
+    local share_path="$PWD/$ctxlink_marker_name/share"
+    if [[ -e "$share_path" || -L "$share_path" ]]; then
+        if [[ -L "$share_path" || ! -d "$share_path" || ! -r "$share_path" || ! -x "$share_path" ]]; then
+            printErr "shared config must be a readable, non-symlink directory: $share_path"
+            exit 1
+        fi
+        args_for_bwrap+=(--ro-bind "$share_path" "$share_path")
+    fi
+    # END CLANKER: expose the project's shared config directory
+
     # BEGIN CLANKER: shell or devshell entry command
     local -a entry_command=("$SHELL" "${shell_args[@]}")
     if [[ -n "$develop_fragment" ]]; then
@@ -1272,20 +1285,17 @@ modeOf_enter() {
         args_for_bwrap+=(--ro-bind-data "$dev_environment_fd" /run/nyx-dev-environment)
         # END CLANKER: prepare and expose the Nix environment
 
-        # BEGIN CLANKER: expose selected project config files
-        local config_file config_fd
-        for config_file in dev-hook.sh zellij.kdl; do
-            config_file="$PWD/$ctxlink_marker_name/$config_file"
-            if [[ -e "$config_file" || -L "$config_file" ]]; then
-                if [[ ! -f "$config_file" || ! -r "$config_file" ]]; then
-                    printErr "cannot read project config: $config_file"
-                    exit 1
-                fi
-                exec {config_fd}< "$config_file" || exit 1
-                args_for_bwrap+=(--ro-bind-data "$config_fd" "$config_file")
+        # BEGIN CLANKER: deliver the project's dev hook to the startup stub
+        local dev_hook="$PWD/$ctxlink_marker_name/dev-hook.sh" dev_hook_fd
+        if [[ -e "$dev_hook" || -L "$dev_hook" ]]; then
+            if [[ -L "$dev_hook" || ! -f "$dev_hook" || ! -r "$dev_hook" ]]; then
+                printErr "dev hook must be a readable, non-symlink file: $dev_hook"
+                exit 1
             fi
-        done
-        # END CLANKER: expose selected project config files
+            exec {dev_hook_fd}< "$dev_hook" || exit 1
+            args_for_bwrap+=(--ro-bind-data "$dev_hook_fd" /run/nyx-dev-hook)
+        fi
+        # END CLANKER: deliver the project's dev hook to the startup stub
 
         # BEGIN CLANKER: in-sandbox devshell startup stub
         # The startup fragment expands only after entering the sandbox.
@@ -1304,8 +1314,8 @@ modeOf_enter() {
             export SHELL="$sbx_host_shell"
             export NIX_FRAGMENT="${NIX_FRAGMENT:-$sbx_fragment}"
             set -- "${sbx_shell_args[@]}"
-            if [[ -f "$PWD/.nyx-sbx/dev-hook.sh" ]]; then
-                source "$PWD/.nyx-sbx/dev-hook.sh" "${sbx_shell_args[@]}" || exit $?
+            if [[ -f /run/nyx-dev-hook ]]; then
+                source /run/nyx-dev-hook "${sbx_shell_args[@]}" || exit $?
             fi
             exec "$SHELL" "${sbx_shell_args[@]}"
         ' "$prog_name nix-develop" "$SHELL" "$develop_fragment" "${shell_args[@]}")

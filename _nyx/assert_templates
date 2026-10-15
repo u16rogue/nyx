@@ -241,8 +241,8 @@ echo "[check] .nyx-sbx/dev-hook.sh"
 compare_diff \
     "${TEMPLATE_PATHS[@]}"
 
-collect_template_paths ".nyx-sbx/zellij.kdl" TEMPLATE_PATHS
-echo "[check] .nyx-sbx/zellij.kdl"
+collect_template_paths ".nyx-sbx/share/zellij.kdl" TEMPLATE_PATHS
+echo "[check] .nyx-sbx/share/zellij.kdl"
 compare_diff \
     "${TEMPLATE_PATHS[@]}"
 

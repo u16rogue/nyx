@@ -15,4 +15,5 @@
 
 !.nyx-sbx/
 !.nyx-sbx/dev-hook.sh
-!.nyx-sbx/zellij.kdl
+!.nyx-sbx/share/
+!.nyx-sbx/share/**

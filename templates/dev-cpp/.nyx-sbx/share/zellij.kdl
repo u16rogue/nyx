@@ -1,8 +1,9 @@
 keybinds {
-    shared_except "locked" {
+    shared {
         bind "Alt 1" { GoToTab 1; }
         bind "Alt 2" { GoToTab 2; }
         bind "Alt 3" { GoToTab 3; }
+        bind "Alt f" { ToggleFloatingPanes; }
     }
 }
 
