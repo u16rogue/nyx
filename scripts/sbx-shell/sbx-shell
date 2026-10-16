@@ -51,6 +51,8 @@ $prog_name [...args] <mode> [...mode args]
     gc
         garbage collect stale backlinks and unreferenced contexts. preserves
         contexts with missing backlink directories or inspection errors.
+        for live refs, removes nix-develop generations older than the one
+        each devshell profile points to; newer ones are preserved.
         returns nonzero if cleanup is incomplete.
         the ctxlink (\$PWD/$ctxlink_marker_name/ptr) is the authoritative reference
         to a context. refs (context/refs/<directory-id>/) hold a backlink ptr
@@ -156,6 +158,60 @@ if [[ "$NYX_SBX_SHELL_DIR" == / ]]; then
     printErr "the sandbox store must not be the filesystem root"
     exit 1
 fi
+
+# BEGIN CLANKER: prune superseded nix-develop generations
+# Remove a live ref's devshell generations numbered below the one its profile
+# points to. Nix numbers a new generation above every existing one and does
+# not lock the profile before switching to it, so higher generations may
+# belong to a nix-develop still in progress and are always preserved.
+pruneDevshellGenerations() {
+    local pins_dir="$1/nix-develop" prune_status=0
+    [[ ! -e "$pins_dir" && ! -L "$pins_dir" ]] && return 0
+    if [[ -L "$pins_dir" || ! -d "$pins_dir" || ! -r "$pins_dir" || ! -x "$pins_dir" ]]; then
+        printErr "devshell pins '$pins_dir' are not an inspectable, non-symlink directory; preserving"
+        return 1
+    fi
+
+    local LC_ALL=C
+    local fragment_dir profile current current_number generation
+    for fragment_dir in "$pins_dir"/*; do
+        if [[ -L "$fragment_dir" || ! -d "$fragment_dir" || ! -r "$fragment_dir" || ! -x "$fragment_dir" ]]; then
+            printErr "devshell pins '$fragment_dir' are not an inspectable, non-symlink directory; preserving"
+            prune_status=1
+            continue
+        fi
+        profile="$fragment_dir/devshell"
+        if [[ ! -L "$profile" ]]; then
+            printWarn "devshell profile '$profile' is missing; preserving its generations"
+            prune_status=1
+            continue
+        fi
+        if ! current="$(readlink -- "$profile")" || [[ ! "$current" =~ ^devshell-([0-9]+)-link$ ]]; then
+            printWarn "devshell profile '$profile' does not point to a generation; preserving its generations"
+            prune_status=1
+            continue
+        fi
+        current_number="$((10#${BASH_REMATCH[1]}))"
+        if [[ ! -L "$fragment_dir/$current" ]]; then
+            printWarn "devshell profile '$profile' points to a missing generation; preserving its generations"
+            prune_status=1
+            continue
+        fi
+
+        for generation in "$fragment_dir"/devshell-*-link; do
+            [[ -L "$generation" && "${generation##*/}" =~ ^devshell-([0-9]+)-link$ ]] || continue
+            (( 10#${BASH_REMATCH[1]} < current_number )) || continue
+            if rm -f -- "$generation"; then
+                printLog "pruned superseded devshell generation: $generation"
+            else
+                printErr "couldn't remove superseded devshell generation: $generation"
+                prune_status=1
+            fi
+        done
+    done
+    return "$prune_status"
+}
+# END CLANKER: prune superseded nix-develop generations
 
 # gc mode
 modeOf_gc() {
@@ -277,6 +333,8 @@ modeOf_gc() {
 
             printLog "live backlink: $backlink_path"
             ((live_ctxlink_count += 1))
+            # Clanker implemented: release devshells superseded by a newer generation
+            pruneDevshellGenerations "$backlink_path" || gc_status=1
         done
 
         printLog "$context_path has $live_ctxlink_count live ctxlink(s)"
