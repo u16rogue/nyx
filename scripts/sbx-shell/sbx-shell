@@ -19,7 +19,7 @@ $prog_name [...args] <mode> [...mode args]
     init <id,?>
         initialize the working-directory ctxlink and its backlink, creating
         the context if needed. use '?' (quoted) to generate an id from the
-        working-directory path. ids must contain only A-Z, a-z, and 0-9.
+        working-directory path. ids must contain only A-Z, a-z, 0-9, _ and -.
         accepts an existing .nyx-sbx directory containing project config,
         but an existing ptr must be removed manually before initializing again.
     enter [-- shell args...] (default)
@@ -85,8 +85,8 @@ mkDirectoryId() {
 
 validateContextId() {
     local LC_ALL=C
-    if (( $# != 1 )) || [[ ! "$1" =~ ^[A-Za-z0-9]+$ ]]; then
-        printErr "context id must be nonempty and contain only A-Z, a-z, and 0-9"
+    if (( $# != 1 )) || [[ ! "$1" =~ ^[A-Za-z0-9_-]+$ ]]; then
+        printErr "context id must be nonempty and contain only A-Z, a-z, 0-9, _ and -"
         return 1
     fi
 }
@@ -568,7 +568,7 @@ resolveCtxlink() {
 
 # Clanker implemented
 # Resolve an existing context without creating or repairing any references.
-# Bare alphanumeric selectors are ids; use './name' to select a directory.
+# Bare selectors matching the id charset are ids; use './name' to select a directory.
 resolveContextSelector() {
     local selector="$1" context_id context_path ctxlink_path
     local LC_ALL=C
@@ -576,7 +576,7 @@ resolveContextSelector() {
         printErr "a context id or ctxlink is required"
         return 1
     fi
-    if [[ "$selector" =~ ^[A-Za-z0-9]+$ ]]; then
+    if [[ "$selector" =~ ^[A-Za-z0-9_-]+$ ]]; then
         context_id="$selector"
     else
         ctxlink_path="$(realpath -ms -- "$selector")" || return 1
