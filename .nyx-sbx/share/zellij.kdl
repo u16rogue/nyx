@@ -1,9 +1,9 @@
-
 keybinds {
-    shared_except "locked" {
+    shared {
         bind "Alt 1" { GoToTab 1; }
         bind "Alt 2" { GoToTab 2; }
         bind "Alt 3" { GoToTab 3; }
+        bind "Alt f" { ToggleFloatingPanes; }
     }
 }
 
@@ -27,19 +27,17 @@ layout {
     }
 
     tab name=" " focus=true {
-        pane name="neovim" borderless=false start_suspended=true command="sh" {
+        pane name="neovim" borderless=true start_suspended=true command="sh" {
             args "-c" "if [ -f .nvimsession ]; then exec nvim -S .nvimsession; else exec nvim; fi"
         }
     }
 
     tab name=" " split_direction="horizontal" {
-        pane start_suspended=true command="$SHELL" /* name="default" cwd="" {
-            args ""
-        }*/
+        pane start_suspended=true command="$SHELL"
     }
 
     tab name="󱚠 " split_direction="horizontal" {
-        pane name="clanker" borderless=false start_suspended=true command="opencode" {
+        pane name="clanker" borderless=true start_suspended=true command="opencode" {
             args "--standalone"
         }
     }

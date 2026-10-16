@@ -25,4 +25,9 @@ else
     [[ "$answer" != "y" ]] && exit 1
 fi
 
+if command -v sbx-shell &> /dev/null; then
+    exec sbx-shell nix-develop "$@"
+fi
+
+echo "[warn] 'sbx-shell' is not available, sandboxing is unavailable. falling back to 'nix develop'." >&2
 exec nix develop "$@"

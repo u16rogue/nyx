@@ -39,10 +39,11 @@ $prog_name [...args] <mode> [...mode args]
         covers are shared across all ctxlinks to that context and do not add refs.
         root, runtime-critical paths and context metadata cannot be covered.
         ex: \`$prog_name mcover . node_modules\`
-    nix-develop [fragment] [-- shell args...]
+    nix-develop|nd [fragment] [-- shell args...]
         enter the current ctxlink's sandbox with the local flake's devshell
         (fragment defaults to 'default'). requires flake.nix and the same
-        mount setup as enter. pins the realized devshell in the context.
+        mount setup as enter. pins the realized devshell in the working
+        directory's ref, so it is released when that ref is collected.
         load the dev environment inside the sandbox, restore host \$SHELL,
         then source .nyx-sbx/dev-hook.sh if present before starting the shell.
         in every mode, .nyx-sbx/share/ is mounted read-only if present; the
@@ -52,8 +53,9 @@ $prog_name [...args] <mode> [...mode args]
         contexts with missing backlink directories or inspection errors.
         returns nonzero if cleanup is incomplete.
         the ctxlink (\$PWD/$ctxlink_marker_name/ptr) is the authoritative reference
-        to a context. backlinks (context/refs/<directory-id>/ptr) point to working
-        directories so gc can discover their ctxlinks. enter
+        to a context. refs (context/refs/<directory-id>/) hold a backlink ptr
+        pointing to the working directory, so gc can discover its ctxlink,
+        plus per-directory state such as nix-develop pins. enter
         repairs a missing backlink when the ctxlink still points
         to that context.
     help
@@ -154,31 +156,6 @@ if [[ "$NYX_SBX_SHELL_DIR" == / ]]; then
     printErr "the sandbox store must not be the filesystem root"
     exit 1
 fi
-
-# BEGIN CLANKER: prune nix-develop roots of stale backlinks
-# Roots are keyed by the same directory id as backlinks. Once a backlink is
-# gone (stale or never discoverable), its project's pins no longer count.
-pruneDevRoots() {
-    local context_path="$1" roots_dir="$1/nix-develop" roots_path project_id status=0
-    [[ ! -e "$roots_dir" && ! -L "$roots_dir" ]] && return 0
-    if [[ -L "$roots_dir" || ! -d "$roots_dir" || ! -r "$roots_dir" || ! -x "$roots_dir" ]]; then
-        printErr "nix-develop roots are not an inspectable, non-symlink directory: $roots_dir; preserving"
-        return 1
-    fi
-    for roots_path in "$roots_dir"/*; do
-        project_id="${roots_path##*/}"
-        if [[ -e "$context_path/refs/$project_id" || -L "$context_path/refs/$project_id" ]]; then
-            continue
-        fi
-        printLog "stale nix-develop roots (no backlink): $roots_path"
-        if ! rm -rf -- "$roots_path"; then
-            printErr "couldn't remove stale nix-develop roots: $roots_path"
-            status=1
-        fi
-    done
-    return "$status"
-}
-# END CLANKER: prune nix-develop roots of stale backlinks
 
 # gc mode
 modeOf_gc() {
@@ -303,12 +280,6 @@ modeOf_gc() {
         done
 
         printLog "$context_path has $live_ctxlink_count live ctxlink(s)"
-        # BEGIN CLANKER: prune pins of contexts that are kept
-        # Per-id check: uncertain backlinks still exist, so their roots stay.
-        if (( live_ctxlink_count > 0 || has_uncertain_backlinks != 0 )); then
-            pruneDevRoots "$context_path" || gc_status=1
-        fi
-        # END CLANKER: prune pins of contexts that are kept
         if (( has_uncertain_backlinks != 0 )); then
             printWarn "preserving $context_path because its live ctxlink count is unreliable"
             continue
@@ -1023,7 +994,7 @@ appendContextBwrapArgs() {
 # BEGIN CLANKER: devshell environment preparation and GC roots
 # Resolve on the host side, where Nix can build and register GC roots. Only
 # the generated environment crosses into the sandbox; shellHook runs there.
-# Roots are keyed by project (the same id as its backlink, for gc) and fragment.
+# Roots live in the project's ref, so removing a stale backlink drops its pins.
 prepareDevEnvironment() {
     local context_path="$1" fragment="$2" project_id fragment_id roots
     local -n dev_environment_result="$3"
@@ -1035,7 +1006,7 @@ prepareDevEnvironment() {
 
     project_id="$(mkDirectoryId)" || return 1
     fragment_id="$(mkHash "$fragment")" || return 1
-    roots="$context_path/nix-develop/$project_id/$fragment_id"
+    roots="$context_path/refs/$project_id/nix-develop/$fragment_id"
     dirPathCreate "$roots" || return 1
     # Output is returned through a nameref.
     # shellcheck disable=SC2034
@@ -1051,14 +1022,14 @@ prepareDevEnvironment() {
 modeOf_enter() {
     # BEGIN CLANKER: nix-develop mode and fragment selection
     local develop_fragment=
-    if [[ "${1:-}" == nix-develop ]]; then
+    if [[ "${1:-}" == nix-develop || "${1:-}" == nd ]]; then
         shift
         develop_fragment=default
         if (( $# > 0 )) && [[ "$1" != -- ]]; then
             develop_fragment="${1#\#}"
             shift
             if [[ -z "$develop_fragment" || "$develop_fragment" == -* ]]; then
-                printErr "usage: $prog_name nix-develop [fragment] [-- shell args...]"
+                printErr "usage: $prog_name nix-develop|nd [fragment] [-- shell args...]"
                 exit 1
             fi
         fi
@@ -1198,15 +1169,17 @@ modeOf_enter() {
     # END CLANKER: validate fixed runtime mount sources
 
     # Setup root and fs
-    args_for_bwrap+=(                        \
-        --bind "$ffs_root" "/"               \
-        --ro-bind "/nix" "/nix"              \
-        --dev /dev                           \
-        --proc /proc                         \
-        --tmpfs /run                         \
-        --tmpfs /tmp                         \
-        --ro-bind "$group_at" "/etc/group"   \
-        --ro-bind "$passwd_at" "/etc/passwd" \
+    args_for_bwrap+=(                           \
+        --bind "$ffs_root" "/"                  \
+        --ro-bind "/nix" "/nix"                 \
+        --dev /dev                              \
+        --proc /proc                            \
+        --tmpfs /run                            \
+        --tmpfs /tmp                            \
+        --ro-bind "$group_at" "/etc/group"      \
+        --ro-bind "$passwd_at" "/etc/passwd"    \
+        --ro-bind "/bin/sh" "/bin/sh"           \
+        --ro-bind "/usr/bin/env" "/usr/bin/env" \
     );
 
     # Setup network
@@ -1273,52 +1246,54 @@ modeOf_enter() {
     fi
     # END CLANKER: expose the project's shared config directory
 
+    # BEGIN CLANKER: expose the project's dev hook
+    # A tracked project file: hiding it makes git inside the sandbox report it
+    # as deleted, so bind it read-only in every mode. nix-develop sources it.
+    local dev_hook="$PWD/$ctxlink_marker_name/dev-hook.sh"
+    if [[ -e "$dev_hook" || -L "$dev_hook" ]]; then
+        if [[ -L "$dev_hook" || ! -f "$dev_hook" || ! -r "$dev_hook" ]]; then
+            printErr "dev hook must be a readable, non-symlink file: $dev_hook"
+            exit 1
+        fi
+        args_for_bwrap+=(--ro-bind "$dev_hook" "$dev_hook")
+    fi
+    # END CLANKER: expose the project's dev hook
+
     # BEGIN CLANKER: shell or devshell entry command
     local -a entry_command=("$SHELL" "${shell_args[@]}")
     if [[ -n "$develop_fragment" ]]; then
-        # BEGIN CLANKER: prepare and expose the Nix environment
-        local dev_environment dev_environment_fd
-        prepareDevEnvironment "$context_path" "$develop_fragment" dev_environment || exit 1
+        # BEGIN CLANKER: build and expose the devshell startup script
+        # One script, sourced inside the sandbox: the Nix environment (which
+        # runs the flake shellHook and sets SHELL to bash), then the host's
+        # SHELL, fragment and shell args as quoted literals, then it sources
+        # the read-only project hook, so the hook sees the restored values.
+        local startup startup_fd
+        prepareDevEnvironment "$context_path" "$develop_fragment" startup || exit 1
+        # NIX_FRAGMENT expands in the sandbox, after the flake's shellHook.
+        # shellcheck disable=SC2016
+        printf -v startup '%s\nexport SHELL=%q\n[[ -n "${NIX_FRAGMENT:-}" ]] || export NIX_FRAGMENT=%q\nset --' \
+            "$startup" "$SHELL" "$develop_fragment"
+        (( ${#shell_args[@]} > 0 )) && printf -v startup '%s%s' "$startup" "$(printf ' %q' "${shell_args[@]}")"
+        # Validated and bound above; the hook's own path keeps its errors legible.
+        [[ -f "$dev_hook" ]] && printf -v startup '%s\nsource %q' "$startup" "$dev_hook"
         # A private descriptor avoids shared startup files racing between
         # simultaneous entries and keeps context metadata outside the sandbox.
-        exec {dev_environment_fd}<<< "$dev_environment"
-        args_for_bwrap+=(--ro-bind-data "$dev_environment_fd" /run/nyx-dev-environment)
-        # END CLANKER: prepare and expose the Nix environment
-
-        # BEGIN CLANKER: deliver the project's dev hook to the startup stub
-        local dev_hook="$PWD/$ctxlink_marker_name/dev-hook.sh" dev_hook_fd
-        if [[ -e "$dev_hook" || -L "$dev_hook" ]]; then
-            if [[ -L "$dev_hook" || ! -f "$dev_hook" || ! -r "$dev_hook" ]]; then
-                printErr "dev hook must be a readable, non-symlink file: $dev_hook"
-                exit 1
-            fi
-            exec {dev_hook_fd}< "$dev_hook" || exit 1
-            args_for_bwrap+=(--ro-bind-data "$dev_hook_fd" /run/nyx-dev-hook)
-        fi
-        # END CLANKER: deliver the project's dev hook to the startup stub
+        exec {startup_fd}<<< "$startup"
+        args_for_bwrap+=(--ro-bind-data "$startup_fd" /run/nyx-dev-environment)
+        # END CLANKER: build and expose the devshell startup script
 
         # BEGIN CLANKER: in-sandbox devshell startup stub
         # The startup fragment expands only after entering the sandbox.
         # shellcheck disable=SC2016
         entry_command=("$BASH" --noprofile --norc -c '
-            sbx_host_shell="$1"
-            sbx_fragment="$2"
-            shift 2
             readonly -a sbx_shell_args=("$@")
             if [[ ! -f "$PWD/flake.nix" ]]; then
                 echo "[err] flake.nix is not visible in the sandbox; register the project with madd" >&2
                 exit 1
             fi
-            readonly sbx_host_shell sbx_fragment
             source /run/nyx-dev-environment || exit $?
-            export SHELL="$sbx_host_shell"
-            export NIX_FRAGMENT="${NIX_FRAGMENT:-$sbx_fragment}"
-            set -- "${sbx_shell_args[@]}"
-            if [[ -f /run/nyx-dev-hook ]]; then
-                source /run/nyx-dev-hook "${sbx_shell_args[@]}" || exit $?
-            fi
             exec "$SHELL" "${sbx_shell_args[@]}"
-        ' "$prog_name nix-develop" "$SHELL" "$develop_fragment" "${shell_args[@]}")
+        ' "$prog_name nix-develop" "${shell_args[@]}")
         # END CLANKER: in-sandbox devshell startup stub
     fi
     # END CLANKER: shell or devshell entry command
@@ -1336,7 +1311,7 @@ modeOf_enter() {
 # Dispatch with the original arguments, including the mode name.
 case "${1:-enter}" in
     init) modeOf_init "$@" ;;
-    enter|--|nix-develop) modeOf_enter "$@" ;;
+    enter|--|nix-develop|nd) modeOf_enter "$@" ;;
     madd) modeOf_madd "$@" ;;
     # Clanker implemented: mcover dispatch
     mcover) modeOf_mcover "$@" ;;
