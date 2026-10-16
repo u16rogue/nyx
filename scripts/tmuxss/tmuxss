@@ -24,4 +24,11 @@ if ! tmux new-session -d -s "$SESSION_NAME" -A -c "$SESSION_DIR"; then
     exit 1
 fi
 
+if [[ -L "$SESSION_DIR/.nyx-sbx/ptr" ]] && command -v nix-develop &> /dev/null; then
+    if ! tmux send-keys -t "$SESSION_NAME" "nix-develop" C-m; then
+        echo "[warn] failed to to auto enter nix-develop" >&2
+        exit 1
+    fi
+fi
+
 exit 0
