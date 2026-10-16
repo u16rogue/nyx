@@ -59,26 +59,27 @@ fi
 
 # === Get current flake nixpkgs rev + lastModified ===
 FLAKE_INPUT='nixpkgs'
-#FLAKE_NODE='<error_flake>'
+FLAKE_NODE='<error_flake>'
 FLAKE_REV='<error_flake>'
 FLAKE_DATE='<error_flake>'
 FLAKE_OWNER='<error_flake>'
 FLAKE_REPO='<error_flake>'
 
-read -r FLAKE_REV FLAKE_LM FLAKE_OWNER FLAKE_REPO FLAKE_TYPE < <(jq -r '
-    . as $lock
+IFS=$'\t' read -r FLAKE_NODE FLAKE_REV FLAKE_LM FLAKE_OWNER FLAKE_REPO FLAKE_TYPE < <(jq -r '
+    "\t<error_flake>\t<error_flake>\t<error_flake>\t<error_flake>\t<error_flake>" as $err_rest
+    | . as $lock
     | if ($lock.root // null) == null then
-          "<error_flake: missing .root> <error_flake> <error_flake> <error_flake> <error_flake> <error_flake>"
+          "<error_flake: missing .root>" + $err_rest
       else
           $lock.root as $root_key
           | if ($lock.nodes[$root_key] // null) == null then
-                "<error_flake: missing .nodes[\($root_key | @json)]> <error_flake> <error_flake> <error_flake> <error_flake> <error_flake>"
+                "<error_flake: missing .nodes[\($root_key | @json)]>" + $err_rest
             else
                 $lock.nodes[$root_key].inputs.nixpkgs as $nixpkgs_key
                 | if $nixpkgs_key == null then
-                      "<error_flake: missing .nodes[root].inputs.nixpkgs> <error_flake> <error_flake> <error_flake> <error_flake> <error_flake>"
+                      "<error_flake: missing .nodes[root].inputs.nixpkgs>" + $err_rest
                   elif ($lock.nodes[$nixpkgs_key] // null) == null then
-                      "<error_flake: missing .nodes[\($nixpkgs_key | @json)]> <error_flake> <error_flake> <error_flake> <error_flake> <error_flake>"
+                      "<error_flake: missing .nodes[\($nixpkgs_key | @json)]>" + $err_rest
                   else
                       $lock.nodes[$nixpkgs_key] as $n
                       | [
@@ -88,14 +89,14 @@ read -r FLAKE_REV FLAKE_LM FLAKE_OWNER FLAKE_REPO FLAKE_TYPE < <(jq -r '
                           ($n.locked.owner // "<error_flake>"),
                           ($n.locked.repo // "<error_flake>"),
                           ($n.locked.type // "<error_flake>")
-                      ] | join(" ")
+                      ] | map(tostring) | join("\t")
                   end
             end
       end
 ' "$LOCK_FILE")
 
 if [[ "$FLAKE_REV" == "<error_flake"* ]]; then
-    echo "[error] failed to read nixpkgs from flake.lock (input='$FLAKE_INPUT')" >&2
+    echo "[error] failed to read nixpkgs from flake.lock (input='$FLAKE_INPUT'): $FLAKE_NODE" >&2
 else
     FLAKE_DATE=$(fmt_epoch "$FLAKE_LM")
 fi
