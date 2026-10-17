@@ -128,7 +128,14 @@
                 networkConfig.DHCP = "yes";
                 # Same client id as NetworkManager so the router hands out the same lease
                 dhcpV4Config.ClientIdentifier = "mac";
+                # Publish `<hostname>.local` during boot for `ssh -p 2222 root@<hostname>.local`
+                networkConfig.MulticastDNS = true;
             };
+            # initrd-only drop-in so the booted system's resolved settings (and avahi) are unaffected
+            boot.initrd.systemd.contents."/etc/systemd/resolved.conf.d/mdns.conf".text = ''
+                [Resolve]
+                MulticastDNS=yes
+            '';
             boot.initrd.systemd.users.root.shell = "/bin/systemd-tty-ask-password-agent";
 
             system.stateVersion = "25.11";
