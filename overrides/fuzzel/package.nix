@@ -2,5 +2,5 @@
     inherit pkgs;
     package = fuzzel;
     env.FONTCONFIG_FILE = pkgs.makeFontsConf { fontDirectories = [ pkgs.comfortaa ]; };
-    flags."--config" = ./config.ini;
+    flags."--config" = "${./config.ini}";
 }

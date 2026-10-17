@@ -5,3 +5,4 @@
 !assert_templates
 !assert_hosts
 !sync_template_nixpkgs
+!release_hosts

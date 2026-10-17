@@ -36,6 +36,7 @@
                 pkgs.git
                 pkgs.jq
                 pkgs.btop
+                pkgs.curl
             ];
         };
     };

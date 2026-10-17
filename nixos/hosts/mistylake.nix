@@ -70,6 +70,7 @@
                 gpu-nvidia
                 luks
                 networkmanager
+                mdns-query
                 swraid
             ];
 

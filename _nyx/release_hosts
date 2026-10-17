@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+
+# THIS WAS WRITTEN BY A CLANKER
+
+set -euo pipefail
+
+# Publishes a `hosts.json` GitHub release whenever any host's evaluated system
+# changes. Hosts importing the `auto-upgrade` nixos module poll the latest
+# release and only rebuild when their entry differs from /run/current-system.
+#
+# A host's `outPath` changes exactly when something that ends up in its system
+# changes (host, module, user, override, flake.lock), so no path filters are
+# needed to decide relevance.
+#
+# hosts.json:
+#   { "version": 1, "rev": "<commit>", "hosts": { "<host>": { "outPath": "...", "rev": "<commit that last changed it>" } } }
+#
+# Usage: release_hosts <commit sha>    (needs `gh` with GH_TOKEN, `nix`, `jq`)
+#        NYX_DRY_RUN=1 release_hosts <commit sha>    to only print the result
+
+PROJECT_DIR="$(realpath "$(dirname "$(realpath "${BASH_SOURCE[0]}")")/..")"
+cd "$PROJECT_DIR"
+
+rev="${1:?missing commit sha}"
+[[ "$rev" =~ ^[0-9a-f]{40}$ ]] || { echo "[err] invalid commit sha '$rev'" >&2; exit 1; }
+
+work="$(mktemp -d)"
+trap 'rm -rf -- "$work"' EXIT
+
+echo "[info] evaluating host systems at $rev"
+nix eval --json .#nixosConfigurations \
+    --apply 'builtins.mapAttrs (_: c: c.config.system.build.toplevel.outPath)' \
+    > "$work/current.json"
+
+if [[ "${NYX_DRY_RUN:-0}" != 1 ]] && gh release download --pattern hosts.json --dir "$work/previous" 2>/dev/null; then
+    previous="$work/previous/hosts.json"
+else
+    echo '{ "hosts": {} }' > "$work/empty.json"
+    previous="$work/empty.json"
+    [[ "${NYX_DRY_RUN:-0}" == 1 ]] || echo "[info] no previous release, treating every host as changed"
+fi
+
+# Unchanged hosts keep the rev that last changed them.
+jq -n --arg rev "$rev" --slurpfile current "$work/current.json" --slurpfile previous "$previous" '
+    ($previous[0].hosts // {}) as $prev
+    | {
+        version: 1,
+        rev: $rev,
+        hosts: ($current[0] | with_entries(
+            .value as $out
+            | .value = (if $prev[.key].outPath == $out then $prev[.key] else { outPath: $out, rev: $rev } end)
+        ))
+    }
+' > "$work/hosts.json"
+
+mapfile -t changed < <(jq -r --arg rev "$rev" '.hosts | to_entries[] | select(.value.rev == $rev) | .key' "$work/hosts.json")
+mapfile -t removed < <(jq -rn --slurpfile current "$work/current.json" --slurpfile previous "$previous" \
+    '($previous[0].hosts // {} | keys) - ($current[0] | keys) | .[]')
+
+cat "$work/hosts.json"
+
+if [[ "${#changed[@]}" -eq 0 && "${#removed[@]}" -eq 0 ]]; then
+    echo "[info] no host system changed, nothing to release"
+    exit 0
+fi
+
+notes="Changed hosts:"
+for host in "${changed[@]}"; do notes+=$'\n'"* \`$host\`"; done
+if [[ "${#removed[@]}" -gt 0 ]]; then
+    notes+=$'\n\n'"Removed hosts:"
+    for host in "${removed[@]}"; do notes+=$'\n'"* \`$host\`"; done
+fi
+echo "$notes"
+
+if [[ "${NYX_DRY_RUN:-0}" == 1 ]]; then
+    echo "[info] dry run, not releasing"
+    exit 0
+fi
+
+tag="hosts-$(date -u +%Y%m%d-%H%M%S)-${rev:0:7}"
+gh release create "$tag" "$work/hosts.json" --target "$rev" --title "$tag" --notes "$notes" --latest
+echo "[info] released $tag"

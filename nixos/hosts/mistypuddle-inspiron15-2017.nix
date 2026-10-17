@@ -1,3 +1,4 @@
+# THIS WAS WRITTEN BY A CLANKER
 { config, ... }: {
     nyx.nixos.hosts."mistypuddle-inspiron15-2017" = {
         platform = "x86_64-linux";
@@ -60,7 +61,9 @@
                 cpu-intel
                 luks
                 networkmanager
+                mdns-publish
                 ssh-server
+                auto-upgrade
             ];
 
             environment.systemPackages = [
@@ -79,10 +82,11 @@
                 hybrid-sleep.enable = false;
             };
 
-            # Dimmest non-off backlight
+            # Dimmest non-off backlight; the console turns the panel off after 1 minute idle until a key is pressed
             services.udev.extraRules = ''
                 ACTION=="add", SUBSYSTEM=="backlight", KERNEL=="intel_backlight", ATTR{brightness}="1"
             '';
+            boot.kernelParams = [ "consoleblank=60" ];
 
             # Compressed RAM swap first, encrypted on-disk swapfile as overflow (8G RAM + tmpfs root)
             zramSwap.enable = true;
@@ -110,7 +114,6 @@
                 };
             };
 
-            # Remote LUKS unlock: `ssh -p 2222 root@<host>` during boot prompts for the passphrase (ethernet only)
             boot.initrd.network = {
                 enable = true;
                 ssh = {
@@ -123,6 +126,8 @@
             boot.initrd.systemd.network.networks."10-ethernet" = {
                 matchConfig.Type = "ether";
                 networkConfig.DHCP = "yes";
+                # Same client id as NetworkManager so the router hands out the same lease
+                dhcpV4Config.ClientIdentifier = "mac";
             };
             boot.initrd.systemd.users.root.shell = "/bin/systemd-tty-ask-password-agent";
 

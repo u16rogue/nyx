@@ -213,7 +213,8 @@ assert_user_password_recipients() {
                         print $3
                     # age emits GREASE recipient stanzas to keep implementations
                     # from ossifying around only the recipient types we use.
-                    } else if ($2 !~ /^i.*-grease$/) {
+                    # Their type is random printable characters ending in `-grease`.
+                    } else if ($2 !~ /-grease$/) {
                         exit 1
                     }
                 }

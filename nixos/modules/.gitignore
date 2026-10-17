@@ -1,12 +1,15 @@
 **
 .*
 !.gitignore
+!auto-upgrade.nix
 !cpu-amd.nix
 !cpu-intel.nix
 !gpg-agent.nix
 !gpu-nvidia.nix
 !hyprland-prerequisites.nix
 !luks.nix
+!mdns-query.nix
+!mdns-publish.nix
 !networkmanager.nix
 !pipewire.nix
 !ssh-server.nix
