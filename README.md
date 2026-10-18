@@ -52,6 +52,6 @@ my nix slop
 * [_nyx](./_nyx) + [workflows](./.github/workflows) - Meta folder(s). Contains scripts that are meant for automation. Mostly written by clankers.
     * Flake check
     * [assert_hosts](./_nyx/assert_hosts) - Checks host registration against `nixosConfigurations`, requires at least one uniquely named registered user object, verifies `networking.hostName`, ensures `/boot` and `/persist` are wired correctly, validates `keys.pub` and `keys.prv`, and verifies password recipients.
-    * [assert_templates](./_nyx/assert_templates) - Ensure template lock files are in sync.
+    * [assert_templates](./_nyx/assert_templates) - Ensure the `dev` template's `.nyx-sbx` files and lock inputs are in sync with the root.
     * [overrides/firefox/addons-assert.sh](./overrides/firefox/addons-assert.sh) - Ensure addon configuration entries are valid addons.
     * [release_hosts](./_nyx/release_hosts) - After the asserts pass on `main`, evaluates every host's system and publishes a `hosts.json` release only when one changed. Hosts importing the [auto-upgrade](./nixos/modules/auto-upgrade.nix) module poll it hourly and rebuild from that exact commit only when their entry differs from the running system.

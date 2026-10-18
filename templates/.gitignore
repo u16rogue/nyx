@@ -7,5 +7,7 @@
 
 !ssm/
 !ssm/init
+!ssm/.ssm/
+!ssm/.ssm/**
 
 **/.nyx-sbx/ptr

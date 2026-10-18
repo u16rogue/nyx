@@ -1,3 +1,11 @@
 #!/usr/bin/env bash
 
-# initialize a project
+# this script will automatically be deleted after init
+# and the .ssm templating will be automatically ignored
+# use the `ssm` script stored to control the templating further
+
+[[ ! -f "$PWD/init" && ! -f "$PWD/.ssm/ssm" ]] && {
+    echo "[err] you must execute this init script within the directory" >&2
+    exit 1
+}
+exec "$PWD/.ssm/ssm" init

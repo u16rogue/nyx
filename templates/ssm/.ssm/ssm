@@ -1,0 +1,134 @@
+#!/usr/bin/env bash
+
+# TODO: this should just generate a "config" file and then use that config file to generate the template
+# that also gives the ability to save a preconfigured template
+
+set -o pipefail
+
+ssm_dir="$(realpath -- "$(dirname -- "${BASH_SOURCE[0]}")")"
+ssm_root="$(dirname -- "$ssm_dir")"
+
+printErr() {
+    printf '\033[37m[\033[91merr\033[37m]\033[0m %s\n' "$1" >&2
+}
+
+printWarn() {
+    printf '\033[37m[\033[93mwarn\033[37m]\033[0m %s\n' "$1" >&2
+}
+
+printLog() {
+    printf '\033[37m[log]\033[0m %s\n' "$1" >&2
+}
+
+die() {
+    printErr "$1"
+    exit 1
+}
+
+modeOf_help() {
+    echo \
+"--------------------------------------------------------------------------------
+ssm <mode>
+--------------------------------------------------------------------------------
+<mode>:
+    init
+        initialize the project
+    add
+        add more sub projects to an initialized project.
+    sync
+        re-render missing _meta files, re-pick the zellij panes and re-apply
+        the sandbox mounts/covers.
+    pin
+        pin the flake's nixpkgs to the host's nixpkgs revision.
+    update
+        check for the latest template from the nyx repo
+    help
+        show this message.
+--------------------------------------------------------------------------------"
+}
+
+main() {
+
+    # Checks if the required programs are provided and if not
+    # loads the aggregated nix packages and reruns itself inside
+    # this shell.
+
+    # pairs of 2 <program name> <nix packages>
+    local -a required_programs=( \
+        nix nixpkgs#nix          \
+        git nixpkgs#git          \
+        mo  nixpkgs#mo           \
+        gum nixpkgs#gum          \
+        jq  nixpkgs#jq           \
+    );
+
+    local -a packages=();
+    local missing=0;
+    local i;
+    for (( i = 0; i < ${#required_programs[@]}; i += 2 )); do
+        packages+=("${required_programs[i + 1]}");
+        command -v "${required_programs[i]}" > /dev/null || missing=1;
+    done
+
+    if (( missing )); then
+        if [[ -n "${NYX_INIT_IN_SHELL:-}" ]]; then
+            echo "init: required programs still missing inside nix shell" >&2;
+            exit 1;
+        fi
+        if ! command -v nix &> /dev/null; then
+            echo "init: nix is required to fetch missing programs" >&2;
+            exit 1;
+        fi
+        NYX_INIT_IN_SHELL=1 exec nix shell "${packages[@]}" --command bash "$ssm_dir/ssm" "$@";
+    fi
+
+    if ! command -v "sbx-shell" &> /dev/null; then
+        printWarn "sbx-shell is unavailable. setting up sbx-shell project files will be available but constructing the sandbox itself will not."
+    fi
+
+    cd -- "$ssm_root" || die "couldn't enter $ssm_root"
+
+    # sourced so mo can see arrays and non exported variables
+    # shellcheck disable=SC1090
+    source "$(command -v mo)" || die "failed to load mo"
+
+    local -A palette=(
+        [text]="#cdd6f4" [overlay0]="#6c7086" [surface0]="#313244" [base]="#1e1e2e"
+        [mauve]="#cba6f7" [pink]="#f5c2e7" [lavender]="#b4befe" [green]="#a6e3a1"
+    )
+
+    local -a theme=(
+        GUM_INPUT_HEADER_FOREGROUND mauve
+        GUM_INPUT_PROMPT_FOREGROUND pink
+        GUM_INPUT_CURSOR_FOREGROUND pink
+        GUM_INPUT_PLACEHOLDER_FOREGROUND overlay0
+        GUM_CHOOSE_HEADER_FOREGROUND mauve
+        GUM_CHOOSE_CURSOR_FOREGROUND pink
+        GUM_CHOOSE_ITEM_FOREGROUND text
+        GUM_CHOOSE_SELECTED_FOREGROUND green
+        GUM_CONFIRM_PROMPT_FOREGROUND lavender
+        GUM_CONFIRM_SELECTED_FOREGROUND base
+        GUM_CONFIRM_SELECTED_BACKGROUND mauve
+        GUM_CONFIRM_UNSELECTED_FOREGROUND text
+        GUM_CONFIRM_UNSELECTED_BACKGROUND surface0
+    )
+    local i
+    for (( i = 0; i < ${#theme[@]}; i += 2 )); do
+        [[ -n "${!theme[i]:-}" ]] || export "${theme[i]}=${palette[${theme[i + 1]}]}"
+    done
+
+    case "${1:-help}" in
+        init) modeOf_init ;;
+        #add) modeOf_add ;;
+        #sync) modeOf_sync ;;
+        #pin) modeOf_pin ;;
+        help|-h|--help) modeOf_help ;;
+        *) printErr "unknown mode: $1"; modeOf_help; exit 1 ;;
+    esac
+}
+
+modeOf_init() {
+    exit 1
+}
+
+main "$@"

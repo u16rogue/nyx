@@ -217,39 +217,23 @@ compare_lockfiles() {
     fi
 }
 
-collect_template_paths() {
-    local relative_path="$1"
-    local -n output_paths="$2"
-    local template_dir=
+# only the barebones dev template mirrors the root, ssm handles its own customization
+DEV_TEMPLATE_DIR="$PROJECT_DIR/templates/dev"
 
-    output_paths=()
-
-    while IFS= read -r -d '' template_dir; do
-        output_paths+=("$template_dir/$relative_path")
-    done < <(find "$PROJECT_DIR/templates" -mindepth 1 -maxdepth 1 -type d -print0 | sort -z)
-
-    if [[ "${#output_paths[@]}" -eq 0 ]]; then
-        echo "[err] no template directories found under $PROJECT_DIR/templates." >&2
-        FLAG_FAIL=1
-    fi
-}
-
-TEMPLATE_PATHS=()
-
-collect_template_paths ".nyx-sbx/dev-hook.sh" TEMPLATE_PATHS
 echo "[check] .nyx-sbx/dev-hook.sh"
 compare_diff \
-    "${TEMPLATE_PATHS[@]}"
+    "$PROJECT_DIR/.nyx-sbx/dev-hook.sh" \
+    "$DEV_TEMPLATE_DIR/.nyx-sbx/dev-hook.sh"
 
-collect_template_paths ".nyx-sbx/share/zellij.kdl" TEMPLATE_PATHS
 echo "[check] .nyx-sbx/share/zellij.kdl"
 compare_diff \
-    "${TEMPLATE_PATHS[@]}"
+    "$PROJECT_DIR/.nyx-sbx/share/zellij.kdl" \
+    "$DEV_TEMPLATE_DIR/.nyx-sbx/share/zellij.kdl"
 
-collect_template_paths "flake.lock" TEMPLATE_PATHS
 echo "[check] flake.lock inputs"
 compare_lockfiles \
-    "${TEMPLATE_PATHS[@]}"
+    "$PROJECT_DIR/flake.lock" \
+    "$DEV_TEMPLATE_DIR/flake.lock"
 
 echo "[info] final result: $COUNT_SAME same, $COUNT_DIFF different"
 
