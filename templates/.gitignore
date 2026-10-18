@@ -4,8 +4,8 @@
 !default.nix
 !dev/
 !dev/**
-!dev-cpp/
-!dev-cpp/**
-!devenv/
-!devenv/**
+
+!ssm/
+!ssm/init
+
 **/.nyx-sbx/ptr
