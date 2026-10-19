@@ -1,6 +1,6 @@
 # THIS WAS WRITTEN BY A CLANKER
 { config, ... }: {
-    nyx.nixos.hosts."mistypuddle-inspiron15-2017" = {
+    nyx.nixos.hosts."mistypuddle" = {
         platform = "x86_64-linux";
 
         monitors = [
@@ -86,7 +86,7 @@
             services.udev.extraRules = ''
                 ACTION=="add", SUBSYSTEM=="backlight", KERNEL=="intel_backlight", ATTR{brightness}="1"
             '';
-            boot.kernelParams = [ "consoleblank=60" ];
+            #boot.kernelParams = [ "consoleblank=60" ];
 
             # Compressed RAM swap first, encrypted on-disk swapfile as overflow (8G RAM + tmpfs root)
             zramSwap.enable = true;
