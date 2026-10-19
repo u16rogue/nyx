@@ -154,7 +154,10 @@ in (mkNixPak {
             clearEnv = true;
             newSession = true;
             dieWithParent = true;
-            bind.ro = [ [ "/etc/zoneinfo" "/usr/share/zoneinfo" ] ];
+            bind.ro = [
+                [ "/etc/zoneinfo" "/usr/share/zoneinfo" ]
+                [ "/run/nscd/socket" "/var/run/nscd/socket" ] # Host name lookups through the host's NSS (eg. mDNS `.local`); glibc asks nscd first
+            ];
             sockets = {
                 wayland = true;
                 pipewire = true;

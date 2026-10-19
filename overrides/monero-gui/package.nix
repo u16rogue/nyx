@@ -25,6 +25,10 @@ in (mkNixPak {
                 wayland = true;
                 x11 = true;
             };
+            bind.ro = [
+                [ "/etc/zoneinfo" "/usr/share/zoneinfo" ]
+                [ "/run/nscd/socket" "/var/run/nscd/socket" ] # Host name lookups through the host's NSS (eg. mDNS `.local`); glibc asks nscd first
+            ];
             bind.rw = [
                 [ (sloth.mkdir (sloth.concat [ (sloth.env "HOME") "/.nyx/app-fake-root/monero-gui/" (sloth.env "HOME") ])) (sloth.env "HOME") ]
                 [ (sloth.mkdir (sloth.concat' sloth.runtimeDir "/nyx/monero-gui")) "/tmp" ]
