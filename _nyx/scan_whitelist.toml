@@ -1,0 +1,24 @@
+# vulnix whitelist for `_nyx/scan_hosts`, checked by `_nyx/assert_scan_whitelist`.
+#
+# Every entry needs a `comment` and an `until` (at most 180 days ahead). Once
+# it expires the finding is reported again.
+#
+# ["pname-version"]              one version of a package (or ["pname"] for every version)
+# cve = [ "CVE-2026-12345" ]     optional, only these CVEs; without it every CVE of the package
+# comment = "fixed by a backported patch in nixpkgs, see <url>"
+# until = "2026-12-31"
+
+["git"]
+cve = [ "CVE-2021-21684", "CVE-2022-30947", "CVE-2022-36882", "CVE-2022-36883", "CVE-2022-36884", "CVE-2022-38663" ]
+comment = "NVD matches these to git, they are Jenkins Git plugin CVEs"
+until = "2027-04-01"
+
+["shellcheck"]
+cve = [ "CVE-2021-28794" ]
+comment = "vscode-shellcheck extension, not shellcheck itself"
+until = "2027-04-01"
+
+["ShellCheck"]
+cve = [ "CVE-2021-28794" ]
+comment = "vscode-shellcheck extension, not shellcheck itself"
+until = "2027-04-01"

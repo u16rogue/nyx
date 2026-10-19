@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+
+# THIS WAS WRITTEN BY A CLANKER
+
+set -euo pipefail
+
+# Compares two `scan_hosts` reports (before and after a change, usually a lock
+# bump) and prints a markdown summary: CVEs fixed, introduced and still open
+# per host, plus package version changes.
+#
+# A finding is identified by host + package name + CVE, not by version or
+# store path, so a bump that doesn't fix a CVE shows it as still open.
+#
+# Usage: scan_diff [--gate] <old report.json> <new report.json>
+#   --gate  exit 3 when the new report introduces open critical/high findings
+
+gate=0
+if [[ "${1:-}" == "--gate" ]]; then gate=1; shift; fi
+old="${1:?missing old report}"
+new="${2:?missing new report}"
+
+for f in "$old" "$new"; do
+    jq -e '.version == 1 and (.hosts | type) == "object"' "$f" > /dev/null || { echo "[err] $f is not a scan_hosts report" >&2; exit 1; }
+done
+
+# An exact closure next to an approximated one shows build-time extras as introduced/fixed.
+mismatched="$(jq -rn --slurpfile o "$old" --slurpfile n "$new" '
+    [$o[0].hosts | to_entries[] | select($n[0].hosts[.key] != null and $n[0].hosts[.key].mode != .value.mode) | .key] | join(", ")')"
+if [[ -n "$mismatched" ]]; then
+    echo "[err] closure modes differ for: $mismatched. Compare scans where both systems are built or neither is (CI)." >&2
+    exit 1
+fi
+
+jq -n -r --slurpfile o "$old" --slurpfile n "$new" '
+    def open: map(select(.whitelisted | not));
+    def keyed: map({ key: "\(.pname) \(.cve)", value: . }) | from_entries;
+    def row: "| \(.severity) | \(.cvss // "?") | `\(.pname)` \(.version // "") | [\(.cve)](https://nvd.nist.gov/vuln/detail/\(.cve)) |";
+    # parseDrvName: the version starts at the first dash followed by a digit
+    def pkgs: map(capture("^(?<pname>.+?)-(?<version>[0-9].*)$") // empty)
+        | group_by(.pname) | map({ key: .[0].pname, value: (map(.version) | unique | join(", ")) }) | from_entries;
+    $o[0] as $o | $n[0] as $n
+    | ($o.nixpkgs) as $op | ($n.nixpkgs) as $np
+    | [($o.hosts + $n.hosts) | keys[]] as $hosts
+    | [ $hosts[] as $h
+        | (($o.hosts[$h].findings // []) | open | keyed) as $before
+        | (($n.hosts[$h].findings // []) | open | keyed) as $after
+        | {
+            host: $h,
+            removed: ($n.hosts[$h] == null),
+            added: ($o.hosts[$h] == null),
+            fixed: [$before | to_entries[] | select($after[.key] == null) | .value],
+            introduced: [$after | to_entries[] | select($before[.key] == null) | .value] | sort_by(-(.cvss // 0)),
+            open: [$after | to_entries[] | select($before[.key] != null) | .value],
+            changes: (
+                (($o.hosts[$h].packages // []) | pkgs) as $a | (($n.hosts[$h].packages // []) | pkgs) as $b
+                | [($a + $b) | keys[] | select($a[.] != $b[.]) | "`\(.)`: \($a[.] // "-") → \($b[.] // "-")"]
+            )
+        } ] as $rows
+    | ($rows | map(.introduced[] | select(.severity == "critical" or .severity == "high")) | length) as $blocking
+    | "## Security delta",
+      "",
+      "nixpkgs `\($op.rev[0:12])` (\($op.ageDays) days old) → `\($np.rev[0:12])` (\($np.ageDays) days old)"
+        + (if $op.rev != $np.rev then ", [compare](https://github.com/\($np.owner)/\($np.repo)/compare/\($op.rev)...\($np.rev))" else "" end),
+      "",
+      "| host | fixed | introduced | still open | package changes |",
+      "|---|---|---|---|---|",
+      ($rows[] | "| `\(.host)`\(if .added then " (new)" elif .removed then " (removed)" else "" end) | \(.fixed | length) | \(.introduced | length) | \(.open | length) | \(.changes | length) |"),
+      "",
+      (if $blocking > 0 then "**\($blocking) introduced critical/high finding(s), review before merging.**" else "No critical/high findings introduced." end),
+      "",
+      ($rows[] | select((.introduced | length) + (.fixed | length) + (.changes | length) > 0)
+        | "### `\(.host)`", "",
+          (if (.introduced | length) > 0 then "Introduced:", "", "| severity | cvss | package | cve |", "|---|---|---|---|", (.introduced[] | row), "" else empty end),
+          (if (.fixed | length) > 0 then "<details><summary>Fixed (\(.fixed | length))</summary>", "", (.fixed[] | "- `\(.pname)` \(.cve)"), "", "</details>", "" else empty end),
+          (if (.changes | length) > 0 then "<details><summary>Package changes (\(.changes | length))</summary>", "", (.changes[] | "- \(.)"), "", "</details>", "" else empty end))
+'
+
+if [[ "$gate" == 1 ]]; then
+    blocking="$(jq -n --slurpfile o "$old" --slurpfile n "$new" '
+        [ $n[0].hosts | to_entries[] | .key as $h
+          | ([$o[0].hosts[$h].findings // [] | .[] | select(.whitelisted | not) | "\(.pname) \(.cve)"]) as $before
+          | .value.findings[] | select((.whitelisted | not) and (.severity == "critical" or .severity == "high"))
+          | select("\(.pname) \(.cve)" | IN($before[]) | not) ] | length')"
+    [[ "$blocking" == 0 ]] || exit 3
+fi

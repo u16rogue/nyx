@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+
+# THIS WAS WRITTEN BY A CLANKER
+
+set -euo pipefail
+
+# Every vulnix whitelist entry must say why it exists and when it expires, so
+# ignored CVEs resurface on their own instead of being silenced forever.
+#
+# Usage: assert_scan_whitelist [whitelist]    (default: _nyx/scan_whitelist.toml)
+
+PROJECT_DIR="$(realpath "$(dirname "$(realpath "${BASH_SOURCE[0]}")")/..")"
+WHITELIST="${1:-$PROJECT_DIR/_nyx/scan_whitelist.toml}"
+MAX_DAYS="${NYX_WHITELIST_MAX_DAYS:-180}"
+
+[[ -f "$WHITELIST" ]] || { echo "[err] whitelist not found: $WHITELIST" >&2; exit 1; }
+
+PYTHON="$(nix build --no-link --print-out-paths --inputs-from "$PROJECT_DIR" 'nixpkgs#python3^out')/bin/python3"
+
+"$PYTHON" - "$WHITELIST" "$MAX_DAYS" <<'EOF'
+import datetime, sys, tomllib
+
+path, max_days = sys.argv[1], int(sys.argv[2])
+with open(path, "rb") as f:
+    entries = tomllib.load(f)
+
+today = datetime.date.today()
+errors = []
+for name, entry in entries.items():
+    if not isinstance(entry, dict):
+        errors.append(f"'{name}' is not a table, quote the section header: [\"{name}\"]")
+        continue
+    if not str(entry.get("comment", "")).strip():
+        errors.append(f"'{name}' has no comment explaining why it is whitelisted")
+    if name.split("-")[0] == "*" and not entry.get("cve"):
+        errors.append(f"'{name}' whitelists every package, it must list CVEs")
+    until = entry.get("until")
+    if until is None:
+        errors.append(f"'{name}' has no 'until' date")
+        continue
+    try:
+        until = datetime.date.fromisoformat(str(until))
+    except ValueError:
+        errors.append(f"'{name}' has a malformed 'until' date '{until}', expected YYYY-MM-DD")
+        continue
+    if (until - today).days > max_days:
+        errors.append(f"'{name}' expires {until}, more than {max_days} days ahead")
+    elif until < today:
+        print(f"[info] '{name}' expired on {until} and no longer applies")
+
+for e in errors:
+    print(f"[err] {e}", file=sys.stderr)
+if errors:
+    sys.exit(1)
+print(f"[info] {len(entries)} whitelist entries ok")
+EOF

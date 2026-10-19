@@ -49,9 +49,12 @@ my nix slop
 
 * [legacy](https://github.com/u16rogue/dotfiles/tree/nix/self) - My old nixos config (dropped from this repo)
 
-* [_nyx](./_nyx) + [workflows](./.github/workflows) - Meta folder(s). Contains scripts that are meant for automation. Mostly written by clankers.
+* [_nyx](./_nyx) + [workflows](./.github/workflows) - Meta folder(s). Contains scripts that are meant for automation. ~~Mostly~~ 99% written by clankers.
     * Flake check
     * [assert_hosts](./_nyx/assert_hosts) - Checks host registration against `nixosConfigurations`, requires at least one uniquely named registered user object, verifies `networking.hostName`, ensures `/boot` and `/persist` are wired correctly, validates `keys.pub` and `keys.prv`, and verifies password recipients.
     * [assert_templates](./_nyx/assert_templates) - Ensure the `dev` template's `.nyx-sbx` files and lock inputs are in sync with the root.
     * [overrides/firefox/addons-assert.sh](./overrides/firefox/addons-assert.sh) - Ensure addon configuration entries are valid addons.
+    * [scan_hosts](./_nyx/scan_hosts) - Scans every host's runtime closure for CVEs (NVD via vulnix) without building it and reports the nixpkgs pin age. Runs daily via [security-scan](./.github/workflows/security-scan.yml), which keeps a `nyx-security` issue updated, comments only on new findings and requests a lock bump when something critical/high appears or the pin is older than 14 days. False positives go to [scan_whitelist.toml](./_nyx/scan_whitelist.toml); every entry needs a `comment` and an `until` date ([assert_scan_whitelist](./_nyx/assert_scan_whitelist)).
+    * [update_lock](./_nyx/update_lock) + [scan_diff](./_nyx/scan_diff) - [update-lock](./.github/workflows/update-lock.yml) bumps every input weekly (templates synced), proposes it as a single `bot/flake-lock` PR with the per-host CVE delta and dispatches `Asserts` and [lock-gate](./.github/workflows/lock-gate.yml) on it, which builds every host and fails if the bump introduces open critical/high findings.
+    * [adopt_lock](./_nyx/adopt_lock) - The bot PR is never merged. Once its checks pass, this re-commits its lock files as your own signed commit on `main` (refusing if the bot branch is stale, touches anything else, or the commit isn't signed), so `main` only contains your signed commits.
     * [release_hosts](./_nyx/release_hosts) - After the asserts pass on `main`, evaluates every host's system and publishes a `hosts.json` release only when one changed. Hosts importing the [auto-upgrade](./nixos/modules/auto-upgrade.nix) module poll it hourly and rebuild from that exact commit only when their entry differs from the running system.

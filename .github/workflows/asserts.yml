@@ -4,6 +4,7 @@ name: Asserts
 "on":
   push:
   pull_request:
+  workflow_dispatch:
 
 jobs:
   flake-check:
@@ -61,6 +62,20 @@ jobs:
 
       - name: Assert hosts
         run: bash _nyx/assert_hosts
+
+  assert-scan-whitelist:
+    name: Assert scan whitelist
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v14
+
+      - name: Assert scan whitelist
+        run: bash _nyx/assert_scan_whitelist
 
   assert-firefox-addons:
     name: Assert Firefox addons

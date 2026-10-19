@@ -6,3 +6,10 @@
 !assert_hosts
 !sync_template_nixpkgs
 !release_hosts
+!assert_scan_whitelist
+!scan_hosts
+!scan_whitelist.toml
+!scan_diff
+!scan_issue
+!update_lock
+!adopt_lock

@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+
+# THIS WAS WRITTEN BY A CLANKER
+
+set -euo pipefail
+
+# Adopts the `bot/flake-lock` proposal as your own signed commit on main, so
+# main only ever contains commits you signed. Refuses unless the bot commit sits
+# on top of the current main, only touches lock files, and its Asserts and Lock
+# gate checks passed. Doesn't push.
+#
+# Usage: adopt_lock    (needs `gh`, run from main)
+
+PROJECT_DIR="$(realpath "$(dirname "$(realpath "${BASH_SOURCE[0]}")")/..")"
+cd "$PROJECT_DIR"
+
+BRANCH="bot/flake-lock"
+die() { echo "[err] $*" >&2; exit 1; }
+
+[[ "$(git branch --show-current)" == main ]] || die "switch to main first"
+git fetch --quiet origin main "$BRANCH"
+[[ "$(git rev-parse HEAD)" == "$(git rev-parse origin/main)" ]] || die "local main differs from origin/main, sync it first"
+mapfile -t locks < <(git ls-files 'flake.lock' 'templates/*/flake.lock')
+git diff --quiet HEAD -- "${locks[@]}" || die "uncommitted changes to lock files"
+
+bot="$(git rev-parse "origin/$BRANCH")"
+[[ "$(git rev-parse "$bot^")" == "$(git rev-parse origin/main)" ]] \
+    || die "$BRANCH is not based on the current main; run the 'Update lock' workflow again"
+unexpected="$(git diff --name-only "$bot^" "$bot" | grep -Fxv -f <(printf '%s\n' "${locks[@]}") || true)"
+[[ -z "$unexpected" ]] || die "$BRANCH changes more than lock files: $unexpected"
+
+pr="$(gh pr list --head "$BRANCH" --base main --state open --json number,headRefOid --jq '.[0] // empty')"
+[[ -n "$pr" ]] || die "no open PR for $BRANCH"
+[[ "$(jq -r .headRefOid <<< "$pr")" == "$bot" ]] || die "the PR head is not $bot, fetch again"
+number="$(jq -r .number <<< "$pr")"
+
+# Exits non-zero while checks are pending or failed, the JSON is still printed.
+checks="$(gh pr checks "$number" --json workflow,name,bucket 2> /dev/null)" || true
+jq -e 'type == "array"' <<< "$checks" > /dev/null || die "could not read the checks of PR #$number"
+for workflow in "Asserts" "Lock gate"; do
+    jq -e --arg w "$workflow" 'any(.[]; .workflow == $w)' <<< "$checks" > /dev/null || die "'$workflow' has not run on PR #$number"
+done
+not_passed="$(jq -r '.[] | select(.workflow == "Asserts" or .workflow == "Lock gate") | select(.bucket != "pass" and .bucket != "skipping") | "\(.workflow) / \(.name): \(.bucket)"' <<< "$checks")"
+[[ -z "$not_passed" ]] || die "checks of PR #$number did not pass:"$'\n'"$not_passed"
+
+git checkout "$bot" -- "${locks[@]}"
+# Only the lock files, whatever else is staged.
+git commit --quiet -m "$(git log -1 --format=%s "$bot")" -m "$(git log -1 --format=%b "$bot")" -m "Adopted from #$number ($bot)." -- "${locks[@]}"
+if ! git cat-file commit HEAD | grep -q '^gpgsig'; then
+    git reset --quiet --soft HEAD~1
+    git restore --staged --worktree --source=HEAD -- "${locks[@]}"
+    die "the commit was not signed, check your signing config; nothing was changed"
+fi
+
+echo "[info] adopted #$number as $(git rev-parse --short HEAD) (signed); review with 'git show --stat' and push when ready"

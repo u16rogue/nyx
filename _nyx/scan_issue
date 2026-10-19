@@ -1,0 +1,109 @@
+#!/usr/bin/env bash
+
+# THIS WAS WRITTEN BY A CLANKER
+
+set -euo pipefail
+
+# Keeps one GitHub issue (label `nyx-security`) in sync with the latest
+# `scan_hosts` report. The body is rewritten on every run; a comment, which is
+# what notifies, is only posted for findings that weren't open before or when
+# the nixpkgs pin turns stale.
+#
+# Usage: scan_issue <report.json> <summary.md>    (needs `gh` with GH_TOKEN)
+#        NYX_DRY_RUN=1 scan_issue ...    to only print what would be posted
+#
+# When GITHUB_OUTPUT is set, writes `new_blocking` (new open critical/high
+# findings) and `stale` (pin older than NYX_MAX_PIN_AGE_DAYS) to it.
+
+report="${1:?missing report.json}"
+summary="${2:?missing summary.md}"
+LABEL="nyx-security"
+TITLE="Security: open findings"
+dry="${NYX_DRY_RUN:-0}"
+
+jq -e '.version == 1' "$report" > /dev/null || { echo "[err] $report is not a scan_hosts report" >&2; exit 1; }
+
+work="$(mktemp -d)"
+trap 'rm -rf -- "$work"' EXIT
+
+run_url=""
+if [[ -n "${GITHUB_RUN_ID:-}" ]]; then
+    run_url="${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+fi
+
+number=""
+previous_state='{ "keys": [], "stale": false }'
+if [[ "$dry" != 1 ]]; then
+    gh label create "$LABEL" --color B60205 --description "Managed by _nyx/scan_issue" --force > /dev/null
+    gh issue list --label "$LABEL" --state open --json number,body --limit 1 > "$work/issues.json"
+    number="$(jq -r '.[0].number // empty' "$work/issues.json")"
+    if [[ -n "$number" ]]; then
+        state="$(jq -r '.[0].body' "$work/issues.json" | tr -d '\r' | sed -n 's/^<!-- nyx-scan-state: \(.*\) -->$/\1/p' | tail -n 1)"
+        if [[ -n "$state" ]] && jq -e . <<< "$state" > /dev/null 2>&1; then previous_state="$state"; fi
+    fi
+fi
+
+# Open findings as "host pname cve" keys.
+jq '[.hosts | to_entries[] | .key as $h | .value.findings[] | select(.whitelisted | not) | . + { host: $h, key: "\($h) \(.pname) \(.cve)" }]' "$report" > "$work/open.json"
+state="$(jq -c --slurpfile r "$report" '{ keys: (map(.key) | unique), stale: $r[0].nixpkgs.stale }' "$work/open.json")"
+jq --argjson prev "$previous_state" '[.[] | select(.key | IN($prev.keys[]) | not)]' "$work/open.json" > "$work/new.json"
+new_count="$(jq length "$work/new.json")"
+new_blocking="$(jq '[.[] | select(.severity == "critical" or .severity == "high")] | length' "$work/new.json")"
+stale="$(jq -r '.nixpkgs.stale' "$report")"
+was_stale="$(jq -r '.stale' <<< "$previous_state")"
+
+{
+    if [[ "$(wc -c < "$summary")" -gt 45000 ]]; then
+        jq -r '"Scanned `\(.rev[0:12])` at \(.scannedAt), nixpkgs is \(.nixpkgs.ageDays) days old.", "",
+               (.hosts | to_entries[] | "- `\(.key)`: \(.value.findings | map(select(.whitelisted | not)) | length) open")' "$report"
+        echo
+        echo "The full table is too long for an issue, see the \`scan-report\` artifact${run_url:+ of [this run]($run_url)}."
+    else
+        cat "$summary"
+    fi
+    echo
+    echo "---"
+    echo "Updated by \`_nyx/scan_hosts\`${run_url:+ in [this run]($run_url)}. Whitelist false positives in \`_nyx/scan_whitelist.toml\`."
+    echo
+    echo "<!-- nyx-scan-state: $state -->"
+} > "$work/body.md"
+
+: > "$work/comment.md"
+if [[ "$new_count" -gt 0 ]]; then
+    {
+        echo "**$new_count new open finding(s)**, $new_blocking critical/high:"
+        echo
+        echo "| host | severity | cvss | package | cve |"
+        echo "|---|---|---|---|---|"
+        jq -r 'sort_by(-(.cvss // 0))[:100][] | "| `\(.host)` | \(.severity) | \(.cvss // "?") | `\(.pname)` \(.version // "") | [\(.cve)](https://nvd.nist.gov/vuln/detail/\(.cve)) |"' "$work/new.json"
+        [[ "$new_count" -le 100 ]] || echo "| … | | | $((new_count - 100)) more | |"
+        echo
+    } >> "$work/comment.md"
+fi
+if [[ "$stale" == true && "$was_stale" != true ]]; then
+    jq -r '"The nixpkgs pin is now **\(.nixpkgs.ageDays) days old**. Merge the `flake.lock` bump PR."' "$report" >> "$work/comment.md"
+fi
+
+if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
+    { echo "new_blocking=$new_blocking"; echo "stale=$stale"; } >> "$GITHUB_OUTPUT"
+fi
+
+if [[ "$dry" == 1 ]]; then
+    echo "===== body"; cat "$work/body.md"
+    echo "===== comment"; cat "$work/comment.md"
+    exit 0
+fi
+
+if [[ -z "$number" ]]; then
+    gh issue create --title "$TITLE" --label "$LABEL" --body-file "$work/body.md"
+    exit 0
+fi
+gh issue edit "$number" --body-file "$work/body.md" > /dev/null
+if [[ -s "$work/comment.md" ]]; then
+    {
+        cat "$work/comment.md"
+        [[ -z "$run_url" ]] || echo "[Scan run]($run_url)"
+    } > "$work/comment-final.md"
+    gh issue comment "$number" --body-file "$work/comment-final.md" > /dev/null
+fi
+echo "[info] updated issue #$number ($new_count new findings)"

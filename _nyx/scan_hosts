@@ -1,0 +1,360 @@
+#!/usr/bin/env bash
+
+# THIS WAS WRITTEN BY A CLANKER
+
+set -euo pipefail
+
+# Scans every host's runtime closure for known CVEs (NVD via vulnix) and
+# reports how old the pinned nixpkgs is.
+#
+# Closure resolution, per host:
+#   exact   the system is valid in the local store: `nix path-info -r` on it.
+#   approx  nothing is built: derivations that would be built locally are
+#           walked through their inputs (minus stdenv, setup hooks and
+#           dev/doc outputs); everything substitutable contributes its exact
+#           closure from the local store or the binary cache. This is a
+#           superset of the real runtime closure, never a subset.
+#
+# report.json:
+#   { "version": 1, "rev", "scannedAt", "nixpkgs": { "rev", "lastModified", "ageDays", "stale" },
+#     "hosts": { "<host>": { "mode", "outPath", "packages": [...], "unmapped": n,
+#                            "findings": [ { "pname", "version", "cve", "cvss", "severity", "whitelisted" } ] } } }
+#
+# Usage: scan_hosts [--flake <ref>] [--out <dir>] [host...]
+#   --flake  flake to scan (default: this repository)
+#   --out    directory for report.json and summary.md (default: print report.json)
+#
+# Environment:
+#   NYX_SCAN_WHITELIST     vulnix whitelist (default: _nyx/scan_whitelist.toml)
+#   NYX_SCAN_CACHE         NVD mirror + vulnix database (default: ~/.cache/nyx-scan)
+#   NYX_MAX_PIN_AGE_DAYS   pin age that counts as stale (default: 14)
+#   NYX_SCAN_KEEP=1        keep the work directory for debugging
+#
+# Exits 0 when the scan completed, whatever it found. Anything else is a
+# failed scan and must not be read as "no findings".
+
+PROJECT_DIR="$(realpath "$(dirname "$(realpath "${BASH_SOURCE[0]}")")/..")"
+export LC_ALL=C
+
+flake="$PROJECT_DIR"
+out_dir=""
+hosts=()
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --flake) flake="${2:?--flake needs a value}"; shift 2 ;;
+        --out) out_dir="${2:?--out needs a value}"; shift 2 ;;
+        -h|--help) sed -n '/^# Scans/,/^# failed scan/p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -*) echo "[err] unknown option '$1'" >&2; exit 1 ;;
+        *) [[ "$1" =~ ^[A-Za-z0-9_-]+$ ]] || { echo "[err] invalid host name '$1'" >&2; exit 1; }
+           hosts+=("$1"); shift ;;
+    esac
+done
+
+WHITELIST="${NYX_SCAN_WHITELIST:-$PROJECT_DIR/_nyx/scan_whitelist.toml}"
+CACHE_DIR="${NYX_SCAN_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/nyx-scan}"
+MAX_PIN_AGE_DAYS="${NYX_MAX_PIN_AGE_DAYS:-14}"
+MIRROR_DIR="$CACHE_DIR/nvd-mirror"
+VULNIX_DB="$CACHE_DIR/vulnix"
+NVD_URL="https://nvd.nist.gov/feeds/json/cve/2.0"
+
+work="$(mktemp -d)"
+server_pid=""
+cleanup() {
+    [[ -z "$server_pid" ]] || kill "$server_pid" 2>/dev/null || true
+    if [[ "${NYX_SCAN_KEEP:-0}" == 1 ]]; then echo "[info] kept work directory $work" >&2; else rm -rf -- "$work"; fi
+}
+trap cleanup EXIT
+
+log() { echo "[info] $*" >&2; }
+die() { echo "[err] $*" >&2; exit 1; }
+
+# Tools come from this repository's pin so the scanner doesn't change with the flake being scanned.
+tools="$(nix build --no-link --print-out-paths --inputs-from "$PROJECT_DIR" 'nixpkgs#vulnix^out' 'nixpkgs#python3^out' 2> "$work/tools.log")" \
+    || { cat "$work/tools.log" >&2; die "could not build vulnix/python3"; }
+VULNIX="$(sed -n 1p <<< "$tools")/bin/vulnix"
+PYTHON="$(sed -n 2p <<< "$tools")/bin/python3"
+[[ -x "$VULNIX" && -x "$PYTHON" ]] || die "could not resolve vulnix/python3"
+
+if [[ -f "$WHITELIST" ]]; then
+    bash "$PROJECT_DIR/_nyx/assert_scan_whitelist" "$WHITELIST" >&2
+fi
+
+# --- flake metadata ----------------------------------------------------------
+
+nix flake metadata --json "$flake" > "$work/metadata.json"
+rev="$(jq -r '.revision // .dirtyRevision // "unknown"' "$work/metadata.json")"
+jq --argjson max "$MAX_PIN_AGE_DAYS" --argjson now "$(date +%s)" '
+    .locks as $l
+    | $l.nodes[$l.nodes[$l.root].inputs.nixpkgs].locked
+    | { owner, repo, rev, lastModified, ageDays: ((($now - .lastModified) / 86400) | floor) }
+    | .stale = (.ageDays > $max)
+' "$work/metadata.json" > "$work/nixpkgs.json"
+log "scanning $flake at $rev (nixpkgs $(jq -r '"\(.rev[0:12]), \(.ageDays) days old"' "$work/nixpkgs.json"))"
+
+# --- evaluate hosts ------------------------------------------------------------
+
+selector="c"
+if [[ "${#hosts[@]}" -gt 0 ]]; then
+    selector="builtins.intersectAttrs (builtins.listToAttrs (map (n: { name = n; value = null; }) [ $(printf '"%s" ' "${hosts[@]}")])) c"
+fi
+nix eval --json "$flake#nixosConfigurations" --apply "c: builtins.mapAttrs (_: h: {
+    out = h.config.system.build.toplevel.outPath;
+    drv = h.config.system.build.toplevel.drvPath;
+}) ($selector)" > "$work/hosts.json"
+
+mapfile -t host_names < <(jq -r 'keys[]' "$work/hosts.json")
+[[ "${#host_names[@]}" -gt 0 ]] || die "no hosts to scan"
+for host in "${hosts[@]}"; do
+    jq -e --arg h "$host" 'has($h)' "$work/hosts.json" > /dev/null || die "unknown host '$host'"
+done
+
+mapfile -t substituters < <(nix config show substituters | tr ' ' '\n' | sed '/^$/d')
+[[ "${#substituters[@]}" -gt 0 ]] || substituters=("https://cache.nixos.org")
+
+# Walks derivations that must be built locally; their inputs approximate their
+# runtime references. Substitutable inputs end up in the frontier.
+cat > "$work/walk.jq" <<'EOF'
+.derivations as $d
+| ($built | map({ key: ., value: true }) | from_entries) as $b
+| { queue: [$root], seen: { ($root): true }, frontier: {} }
+| until((.queue | length) == 0;
+    .queue[0] as $cur | .queue |= .[1:]
+    | reduce ($d[$cur].inputs.drvs | to_entries[]) as $in (.;
+        if ($d[$in.key].name | test("^stdenv-|-hook$")) then .
+        elif $b[$in.key] then
+            if .seen[$in.key] then . else .seen[$in.key] = true | .queue += [$in.key] end
+        else
+            reduce ($in.value.outputs[] | select(IN("dev", "man", "doc", "devdoc", "info", "debug") | not)) as $o (.;
+                .frontier["\($in.key)^\($o)"] = true)
+        end))
+| { built: (.seen | keys), frontier: (.frontier | keys) }
+EOF
+
+# Recursive closure of store paths, from the local store or the first substituter that has them.
+closure_of() {
+    local list="$1" invalid valid
+    [[ -s "$list" ]] || return 0
+    invalid="$(mktemp -p "$work")"
+    valid="$(mktemp -p "$work")"
+    xargs -r nix-store --check-validity --print-invalid < "$list" > "$invalid" || true
+    grep -Fxv -f "$invalid" "$list" > "$valid" || true
+    [[ ! -s "$valid" ]] || xargs -r nix path-info -r < "$valid"
+    [[ -s "$invalid" ]] || return 0
+    local store
+    for store in "${substituters[@]}"; do
+        if xargs -r nix path-info -r --store "$store" < "$invalid" 2> /dev/null; then return 0; fi
+    done
+    # Some path isn't in the first store that was tried; resolve one by one.
+    local path found
+    while IFS= read -r path; do
+        found=0
+        for store in "${substituters[@]}"; do
+            if nix path-info -r --store "$store" "$path" 2> /dev/null; then found=1; break; fi
+        done
+        [[ "$found" == 1 ]] || die "$path is neither built locally, nor will be, nor in any substituter"
+    done < "$invalid"
+}
+
+for host in "${host_names[@]}"; do
+    hw="$work/host-$host"
+    mkdir -p "$hw"
+    out="$(jq -r --arg h "$host" '.[$h].out' "$work/hosts.json")"
+    drv="$(jq -r --arg h "$host" '.[$h].drv' "$work/hosts.json")"
+
+    nix derivation show -r "$drv" > "$hw/drvs.json"
+    jq -e '.version == 4' "$hw/drvs.json" > /dev/null || die "unsupported 'nix derivation show' format, expected version 4"
+
+    # "<output path> <drv>^<output>" for every derivation in the graph. Fixed-output
+    # derivations don't list their path, ask the store.
+    jq -r '.derivations | to_entries[] | .key as $k | .value.outputs | to_entries[] | select(.value.path) | "/nix/store/\(.value.path) /nix/store/\($k)^\(.key)"' "$hw/drvs.json" > "$hw/outputs"
+    jq -r '.derivations | to_entries[] | select([.value.outputs[] | .path] | all(. == null)) | "/nix/store/\(.key)"' "$hw/drvs.json" > "$hw/fods"
+    : > "$hw/fod-paths"
+    if [[ -s "$hw/fods" ]]; then
+        xargs -r nix-store -q --outputs < "$hw/fods" > "$hw/fod-paths"
+        [[ "$(wc -l < "$hw/fods")" == "$(wc -l < "$hw/fod-paths")" ]] || die "fixed-output derivations with several outputs in $host"
+        paste -d ' ' "$hw/fod-paths" <(sed 's/$/^out/' "$hw/fods") >> "$hw/outputs"
+        sort -u -o "$hw/fod-paths" "$hw/fod-paths"
+    fi
+    sort -u -o "$hw/outputs" "$hw/outputs"
+    sed 's/\^[^ ]*$//' "$hw/outputs" > "$hw/out2drv"
+
+    if nix-store --check-validity "$out" 2> /dev/null; then
+        mode="exact"
+        nix path-info -r "$out" > "$hw/closure"
+    else
+        mode="approx"
+        nix build --dry-run "$drv^*" 2> "$hw/dry-run" || { cat "$hw/dry-run" >&2; die "dry run failed for $host"; }
+        awk '/will be built:$/ { f = 1; next } f && /^  \/nix\/store\// { print $1; next } { f = 0 }' "$hw/dry-run" \
+            | sed 's|^/nix/store/||' | jq -R . | jq -s . > "$hw/built.json"
+
+        if jq -e --arg root "${drv#/nix/store/}" 'index($root)' "$hw/built.json" > /dev/null; then
+            jq --argjson built "$(< "$hw/built.json")" --arg root "${drv#/nix/store/}" -f "$work/walk.jq" "$hw/drvs.json" > "$hw/walk.json"
+        else
+            # The system itself is substitutable.
+            jq -n --arg root "${drv#/nix/store/}" '{ built: [], frontier: ["\($root)^*"] }' > "$hw/walk.json"
+        fi
+
+        # Built derivations contribute all their outputs, the frontier its exact closure.
+        jq -r '.built[] | "/nix/store/\(.)"' "$hw/walk.json" | sort -u > "$hw/built-drvs"
+        join -1 2 -2 1 -o 1.1 <(sed 's/\^[^ ]*$//' "$hw/outputs" | sort -k2,2) "$hw/built-drvs" | sort -u > "$hw/built-paths"
+        jq -r '.frontier[] | "/nix/store/" + .' "$hw/walk.json" | sort -u > "$hw/frontier-outs"
+        {
+            join -1 2 -2 1 -o 1.1 <(sort -k2,2 "$hw/outputs") <(grep -v '\^\*$' "$hw/frontier-outs")
+            join -1 2 -2 1 -o 1.1 <(sed 's/\^[^ ]*$//' "$hw/outputs" | sort -k2,2) <(grep '\^\*$' "$hw/frontier-outs" | sed 's/\^\*$//')
+        } | sort -u > "$hw/frontier-paths"
+
+        # Fixed-output paths have no references, don't look them up.
+        comm -12 "$hw/frontier-paths" "$hw/fod-paths" > "$hw/frontier-fods"
+        comm -23 "$hw/frontier-paths" "$hw/fod-paths" > "$hw/frontier-lookup"
+        { cat "$hw/built-paths" "$hw/frontier-fods"; closure_of "$hw/frontier-lookup"; } > "$hw/closure"
+    fi
+
+    sort -u -o "$hw/closure" "$hw/closure"
+    join -o 1.2 <(sort -k1,1 "$hw/out2drv") "$hw/closure" | sort -u > "$hw/scan-drvs"
+    unmapped="$(join -v 2 <(sort -k1,1 "$hw/out2drv") "$hw/closure" | wc -l)"
+    printf '%s\n' "$mode" > "$hw/mode"
+    printf '%s\n' "$unmapped" > "$hw/unmapped"
+    log "$host: $mode closure of $(wc -l < "$hw/closure") paths, $(wc -l < "$hw/scan-drvs") derivations to scan"
+done
+
+# --- NVD mirror ----------------------------------------------------------------
+# NVD is slow and vulnix aborts (losing all progress) on a 10s read stall, so
+# feeds are fetched resumably, verified against NVD's .meta checksums, and
+# served to vulnix from localhost.
+
+mkdir -p "$MIRROR_DIR" "$VULNIX_DB"
+
+fetch_feed() {
+    local name="$1" file="$MIRROR_DIR/nvdcve-2.0-$1.json.gz" meta want attempt
+    meta="$(curl -fsSL --retry 5 --retry-all-errors --max-time 60 "$NVD_URL/nvdcve-2.0-$name.meta")" || die "could not fetch NVD meta for '$name'"
+    want="$(sed -n 's/^sha256:\([0-9A-Fa-f]\{64\}\)\r\{0,1\}$/\1/p' <<< "$meta" | tr 'A-F' 'a-f')"
+    [[ -n "$want" ]] || die "malformed NVD meta for '$name'"
+    if [[ -f "$file" ]]; then
+        [[ -f "$file.sha256" ]] || gzip -dc "$file" 2>/dev/null | sha256sum | cut -d ' ' -f 1 > "$file.sha256" || true
+        [[ "$(< "$file.sha256")" != "$want" ]] || return 0
+    fi
+    for attempt in 1 2 3; do
+        log "fetching NVD feed '$name' (attempt $attempt)"
+        local tries=0
+        until curl -fsSL --retry 5 --retry-all-errors --speed-limit 1024 --speed-time 60 -C - -o "$file.part" "$NVD_URL/nvdcve-2.0-$name.json.gz"; do
+            tries=$((tries + 1))
+            [[ "$tries" -lt 20 ]] || die "giving up on NVD feed '$name'"
+            sleep 5
+        done
+        if [[ "$(gzip -dc "$file.part" 2>/dev/null | sha256sum | cut -d ' ' -f 1)" == "$want" ]]; then
+            mv "$file.part" "$file"
+            printf '%s\n' "$want" > "$file.sha256"
+            return 0
+        fi
+        log "checksum mismatch for '$name', the feed probably changed mid-download; restarting"
+        rm -f "$file.part"
+        sleep 10
+        meta="$(curl -fsSL --retry 5 --retry-all-errors --max-time 60 "$NVD_URL/nvdcve-2.0-$name.meta")" || die "could not fetch NVD meta for '$name'"
+        want="$(sed -n 's/^sha256:\([0-9A-Fa-f]\{64\}\)\r\{0,1\}$/\1/p' <<< "$meta" | tr 'A-F' 'a-f')"
+    done
+    die "could not fetch a verified NVD feed '$name'"
+}
+
+fetch_feed modified
+# vulnix only reads the yearly feeds when its database is older than 7 days.
+# Keep them younger than 6 so the "modified" feed (last 8 days) covers the gap.
+if [[ ! -f "$VULNIX_DB/Data.fs" || -n "$(find "$VULNIX_DB/Data.fs" -mtime +5)" ]]; then
+    year="$(date +%Y)"
+    for y in $(seq $((year - 5)) "$year"); do
+        f="$MIRROR_DIR/nvdcve-2.0-$y.json.gz"
+        if [[ ! -f "$f" || -n "$(find "$f" -mtime +5)" ]]; then fetch_feed "$y"; fi
+    done
+fi
+
+"$PYTHON" - "$MIRROR_DIR" "$work/port" <<'EOF' &
+import functools, http.server, sys
+class Quiet(http.server.SimpleHTTPRequestHandler):
+    def log_message(self, *args):
+        pass
+handler = functools.partial(Quiet, directory=sys.argv[1])
+with http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler) as httpd:
+    with open(sys.argv[2], "w") as f:
+        f.write(str(httpd.server_address[1]))
+    httpd.serve_forever()
+EOF
+server_pid=$!
+for _ in $(seq 50); do [[ -s "$work/port" ]] && break; sleep 0.1; done
+[[ -s "$work/port" ]] || die "NVD mirror server did not start"
+
+# --- scan ------------------------------------------------------------------------
+
+cat "$work"/host-*/scan-drvs | sort -u > "$work/scan-drvs"
+whitelist_args=()
+[[ ! -f "$WHITELIST" ]] || whitelist_args=(-w "$WHITELIST")
+log "scanning $(wc -l < "$work/scan-drvs") derivations"
+mapfile -t scan_drvs < "$work/scan-drvs"
+# Passed as arguments: `vulnix -f` silently scans nothing for a list of derivations.
+set +e
+"$VULNIX" -R --json --show-whitelisted -c "$VULNIX_DB" -m "http://127.0.0.1:$(< "$work/port")/" \
+    "${whitelist_args[@]}" "${scan_drvs[@]}" > "$work/vulnix.json" 2> "$work/vulnix.err"
+rc=$?
+set -e
+# vulnix exits 2 both for "found something" and for errors; trust only its output.
+if [[ "$rc" -gt 2 ]] || ! jq -e 'type == "array"' "$work/vulnix.json" > /dev/null 2>&1; then
+    cat "$work/vulnix.err" >&2
+    die "vulnix failed (exit $rc)"
+fi
+
+# --- report ------------------------------------------------------------------------
+
+for host in "${host_names[@]}"; do
+    hw="$work/host-$host"
+    jq -n --arg host "$host" --arg mode "$(< "$hw/mode")" --argjson unmapped "$(< "$hw/unmapped")" \
+        --arg out "$(jq -r --arg h "$host" '.[$h].out' "$work/hosts.json")" \
+        --rawfile drvs "$hw/scan-drvs" --slurpfile vulns "$work/vulnix.json" '
+        ($drvs | split("\n") | map(select(. != ""))) as $mine
+        | ($mine | map({ key: ., value: true }) | from_entries) as $set
+        | def sev: if . == null then "unknown" elif . >= 9 then "critical" elif . >= 7 then "high" elif . >= 4 then "medium" else "low" end;
+        {
+            ($host): {
+                mode: $mode,
+                outPath: $out,
+                unmapped: $unmapped,
+                packages: ($mine | map(ltrimstr("/nix/store/") | .[33:] | rtrimstr(".drv")) | unique),
+                findings: [
+                    $vulns[0][] | select($set[.derivation])
+                    | . as $v
+                    | (($v.affected_by | map({ cve: ., whitelisted: false })) + ($v.whitelisted | map({ cve: ., whitelisted: true })))[]
+                    | { pname: $v.pname, version: $v.version, cve, cvss: ($v.cvssv3_basescore[.cve] // null), whitelisted }
+                    | .severity = (.cvss | sev)
+                ] | unique_by([.pname, .version, .cve]) | sort_by(-(.cvss // 0), .pname, .cve)
+            }
+        }'
+done | jq -s --arg rev "$rev" --slurpfile nixpkgs "$work/nixpkgs.json" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '
+    { version: 1, rev: $rev, scannedAt: $at, nixpkgs: $nixpkgs[0], hosts: add }
+' > "$work/report.json"
+
+render_summary() {
+    jq -r '
+        ([.hosts | to_entries[] | .key as $h | .value.findings[] | select(.whitelisted | not) | . + { host: $h }]
+         | group_by([(.pname | ascii_downcase), .cve])
+         | map(.[0] + { versions: (map(.version // "") | unique | join(", ")), hosts: (map(.host) | unique) })
+         | sort_by(-(.cvss // 0), .pname, .cve)) as $open
+        | (.hosts | keys | length) as $all
+        | "Scanned `\(.rev[0:12])` at \(.scannedAt), nixpkgs `\(.nixpkgs.rev[0:12])` is **\(.nixpkgs.ageDays) days old**\(if .nixpkgs.stale then " (stale)" else "" end).",
+          "",
+          "| host | open | critical/high | closure | packages |",
+          "|---|---|---|---|---|",
+          (.hosts | to_entries[] | (.value.findings | map(select(.whitelisted | not))) as $o
+            | "| `\(.key)` | \($o | length) | \($o | map(select(.severity == "critical" or .severity == "high")) | length) | \(.value.mode) | \(.value.packages | length) |"),
+          "",
+          (if ($open | length) == 0 then "No open findings." else
+              "| severity | cvss | package | cve | hosts |", "|---|---|---|---|---|",
+              ($open[] | "| \(.severity) | \(.cvss // "?") | `\(.pname)` \(.versions) | [\(.cve)](https://nvd.nist.gov/vuln/detail/\(.cve)) | \(if (.hosts | length) == $all then "all" else (.hosts | map("`\(.)`") | join(" ")) end) |")
+          end)
+    ' "$1"
+}
+
+if [[ -n "$out_dir" ]]; then
+    mkdir -p "$out_dir"
+    cp "$work/report.json" "$out_dir/report.json"
+    render_summary "$work/report.json" > "$out_dir/summary.md"
+    log "wrote $out_dir/report.json and $out_dir/summary.md"
+else
+    cat "$work/report.json"
+fi
