@@ -43,6 +43,9 @@
                 "/etc/NetworkManager/system-connections"
                 # Bluetooth
                 "/var/lib/bluetooth"
+                # Services
+                { directory = "/var/lib/forgejo"; user = "forgejo"; group = "forgejo"; mode = "0750"; }
+                { directory = "/var/lib/monero"; user = "monero"; group = "monero"; mode = "0750"; }
             ];
             files = [
                 { file = "/etc/machine-id"; inInitrd = true; }
@@ -64,6 +67,9 @@
                 mdns-publish
                 ssh-server
                 auto-upgrade
+                svc-traefik
+                svc-forgejo
+                svc-monero
             ];
 
             environment.systemPackages = [

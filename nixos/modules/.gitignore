@@ -13,5 +13,8 @@
 !networkmanager.nix
 !pipewire.nix
 !ssh-server.nix
+!svc-forgejo.nix
+!svc-monero.nix
+!svc-traefik.nix
 !swraid.nix
 !systemd-boot.nix
