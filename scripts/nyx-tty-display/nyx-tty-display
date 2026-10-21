@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+
+# Console blanking on tty1, re-runs itself with sudo since the tty is root-only.
+# `toggle` reads the panel state from DRM since a keypress can unblank the console behind our back.
+
+action="${1:-toggle}"
+case "$action" in
+    on|off|toggle) ;;
+    *) echo "usage: nyx-tty-display [on|off|toggle]" >&2; exit 1 ;;
+esac
+if [[ "$EUID" -ne 0 ]]; then
+    exec sudo "$0" "$action"
+fi
+
+if [[ "$action" == toggle ]]; then
+    shopt -s nullglob
+    action=on
+    for connector in /sys/class/drm/card*-*; do
+        if [[ "$(< "$connector/status")" == connected && "$(< "$connector/dpms")" == On ]]; then
+            action=off
+            break
+        fi
+    done
+fi
+
+if [[ "$action" == off ]]; then
+    setterm --blank force --term linux > /dev/tty1 < /dev/tty1
+else
+    setterm --blank poke --term linux > /dev/tty1 < /dev/tty1
+fi
+echo "display $action"

@@ -1,0 +1,5 @@
+**
+.*
+!.gitignore
+!nyx-tty-display
+!package.nix
