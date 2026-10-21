@@ -28,6 +28,10 @@
                 session.COOKIE_SECURE = scheme == "https";
                 # Accounts are created with `forgejo admin user create`
                 service.DISABLE_REGISTRATION = true;
+                # Actions is opt-in: new repos start without it (Forgejo's default list minus `repo.actions`)
+                repository.DEFAULT_REPO_UNITS = lib.concatStringsSep "," [
+                    "repo.code" "repo.releases" "repo.issues" "repo.pulls" "repo.wiki" "repo.projects" "repo.packages"
+                ];
             };
         };
 
