@@ -108,6 +108,8 @@ in (mkNixPak {
                         "signon.autofillForms".Value = false;
                         "signon.formlessCapture.enabled".Value = false;
                         "browser.nova.enabled".Value = false;
+                        "network.dnsNegativeCacheExpiration".Value = 1;
+                        "network.dnsNegativeCacheExpirationGracePeriod".Value = 0;
                     };
                 };
             };
@@ -158,7 +160,8 @@ in (mkNixPak {
             dieWithParent = true;
             bind.ro = [
                 [ "/etc/zoneinfo" "/usr/share/zoneinfo" ]
-                [ "/run/nscd" "/var/run/nscd" ] # Host name lookups through the host's NSS (eg. mDNS `.local`); glibc asks nscd at /var/run/nscd/socket first
+                [ "/run/nscd" "/run/nscd" ]
+                [ "/run/nscd" "/var/run/nscd" ]
             ];
             sockets = {
                 wayland = true;
