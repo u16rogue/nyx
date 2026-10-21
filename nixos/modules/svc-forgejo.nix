@@ -37,7 +37,8 @@
         services.traefik.dynamicConfigOptions.http = {
             routers.forgejo = {
                 entryPoints = [ (if scheme == "https" then "websecure" else "web") ];
-                rule = "Host(`${domain}`)" + lib.optionalString (subpath != "") " && (Path(`${subpath}`) || PathPrefix(`${subpath}/`))";
+                # Matched on the path only so the host is also reachable by IP (the Host header is then the IP, not `domain`)
+                rule = if subpath != "" then "Path(`${subpath}`) || PathPrefix(`${subpath}/`)" else "PathPrefix(`/`)";
                 middlewares = lib.optional (subpath != "") "forgejo-strip-prefix";
                 service = "forgejo";
             };

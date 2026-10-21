@@ -46,6 +46,8 @@ in (mkNixPak {
                         Enabled = true;
                         ProviderURL = "https://mozilla.cloudflare-dns.com/dns-query";
                         Fallback = false;
+                        # mDNS names go to the system resolver (nscd -> avahi), never to the DoH provider
+                        ExcludedDomains = [ "local" ];
                     };
                     NetworkPrediction = false;
                     PromptForDownloadLocation = true;
@@ -156,7 +158,7 @@ in (mkNixPak {
             dieWithParent = true;
             bind.ro = [
                 [ "/etc/zoneinfo" "/usr/share/zoneinfo" ]
-                [ "/run/nscd/socket" "/var/run/nscd/socket" ] # Host name lookups through the host's NSS (eg. mDNS `.local`); glibc asks nscd first
+                [ "/run/nscd" "/var/run/nscd" ] # Host name lookups through the host's NSS (eg. mDNS `.local`); glibc asks nscd at /var/run/nscd/socket first
             ];
             sockets = {
                 wayland = true;
