@@ -38,14 +38,11 @@
                 # System state
                 { directory = "/var/lib/nixos"; inInitrd = true; }
                 "/var/lib/systemd/coredump"
-                "/var/log"
                 # Networking
                 "/etc/NetworkManager/system-connections"
                 # Bluetooth
                 "/var/lib/bluetooth"
-                # Services
-                { directory = "/var/lib/forgejo"; user = "forgejo"; group = "forgejo"; mode = "0750"; }
-                { directory = "/var/lib/monero"; user = "monero"; group = "monero"; mode = "0750"; }
+                # Services (bulk service data lives on the HDD, see `preservation.preserveAt."/data"`)
                 "/var/lib/nyx-auto-upgrade"
             ];
             files = [
@@ -95,7 +92,7 @@
             '';
             #boot.kernelParams = [ "consoleblank=60" ];
 
-            # Compressed RAM swap first, encrypted on-disk swapfile as overflow (8G RAM + tmpfs root)
+            # Compressed RAM swap first, encrypted on-disk swapfile as overflow (16G RAM + tmpfs root)
             zramSwap.enable = true;
             swapDevices = [{
                 device = "/persist/swapfile";
@@ -147,9 +144,10 @@
 
             system.stateVersion = "25.11";
             boot.initrd.availableKernelModules = [ "xhci_pci" "ahci" "usb_storage" "sd_mod" "sr_mod" "rtsx_usb_sdmmc" "r8169" "realtek" ];
-            disko.devices.disk.sda = {
+            # SSD: boot + system state (/persist, including /nix)
+            disko.devices.disk.ssd = {
                 type = "disk";
-                device = "/dev/disk/by-id/ata-ST2000LM007-1R8174_WDZ76VAB";
+                device = "/dev/disk/by-id/ata-TOSHIBA_KSG60ZMV512G_M.2_2280_512GB_19HA11FWK8HN";
                 content = {
                     type = "gpt";
                     partitions = {
@@ -157,7 +155,7 @@
                             size = "511M";
                             type = "EF00";
                             label = "ESP";
-                            device = "/dev/disk/by-id/ata-ST2000LM007-1R8174_WDZ76VAB-part1";
+                            device = "/dev/disk/by-id/ata-TOSHIBA_KSG60ZMV512G_M.2_2280_512GB_19HA11FWK8HN-part1";
                             content = {
                                 type = "filesystem";
                                 format = "vfat";
@@ -168,7 +166,7 @@
                         persist = {
                             size = "100%";
                             label = "primary";
-                            device = "/dev/disk/by-id/ata-ST2000LM007-1R8174_WDZ76VAB-part2";
+                            device = "/dev/disk/by-id/ata-TOSHIBA_KSG60ZMV512G_M.2_2280_512GB_19HA11FWK8HN-part2";
                             content = {
                                 type = "luks";
                                 name = "persist-luks";
@@ -183,6 +181,52 @@
                     };
                 };
             };
+            # HDD: bulk service data (/data), unlocked after boot with a keyfile kept on the SSD
+            disko.devices.disk.hdd = {
+                type = "disk";
+                device = "/dev/disk/by-id/ata-ST2000LM007-1R8174_WDZ76VAB";
+                content = {
+                    type = "gpt";
+                    partitions = {
+                        # Former ESP, left unmounted
+                        legacy = {
+                            size = "511M";
+                            type = "EF00";
+                            device = "/dev/disk/by-id/ata-ST2000LM007-1R8174_WDZ76VAB-part1";
+                        };
+                        data = {
+                            size = "100%";
+                            label = "primary";
+                            device = "/dev/disk/by-id/ata-ST2000LM007-1R8174_WDZ76VAB-part2";
+                            content = {
+                                type = "luks";
+                                name = "data-luks";
+                                initrdUnlock = false;
+                                settings.keyFile = "/persist/etc/keys/data.key";
+                                content = {
+                                    type = "filesystem";
+                                    format = "ext4";
+                                    extraArgs = [ "-L" "data" ];
+                                    mountpoint = "/data";
+                                    mountOptions = [ "defaults" "nofail" ];
+                                };
+                            };
+                        };
+                    };
+                };
+            };
+            environment.etc.crypttab.text = ''
+                data-luks /dev/disk/by-id/ata-ST2000LM007-1R8174_WDZ76VAB-part2 /persist/etc/keys/data.key luks,nofail
+            '';
+
+            # Bulk state on the HDD; services must not start on an empty tmpfs dir if it fails to mount
+            preservation.preserveAt."/data".directories = [
+                "/var/log"
+                { directory = "/var/lib/forgejo"; user = "forgejo"; group = "forgejo"; mode = "0750"; }
+                { directory = "/var/lib/monero"; user = "monero"; group = "monero"; mode = "0750"; }
+            ];
+            systemd.services.forgejo.unitConfig.RequiresMountsFor = [ "/var/lib/forgejo" ];
+            systemd.services.monero.unitConfig.RequiresMountsFor = [ "/var/lib/monero" ];
         };
     };
 }
