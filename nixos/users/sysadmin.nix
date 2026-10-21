@@ -37,6 +37,8 @@
                 pkgs.jq
                 pkgs.btop
                 pkgs.curl
+                nyx.pkgs.nyx-tty-display
+                nyx.pkgs.nyx-what-version
             ];
         };
     };

@@ -46,6 +46,7 @@
                 # Services
                 { directory = "/var/lib/forgejo"; user = "forgejo"; group = "forgejo"; mode = "0750"; }
                 { directory = "/var/lib/monero"; user = "monero"; group = "monero"; mode = "0750"; }
+                "/var/lib/nyx-auto-upgrade"
             ];
             files = [
                 { file = "/etc/machine-id"; inInitrd = true; }

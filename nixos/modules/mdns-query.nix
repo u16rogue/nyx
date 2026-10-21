@@ -9,6 +9,10 @@
             openFirewall = false;
         };
 
+        # Sandboxed apps (eg. firefox) bind /run/nscd at launch to resolve `.local`. systemd deletes and recreates a
+        # RuntimeDirectory on every restart, leaving those binds pointing at the old, empty directory until the app restarts
+        systemd.services.nscd.serviceConfig.RuntimeDirectoryPreserve = "yes";
+
         # Only link-local mDNS multicast, instead of all of udp/5353
         networking.firewall.extraInputRules = lib.mkIf config.networking.nftables.enable ''
             ip daddr 224.0.0.251 udp dport 5353 accept
