@@ -14,7 +14,9 @@
 !pipewire.nix
 !ssh-server.nix
 !svc-forgejo.nix
+!svc-jellyfin.nix
 !svc-monero.nix
 !svc-traefik.nix
+!svc-transmission.nix
 !swraid.nix
 !systemd-boot.nix

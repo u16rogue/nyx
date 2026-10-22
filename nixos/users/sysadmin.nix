@@ -28,15 +28,8 @@
             shell = nyx.pkgs.fish;
             openssh.authorizedKeys.keys = [ "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDn13+K2p5yC5bbpm0Y9I5AGBLhKQuPRo9oiW/ICQnzf " ];
             packages = [
-                pkgs.neovim
-                pkgs.git
-                pkgs.jq
-                pkgs.btop
-                pkgs.curl
-                nyx.pkgs.fish
-                nyx.pkgs.nyx-tty-display
                 nyx.pkgs.nyx-what-version
-
+                nyx.pkgs.fish
                 (inputs.wrappers.lib.wrapPackage {
                     inherit pkgs;
                     package = pkgs.tmux;

@@ -52,13 +52,15 @@
             sysadmin
         ];
 
-        configuration = { self, config, pkgs, lib, ... }: let
+        configuration = { self, config, pkgs, lib, nyx, ... }: let
             config' = {
                 forgejo = config.services.forgejo;
                 monero = {
                     inherit (config.services.monero) dataDir;
                     inherit (config.systemd.services.monero.serviceConfig) User Group;
                 };
+                transmission = config.services.transmission;
+                jellyfin = config.services.jellyfin;
                 disks = lib.flip builtins.mapAttrs config.disko.devices.disk (_: value: let
                     part = value.content.partitions.data;
                     luks = part.content;
@@ -77,18 +79,49 @@
                 svc-traefik
                 svc-forgejo
                 svc-monero
+                svc-transmission
+                svc-jellyfin
             ];
 
             environment.systemPackages = [
+                nyx.pkgs.nyx-tty-display
+                pkgs.curl
+                pkgs.btop
+                pkgs.git
+                pkgs.neovim
+                pkgs.yazi
             ];
 
-            # Bulk state on the HDD; services must not start on an empty tmpfs dir if it fails to mount
             preservation.preserveAt.${config'.disks.hdd.mountpoint}.directories = [
                 { directory = config'.forgejo.stateDir; user = config'.forgejo.user; group = config'.forgejo.group; mode = "0750"; }
                 { directory = config'.monero.dataDir; user = config'.monero.User; group = config'.monero.Group; mode = "0750"; }
+                { directory = config'.transmission.home; user = config'.transmission.user; group = config'.transmission.group; mode = "0750"; }
+                { directory = config'.jellyfin.dataDir; user = config'.jellyfin.user; group = config'.jellyfin.group; mode = "0700"; }
+                { directory = config'.jellyfin.cacheDir; user = config'.jellyfin.user; group = config'.jellyfin.group; mode = "0700"; }
             ];
             systemd.services.forgejo.unitConfig.RequiresMountsFor = [ config'.forgejo.stateDir ];
             systemd.services.monero.unitConfig.RequiresMountsFor = [ config'.monero.dataDir ];
+            systemd.services.transmission.unitConfig.RequiresMountsFor = [ config'.transmission.home ];
+            systemd.services.jellyfin.unitConfig.RequiresMountsFor = [ config'.jellyfin.dataDir config'.jellyfin.cacheDir ];
+
+            services.transmission.credentialsFile = "/persist/etc/transmission/credentials.json";
+            users.users.${config'.jellyfin.user}.extraGroups = [ config'.transmission.group "render" "video" ];
+
+            # Transcode on the Intel iGPU (00:02.0); the AMD dGPU (01:00.0) stays asleep
+            hardware.graphics = {
+                enable = true;
+                extraPackages = [ pkgs.intel-media-driver ];
+            };
+            services.jellyfin.hardwareAcceleration = {
+                enable = true;
+                type = "vaapi";
+                device = "/dev/dri/by-path/pci-0000:00:02.0-render";
+            };
+            services.jellyfin.transcoding.hardwareDecodingCodecs = {
+                h264 = true;
+                mpeg2 = true;
+                vc1 = true;
+            };
 
             # Server: run with the lid closed and never sleep
             services.logind.settings.Login = {
