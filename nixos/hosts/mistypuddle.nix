@@ -35,14 +35,11 @@
 
         ephemeralfs.preserve = {
             directories = [
-                # System state
                 { directory = "/var/lib/nixos"; inInitrd = true; }
                 "/var/lib/systemd/coredump"
-                # Networking
+                "/var/log"
                 "/etc/NetworkManager/system-connections"
-                # Bluetooth
                 "/var/lib/bluetooth"
-                # Services (bulk service data lives on the HDD, see `preservation.preserveAt."/data"`)
                 "/var/lib/nyx-auto-upgrade"
             ];
             files = [
@@ -56,7 +53,16 @@
             sysadmin
         ];
 
-        configuration = { self, config, pkgs, ... }: {
+        configuration = { self, config, pkgs, ... }: let
+            ssdId = "/dev/disk/by-id/ata-TOSHIBA_KSG60ZMV512G_M.2_2280_512GB_19HA11FWK8HN";
+            hddId = "/dev/disk/by-id/ata-ST2000LM007-1R8174_WDZ76VAB";
+            # Everything below about the HDD is read back from its disko definition
+            hddPart = config.disko.devices.disk.hdd.content.partitions.data;
+            hddLuks = hddPart.content;
+            hddMount = hddLuks.content.mountpoint;
+            forgejo = config.services.forgejo;
+            monero = config.systemd.services.monero.serviceConfig;
+        in {
             imports = with self.modules.nixos; [
                 systemd-boot
                 cpu-intel
@@ -73,6 +79,14 @@
             environment.systemPackages = [
             ];
 
+            # Bulk state on the HDD; services must not start on an empty tmpfs dir if it fails to mount
+            preservation.preserveAt.${hddMount}.directories = [
+                { directory = forgejo.stateDir; user = forgejo.user; group = forgejo.group; mode = "0750"; }
+                { directory = config.services.monero.dataDir; user = monero.User; group = monero.Group; mode = "0750"; }
+            ];
+            systemd.services.forgejo.unitConfig.RequiresMountsFor = [ forgejo.stateDir ];
+            systemd.services.monero.unitConfig.RequiresMountsFor = [ config.services.monero.dataDir ];
+
             # Server: run with the lid closed and never sleep
             services.logind.settings.Login = {
                 HandleLidSwitch = "ignore";
@@ -86,11 +100,8 @@
                 hybrid-sleep.enable = false;
             };
 
-            # Dimmest non-off backlight; the console turns the panel off after 1 minute idle until a key is pressed
-            services.udev.extraRules = ''
-                ACTION=="add", SUBSYSTEM=="backlight", KERNEL=="intel_backlight", ATTR{brightness}="1"
-            '';
-            #boot.kernelParams = [ "consoleblank=60" ];
+            # Dimmest non-off backlight;
+            services.udev.extraRules = ''ACTION=="add", SUBSYSTEM=="backlight", KERNEL=="intel_backlight", ATTR{brightness}="1"'';
 
             # Compressed RAM swap first, encrypted on-disk swapfile as overflow (16G RAM + tmpfs root)
             zramSwap.enable = true;
@@ -118,36 +129,36 @@
                 };
             };
 
-            boot.initrd.network = {
-                enable = true;
-                ssh = {
+            # Allow SSH on initrd to remotely unlock luks
+            boot.initrd = {
+                network = {
                     enable = true;
-                    port = 2222;
-                    hostKeys = [ "/persist/etc/ssh/initrd_ssh_host_ed25519_key" ];
-                    authorizedKeys = config.users.users.sysadmin.openssh.authorizedKeys.keys;
+                    ssh = {
+                        enable = true;
+                        port = 22;
+                        hostKeys = [ "/persist/etc/ssh/initrd_ssh_host_ed25519_key" ];
+                        authorizedKeys = config.users.users.sysadmin.openssh.authorizedKeys.keys;
+                    };
                 };
+                systemd.network.networks."10-ethernet" = {
+                    matchConfig.Type = "ether";
+                    networkConfig.DHCP = "yes";
+                    dhcpV4Config.ClientIdentifier = "mac";
+                    networkConfig.MulticastDNS = true;
+                };
+                systemd.contents."/etc/systemd/resolved.conf.d/mdns.conf".text = ''
+                    [Resolve]
+                    MulticastDNS=yes
+                '';
+                systemd.users.root.shell = "/bin/systemd-tty-ask-password-agent";
             };
-            boot.initrd.systemd.network.networks."10-ethernet" = {
-                matchConfig.Type = "ether";
-                networkConfig.DHCP = "yes";
-                # Same client id as NetworkManager so the router hands out the same lease
-                dhcpV4Config.ClientIdentifier = "mac";
-                # Publish `<hostname>.local` during boot for `ssh -p 2222 root@<hostname>.local`
-                networkConfig.MulticastDNS = true;
-            };
-            # initrd-only drop-in so the booted system's resolved settings (and avahi) are unaffected
-            boot.initrd.systemd.contents."/etc/systemd/resolved.conf.d/mdns.conf".text = ''
-                [Resolve]
-                MulticastDNS=yes
-            '';
-            boot.initrd.systemd.users.root.shell = "/bin/systemd-tty-ask-password-agent";
 
             system.stateVersion = "25.11";
             boot.initrd.availableKernelModules = [ "xhci_pci" "ahci" "usb_storage" "sd_mod" "sr_mod" "rtsx_usb_sdmmc" "r8169" "realtek" ];
             # SSD: boot + system state (/persist, including /nix)
             disko.devices.disk.ssd = {
                 type = "disk";
-                device = "/dev/disk/by-id/ata-TOSHIBA_KSG60ZMV512G_M.2_2280_512GB_19HA11FWK8HN";
+                device = ssdId;
                 content = {
                     type = "gpt";
                     partitions = {
@@ -155,7 +166,7 @@
                             size = "511M";
                             type = "EF00";
                             label = "ESP";
-                            device = "/dev/disk/by-id/ata-TOSHIBA_KSG60ZMV512G_M.2_2280_512GB_19HA11FWK8HN-part1";
+                            device = "${ssdId}-part1";
                             content = {
                                 type = "filesystem";
                                 format = "vfat";
@@ -166,7 +177,7 @@
                         persist = {
                             size = "100%";
                             label = "primary";
-                            device = "/dev/disk/by-id/ata-TOSHIBA_KSG60ZMV512G_M.2_2280_512GB_19HA11FWK8HN-part2";
+                            device = "${ssdId}-part2";
                             content = {
                                 type = "luks";
                                 name = "persist-luks";
@@ -181,10 +192,10 @@
                     };
                 };
             };
-            # HDD: bulk service data (/data), unlocked after boot with a keyfile kept on the SSD
+            # HDD: bulk service data, unlocked after boot with a keyfile kept on the SSD
             disko.devices.disk.hdd = {
                 type = "disk";
-                device = "/dev/disk/by-id/ata-ST2000LM007-1R8174_WDZ76VAB";
+                device = hddId;
                 content = {
                     type = "gpt";
                     partitions = {
@@ -192,12 +203,12 @@
                         legacy = {
                             size = "511M";
                             type = "EF00";
-                            device = "/dev/disk/by-id/ata-ST2000LM007-1R8174_WDZ76VAB-part1";
+                            device = "${hddId}-part1";
                         };
                         data = {
                             size = "100%";
                             label = "primary";
-                            device = "/dev/disk/by-id/ata-ST2000LM007-1R8174_WDZ76VAB-part2";
+                            device = "${hddId}-part2";
                             content = {
                                 type = "luks";
                                 name = "data-luks";
@@ -215,18 +226,7 @@
                     };
                 };
             };
-            environment.etc.crypttab.text = ''
-                data-luks /dev/disk/by-id/ata-ST2000LM007-1R8174_WDZ76VAB-part2 /persist/etc/keys/data.key luks,nofail
-            '';
-
-            # Bulk state on the HDD; services must not start on an empty tmpfs dir if it fails to mount
-            preservation.preserveAt."/data".directories = [
-                "/var/log"
-                { directory = "/var/lib/forgejo"; user = "forgejo"; group = "forgejo"; mode = "0750"; }
-                { directory = "/var/lib/monero"; user = "monero"; group = "monero"; mode = "0750"; }
-            ];
-            systemd.services.forgejo.unitConfig.RequiresMountsFor = [ "/var/lib/forgejo" ];
-            systemd.services.monero.unitConfig.RequiresMountsFor = [ "/var/lib/monero" ];
+            environment.etc.crypttab.text = ''${hddLuks.name} ${hddPart.device} ${hddLuks.settings.keyFile} luks,nofail'';
         };
     };
 }
