@@ -1,4 +1,4 @@
-{ ... }: {
+{ inputs, ... }: {
     nyx.nixos.users.sysadmin = {
         # ps the password is the sha256sum of the private key for the authorized ssh key cuz im lazy :DD
         password = ''
@@ -18,27 +18,63 @@
 
         ephemeralfs.preserve = {
             files = [];
-            directories = [
-                ".ssh"
-            ];
+            directories = [];
             partial.directories = [];
         };
 
         configuration = { pkgs, nyx, ... }: {
             isNormalUser = true;
             extraGroups = [ "wheel" ];
-            openssh.authorizedKeys.keys = [
-                "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDn13+K2p5yC5bbpm0Y9I5AGBLhKQuPRo9oiW/ICQnzf user@mistylake"
-            ];
+            shell = nyx.pkgs.fish;
+            openssh.authorizedKeys.keys = [ "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDn13+K2p5yC5bbpm0Y9I5AGBLhKQuPRo9oiW/ICQnzf " ];
             packages = [
-                pkgs.tmux
                 pkgs.neovim
                 pkgs.git
                 pkgs.jq
                 pkgs.btop
                 pkgs.curl
+                nyx.pkgs.fish
                 nyx.pkgs.nyx-tty-display
                 nyx.pkgs.nyx-what-version
+
+                (inputs.wrappers.lib.wrapPackage {
+                    inherit pkgs;
+                    package = pkgs.tmux;
+                    flags."-f" = pkgs.writeText "tmux.conf" ''
+                        set-option -g base-index 1
+                        set-option -g clock-mode-style 24
+                        set-option -sg escape-time 1
+                        set-option -g prefix C-q
+                        bind-key C-q send-prefix
+                        set-option -g detach-on-destroy off
+                        set-option -ga terminal-overrides ",xterm-256color:Tc"
+                        bind-key \` display-popup
+                        bind j select-pane -D
+                        bind k select-pane -U
+                        bind h select-pane -L
+                        bind l select-pane -R
+                        bind -r W select-pane -t .+1 \; resize-pane -Z
+
+                        set-option -g status-position top
+                        set-option -g status-interval 5
+                        set-option -g status-justify left
+                        set-option -g status-style "bg=default,fg=white"
+                        set-option -g status-left-length 32
+                        set-option -g status-left "#[fg=black,bg=blue,bold] #S #[default] "
+                        set-option -g status-right-length 64
+                        set-option -g status-right "#{?client_prefix,#[fg=black]#[bg=yellow]#[bold] PREFIX #[default] ,}#[fg=brightblack]#H #[fg=white]%H:%M "
+                        set-option -g window-status-separator " "
+                        set-option -g window-status-format "#[fg=brightblack] #I #W#{?window_zoomed_flag, (z),} "
+                        set-option -g window-status-current-format "#[fg=black,bg=white,bold] #I #W#{?window_zoomed_flag, (z),} "
+                        set-option -g window-status-activity-style "fg=yellow"
+                        set-option -g pane-border-style "fg=brightblack"
+                        set-option -g pane-active-border-style "fg=blue"
+                        set-option -g message-style "bg=default,fg=yellow"
+                        set-option -g message-command-style "bg=default,fg=yellow"
+                        set-option -g mode-style "bg=blue,fg=black"
+                        set-option -g clock-mode-colour blue
+                    '';
+                })
             ];
         };
     };
