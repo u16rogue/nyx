@@ -72,9 +72,9 @@
 
             system.stateVersion = "25.11";
             boot.initrd.availableKernelModules = [ "nvme" "xhci_pci" "thunderbolt" "usbhid" "rtsx_pci_sdmmc" ];
-            disko.devices.disk.nvme0 = {
+            disko.devices.disk.nvme0 = let id = "/dev/disk/by-id/nvme-eui.e8238fa6bf530001001b448b4cc0a506"; in {
                 type = "disk";
-                device = "/dev/disk/by-id/nvme-eui.e8238fa6bf530001001b448b4cc0a506";
+                device = id;
                 content = {
                     type = "gpt";
                     partitions = {
@@ -82,7 +82,7 @@
                             size = "511M";
                             type = "EF00";
                             label = "ESP";
-                            device = "/dev/disk/by-id/nvme-eui.e8238fa6bf530001001b448b4cc0a506-part1";
+                            device = "${id}-part1";
                             content = {
                                 type = "filesystem";
                                 format = "vfat";
@@ -93,7 +93,7 @@
                         persist = {
                             size = "100%";
                             label = "primary";
-                            device = "/dev/disk/by-id/nvme-eui.e8238fa6bf530001001b448b4cc0a506-part2";
+                            device = "${id}-part2";
                             content = {
                                 type = "luks";
                                 name = "persist-luks";

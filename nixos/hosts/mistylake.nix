@@ -81,16 +81,16 @@
             boot.initrd.availableKernelModules = [ "xhci_pci" "ahci" "nvme" "usbhid" "usb_storage" "sd_mod" ];
             disko.devices = {
                 disk = {
-                    nvme0 = {
+                    nvme0 = let id = "/dev/disk/by-id/nvme-eui.0025384751a1d7e4"; in {
                         type = "disk";
-                        device = "/dev/disk/by-id/nvme-eui.0025384751a1d7e4";
+                        device = id;
                         content = {
                             type = "gpt";
                             partitions = {
                                 legacy = {
                                     size = "511M";
                                     label = "primary";
-                                    device = "/dev/disk/by-id/nvme-eui.0025384751a1d7e4-part1";
+                                    device = "${id}-part1";
                                     content = {
                                         type = "filesystem";
                                         format = "ext4";
@@ -99,7 +99,7 @@
                                 raid = {
                                     size = "100%";
                                     label = "primary";
-                                    device = "/dev/disk/by-id/nvme-eui.0025384751a1d7e4-part2";
+                                    device = "${id}-part2";
                                     content = {
                                         type = "mdraid";
                                         name = "nixos:persist-raid";
@@ -108,9 +108,9 @@
                             };
                         };
                     };
-                    nvme1 = {
+                    nvme1 = let id = "/dev/disk/by-id/nvme-eui.0025384751a1db23"; in {
                         type = "disk";
-                        device = "/dev/disk/by-id/nvme-eui.0025384751a1db23";
+                        device = id;
                         content = {
                             type = "gpt";
                             partitions = {
@@ -118,7 +118,7 @@
                                     size = "511M";
                                     type = "EF00";
                                     label = "ESP";
-                                    device = "/dev/disk/by-id/nvme-eui.0025384751a1db23-part1";
+                                    device = "${id}-part1";
                                     content = {
                                         type = "filesystem";
                                         format = "vfat";
@@ -129,7 +129,7 @@
                                 raid = {
                                     size = "100%";
                                     label = "primary";
-                                    device = "/dev/disk/by-id/nvme-eui.0025384751a1db23-part2";
+                                    device = "${id}-part2";
                                     content = {
                                         type = "mdraid";
                                         name = "nixos:persist-raid";

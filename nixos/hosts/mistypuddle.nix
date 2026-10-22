@@ -1,4 +1,3 @@
-# THIS WAS WRITTEN BY A CLANKER
 { config, ... }: {
     nyx.nixos.hosts."mistypuddle" = {
         platform = "x86_64-linux";
@@ -53,15 +52,19 @@
             sysadmin
         ];
 
-        configuration = { self, config, pkgs, ... }: let
-            ssdId = "/dev/disk/by-id/ata-TOSHIBA_KSG60ZMV512G_M.2_2280_512GB_19HA11FWK8HN";
-            hddId = "/dev/disk/by-id/ata-ST2000LM007-1R8174_WDZ76VAB";
-            # Everything below about the HDD is read back from its disko definition
-            hddPart = config.disko.devices.disk.hdd.content.partitions.data;
-            hddLuks = hddPart.content;
-            hddMount = hddLuks.content.mountpoint;
-            forgejo = config.services.forgejo;
-            monero = config.systemd.services.monero.serviceConfig;
+        configuration = { self, config, pkgs, lib, ... }: let
+            config' = {
+                forgejo = config.services.forgejo;
+                monero = {
+                    inherit (config.services.monero) dataDir;
+                    inherit (config.systemd.services.monero.serviceConfig) User Group;
+                };
+                disks = lib.flip builtins.mapAttrs config.disko.devices.disk (_: value: let
+                    part = value.content.partitions.data;
+                    luks = part.content;
+                    mountpoint = luks.content.mountpoint;
+                in { inherit part luks mountpoint; });
+            };
         in {
             imports = with self.modules.nixos; [
                 systemd-boot
@@ -80,12 +83,12 @@
             ];
 
             # Bulk state on the HDD; services must not start on an empty tmpfs dir if it fails to mount
-            preservation.preserveAt.${hddMount}.directories = [
-                { directory = forgejo.stateDir; user = forgejo.user; group = forgejo.group; mode = "0750"; }
-                { directory = config.services.monero.dataDir; user = monero.User; group = monero.Group; mode = "0750"; }
+            preservation.preserveAt.${config'.disks.hdd.mountpoint}.directories = [
+                { directory = config'.forgejo.stateDir; user = config'.forgejo.user; group = config'.forgejo.group; mode = "0750"; }
+                { directory = config'.monero.dataDir; user = config'.monero.User; group = config'.monero.Group; mode = "0750"; }
             ];
-            systemd.services.forgejo.unitConfig.RequiresMountsFor = [ forgejo.stateDir ];
-            systemd.services.monero.unitConfig.RequiresMountsFor = [ config.services.monero.dataDir ];
+            systemd.services.forgejo.unitConfig.RequiresMountsFor = [ config'.forgejo.stateDir ];
+            systemd.services.monero.unitConfig.RequiresMountsFor = [ config'.monero.dataDir ];
 
             # Server: run with the lid closed and never sleep
             services.logind.settings.Login = {
@@ -156,9 +159,9 @@
             system.stateVersion = "25.11";
             boot.initrd.availableKernelModules = [ "xhci_pci" "ahci" "usb_storage" "sd_mod" "sr_mod" "rtsx_usb_sdmmc" "r8169" "realtek" ];
             # SSD: boot + system state (/persist, including /nix)
-            disko.devices.disk.ssd = {
+            disko.devices.disk.ssd = let id = "/dev/disk/by-id/ata-TOSHIBA_KSG60ZMV512G_M.2_2280_512GB_19HA11FWK8HN"; in {
                 type = "disk";
-                device = ssdId;
+                device = id;
                 content = {
                     type = "gpt";
                     partitions = {
@@ -166,7 +169,7 @@
                             size = "511M";
                             type = "EF00";
                             label = "ESP";
-                            device = "${ssdId}-part1";
+                            device = "${id}-part1";
                             content = {
                                 type = "filesystem";
                                 format = "vfat";
@@ -177,7 +180,7 @@
                         persist = {
                             size = "100%";
                             label = "primary";
-                            device = "${ssdId}-part2";
+                            device = "${id}-part2";
                             content = {
                                 type = "luks";
                                 name = "persist-luks";
@@ -193,9 +196,9 @@
                 };
             };
             # HDD: bulk service data, unlocked after boot with a keyfile kept on the SSD
-            disko.devices.disk.hdd = {
+            disko.devices.disk.hdd = let id = "/dev/disk/by-id/ata-ST2000LM007-1R8174_WDZ76VAB"; in {
                 type = "disk";
-                device = hddId;
+                device = id;
                 content = {
                     type = "gpt";
                     partitions = {
@@ -203,12 +206,12 @@
                         legacy = {
                             size = "511M";
                             type = "EF00";
-                            device = "${hddId}-part1";
+                            device = "${id}-part1";
                         };
                         data = {
                             size = "100%";
                             label = "primary";
-                            device = "${hddId}-part2";
+                            device = "${id}-part2";
                             content = {
                                 type = "luks";
                                 name = "data-luks";
@@ -226,7 +229,7 @@
                     };
                 };
             };
-            environment.etc.crypttab.text = ''${hddLuks.name} ${hddPart.device} ${hddLuks.settings.keyFile} luks,nofail'';
+            environment.etc.crypttab.text = ''${config'.disks.hdd.luks.name} ${config'.disks.hdd.part.device} ${config'.disks.hdd.luks.settings.keyFile} luks,nofail'';
         };
     };
 }
