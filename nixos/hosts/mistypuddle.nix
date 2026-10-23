@@ -82,17 +82,19 @@
                 networkmanager
                 mdns-publish
                 ssh-server
+                lid-switch-ignore
+                no-sleep
                 auto-upgrade
                 svc-traefik
             ]) ++ [
-                (lib.optional meta'.services.forgejo.enable {
+                (lib.optional meta'.svc.forgejo.enable {
                     imports = [ self.modules.nixos.svc-forgejo ];
                     preservation.preserveAt.${config'.disks.hdd.mountpoint}.directories = [
                         { directory = config'.forgejo.stateDir; user = config'.forgejo.user; group = config'.forgejo.group; mode = "0750"; }
                     ];
                     systemd.services.forgejo.unitConfig.RequiresMountsFor = [ config'.forgejo.stateDir ];
                 })
-                (lib.optional meta'.services.monero.enable {
+                (lib.optional meta'.svc.monero.enable {
                     imports = [ self.modules.nixos.svc-monero ];
                     preservation.preserveAt.${config'.disks.hdd.mountpoint}.directories = [
                         { directory = config'.monero.dataDir; user = config'.monero.User; group = config'.monero.Group; mode = "0750"; }
@@ -143,19 +145,6 @@
                 pkgs.yazi
                 pkgs.lm_sensors
             ];
-
-            # Server: run with the lid closed and never sleep
-            services.logind.settings.Login = {
-                HandleLidSwitch = "ignore";
-                HandleLidSwitchExternalPower = "ignore";
-                HandleLidSwitchDocked = "ignore";
-            };
-            systemd.targets = {
-                sleep.enable = false;
-                suspend.enable = false;
-                hibernate.enable = false;
-                hybrid-sleep.enable = false;
-            };
 
             # Dimmest non-off backlight;
             services.udev.extraRules = ''ACTION=="add", SUBSYSTEM=="backlight", KERNEL=="intel_backlight", ATTR{brightness}="1"'';

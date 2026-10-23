@@ -7,10 +7,12 @@
 !gpg-agent.nix
 !gpu-nvidia.nix
 !hyprland-prerequisites.nix
+!lid-switch-ignore.nix
 !luks.nix
 !mdns-query.nix
 !mdns-publish.nix
 !networkmanager.nix
+!no-sleep.nix
 !pipewire.nix
 !ssh-server.nix
 !svc-forgejo.nix
