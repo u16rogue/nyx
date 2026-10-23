@@ -1,5 +1,12 @@
 { config, ... }: {
-    nyx.nixos.hosts."mistypuddle" = {
+    nyx.nixos.hosts."mistypuddle" = let meta' = {
+        svc = {
+            forgejo.enable = true;
+            monero.enable = true;
+            transmission.enable = true;
+            jellyfin.enable = false;
+        };
+    }; in {
         platform = "x86_64-linux";
 
         monitors = [
@@ -68,7 +75,7 @@
                 in { inherit part luks mountpoint; });
             };
         in {
-            imports = with self.modules.nixos; [
+            imports = (with self.modules.nixos; [
                 systemd-boot
                 cpu-intel
                 luks
@@ -77,10 +84,54 @@
                 ssh-server
                 auto-upgrade
                 svc-traefik
-                svc-forgejo
-                svc-monero
-                svc-transmission
-                svc-jellyfin
+            ]) ++ [
+                (lib.optional meta'.services.forgejo.enable {
+                    imports = [ self.modules.nixos.svc-forgejo ];
+                    preservation.preserveAt.${config'.disks.hdd.mountpoint}.directories = [
+                        { directory = config'.forgejo.stateDir; user = config'.forgejo.user; group = config'.forgejo.group; mode = "0750"; }
+                    ];
+                    systemd.services.forgejo.unitConfig.RequiresMountsFor = [ config'.forgejo.stateDir ];
+                })
+                (lib.optional meta'.services.monero.enable {
+                    imports = [ self.modules.nixos.svc-monero ];
+                    preservation.preserveAt.${config'.disks.hdd.mountpoint}.directories = [
+                        { directory = config'.monero.dataDir; user = config'.monero.User; group = config'.monero.Group; mode = "0750"; }
+                    ];
+                    systemd.services.monero.unitConfig.RequiresMountsFor = [ config'.monero.dataDir ];
+                })
+                (lib.optional meta'.svc.transmission.enable {
+                    imports = [ self.modules.nixos.svc-transmission ];
+                    preservation.preserveAt.${config'.disks.hdd.mountpoint}.directories = [
+                        { directory = config'.transmission.home; user = config'.transmission.user; group = config'.transmission.group; mode = "0750"; }
+                    ];
+                    systemd.services.transmission.unitConfig.RequiresMountsFor = [ config'.transmission.home ];
+                    services.transmission.credentialsFile = "/persist/etc/transmission/credentials.json";
+                })
+                (lib.optional meta'.svc.jellyfin.enable {
+                    imports = [ self.modules.nixos.svc-jellyfin ];
+                    preservation.preserveAt.${config'.disks.hdd.mountpoint}.directories = [
+                        { directory = config'.jellyfin.dataDir; user = config'.jellyfin.user; group = config'.jellyfin.group; mode = "0700"; }
+                        { directory = config'.jellyfin.cacheDir; user = config'.jellyfin.user; group = config'.jellyfin.group; mode = "0700"; }
+                    ];
+                    systemd.services.jellyfin.unitConfig.RequiresMountsFor = [ config'.jellyfin.dataDir config'.jellyfin.cacheDir ];
+                    users.users.${config'.jellyfin.user}.extraGroups = [ "render" "video" ]
+                        ++ lib.optional meta'.svc.transmission.enable config'.transmission.group;
+                    # Transcode on the Intel iGPU (00:02.0); the AMD dGPU (01:00.0) stays asleep
+                    hardware.graphics = {
+                        enable = true;
+                        extraPackages = [ pkgs.intel-media-driver ];
+                    };
+                    services.jellyfin.hardwareAcceleration = {
+                        enable = true;
+                        type = "vaapi";
+                        device = "/dev/dri/by-path/pci-0000:00:02.0-render";
+                    };
+                    services.jellyfin.transcoding.hardwareDecodingCodecs = {
+                        h264 = true;
+                        mpeg2 = true;
+                        vc1 = true;
+                    };
+                })
             ];
 
             environment.systemPackages = [
@@ -90,38 +141,8 @@
                 pkgs.git
                 pkgs.neovim
                 pkgs.yazi
+                pkgs.lm_sensors
             ];
-
-            preservation.preserveAt.${config'.disks.hdd.mountpoint}.directories = [
-                { directory = config'.forgejo.stateDir; user = config'.forgejo.user; group = config'.forgejo.group; mode = "0750"; }
-                { directory = config'.monero.dataDir; user = config'.monero.User; group = config'.monero.Group; mode = "0750"; }
-                { directory = config'.transmission.home; user = config'.transmission.user; group = config'.transmission.group; mode = "0750"; }
-                { directory = config'.jellyfin.dataDir; user = config'.jellyfin.user; group = config'.jellyfin.group; mode = "0700"; }
-                { directory = config'.jellyfin.cacheDir; user = config'.jellyfin.user; group = config'.jellyfin.group; mode = "0700"; }
-            ];
-            systemd.services.forgejo.unitConfig.RequiresMountsFor = [ config'.forgejo.stateDir ];
-            systemd.services.monero.unitConfig.RequiresMountsFor = [ config'.monero.dataDir ];
-            systemd.services.transmission.unitConfig.RequiresMountsFor = [ config'.transmission.home ];
-            systemd.services.jellyfin.unitConfig.RequiresMountsFor = [ config'.jellyfin.dataDir config'.jellyfin.cacheDir ];
-
-            services.transmission.credentialsFile = "/persist/etc/transmission/credentials.json";
-            users.users.${config'.jellyfin.user}.extraGroups = [ config'.transmission.group "render" "video" ];
-
-            # Transcode on the Intel iGPU (00:02.0); the AMD dGPU (01:00.0) stays asleep
-            hardware.graphics = {
-                enable = true;
-                extraPackages = [ pkgs.intel-media-driver ];
-            };
-            services.jellyfin.hardwareAcceleration = {
-                enable = true;
-                type = "vaapi";
-                device = "/dev/dri/by-path/pci-0000:00:02.0-render";
-            };
-            services.jellyfin.transcoding.hardwareDecodingCodecs = {
-                h264 = true;
-                mpeg2 = true;
-                vc1 = true;
-            };
 
             # Server: run with the lid closed and never sleep
             services.logind.settings.Login = {
@@ -171,7 +192,7 @@
                     enable = true;
                     ssh = {
                         enable = true;
-                        port = 22;
+                        port = 2222;
                         hostKeys = [ "/persist/etc/ssh/initrd_ssh_host_ed25519_key" ];
                         authorizedKeys = config.users.users.sysadmin.openssh.authorizedKeys.keys;
                     };
