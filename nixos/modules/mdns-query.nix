@@ -1,7 +1,7 @@
 # THIS WAS WRITTEN BY A CLANKER
 {
     # Query `<hostname>.local` names without publishing this host.
-    flake.modules.nixos.mdns-query = { config, lib, ... }: {
+    flake.modules.nixos.mdns-query = { config, lib, pkgs, ... }: {
         services.avahi = {
             enable = true;
             nssmdns4 = true;
@@ -9,9 +9,8 @@
             openFirewall = false;
         };
 
-        # Sandboxed apps (eg. firefox) bind /run/nscd at launch to resolve `.local`. systemd deletes and recreates a
-        # RuntimeDirectory on every restart, leaving those binds pointing at the old, empty directory until the app restarts
-        systemd.services.nscd.serviceConfig.RuntimeDirectoryPreserve = "yes";
+        # Stable path for sandboxes (eg. firefox) to bind the host's nss-mdns and resolve `.local` without nscd
+        environment.etc."nss-mdns".source = pkgs.nssmdns;
 
         # Only link-local mDNS multicast, instead of all of udp/5353
         networking.firewall.extraInputRules = lib.mkIf config.networking.nftables.enable ''

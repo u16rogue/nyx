@@ -27,7 +27,11 @@ in (mkNixPak {
             };
             bind.ro = [
                 [ "/etc/zoneinfo" "/usr/share/zoneinfo" ]
-                [ "/run/nscd" "/var/run/nscd" ] # Host name lookups through the host's NSS (eg. mDNS `.local`); glibc asks nscd at /var/run/nscd/socket first
+                # `.local` lookups in-process: host nsswitch -> nss-mdns (from the `mdns-query` module) -> avahi.
+                # Binds are skipped when missing, so hosts without the module just fall back to plain DNS
+                "/etc/nsswitch.conf"
+                [ "/etc/nss-mdns/lib" "/run/host-nss" ]
+                [ "/run/avahi-daemon" "/var/run/avahi-daemon" ] # nss-mdns talks to avahi at /var/run/avahi-daemon/socket
             ];
             bind.rw = [
                 [ (sloth.mkdir (sloth.concat [ (sloth.env "HOME") "/.nyx/app-fake-root/monero-gui/" (sloth.env "HOME") ])) (sloth.env "HOME") ]
@@ -39,6 +43,7 @@ in (mkNixPak {
                 XDG_RUNTIME_DIR = sloth.runtimeDir;
                 XDG_CURRENT_DESKTOP = sloth.env "XDG_CURRENT_DESKTOP";
                 WAYLAND_DISPLAY = sloth.envOr "WAYLAND_DISPLAY" "wayland-0";
+                LD_LIBRARY_PATH = "/run/host-nss"; # where glibc finds libnss_mdns4_minimal
             };
         };
     };

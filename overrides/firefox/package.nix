@@ -46,8 +46,6 @@ in (mkNixPak {
                         Enabled = true;
                         ProviderURL = "https://mozilla.cloudflare-dns.com/dns-query";
                         Fallback = false;
-                        # mDNS names go to the system resolver (nscd -> avahi), never to the DoH provider
-                        ExcludedDomains = [ "local" ];
                     };
                     NetworkPrediction = false;
                     PromptForDownloadLocation = true;
@@ -108,8 +106,6 @@ in (mkNixPak {
                         "signon.autofillForms".Value = false;
                         "signon.formlessCapture.enabled".Value = false;
                         "browser.nova.enabled".Value = false;
-                        "network.dnsNegativeCacheExpiration".Value = 1;
-                        "network.dnsNegativeCacheExpirationGracePeriod".Value = 0;
                     };
                 };
             };
@@ -160,8 +156,11 @@ in (mkNixPak {
             dieWithParent = true;
             bind.ro = [
                 [ "/etc/zoneinfo" "/usr/share/zoneinfo" ]
-                [ "/run/nscd" "/run/nscd" ]
-                [ "/run/nscd" "/var/run/nscd" ]
+                # `.local` lookups in-process: host nsswitch -> nss-mdns (from the `mdns-query` module) -> avahi.
+                # Binds are skipped when missing, so hosts without the module just fall back to plain DNS
+                "/etc/nsswitch.conf"
+                [ "/etc/nss-mdns/lib" "/run/host-nss" ]
+                [ "/run/avahi-daemon" "/var/run/avahi-daemon" ] # nss-mdns talks to avahi at /var/run/avahi-daemon/socket
             ];
             sockets = {
                 wayland = true;
@@ -188,6 +187,7 @@ in (mkNixPak {
                 PULSE_RUNTIME_PATH = sloth.envOr "PULSE_RUNTIME_PATH" sloth.runtimeDir;
                 WAYLAND_DISPLAY = sloth.envOr "WAYLAND_DISPLAY" "wayland-0";
                 MOZ_ENABLE_WAYLAND = "1";
+                LD_LIBRARY_PATH = "/run/host-nss"; # where glibc finds libnss_mdns4_minimal
             };
         };
     };
