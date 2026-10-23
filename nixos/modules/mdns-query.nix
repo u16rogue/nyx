@@ -5,7 +5,7 @@
         services.avahi = {
             enable = true;
             nssmdns4 = true;
-            publish.enable = lib.mkDefault false;
+            settings.publish."disable-publishing" = lib.mkDefault true;
             openFirewall = false;
         };
 

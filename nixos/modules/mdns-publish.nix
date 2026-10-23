@@ -4,9 +4,9 @@
     flake.modules.nixos.mdns-publish = { config, lib, ... }: {
         services.avahi = {
             enable = true;
-            publish = {
-                enable = true;
-                addresses = true;
+            settings.publish = {
+                "disable-publishing" = false;
+                "publish-addresses" = true;
             };
             openFirewall = false;
         };
