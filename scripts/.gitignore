@@ -11,6 +11,5 @@
 !nix-sync-lock-from-nixos/
 !nyx/
 !nyx-tty-display/
-!nyx-what-version/
 !sbx-shell/
 !tmuxss/
