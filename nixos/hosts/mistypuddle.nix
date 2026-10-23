@@ -86,22 +86,22 @@
                 no-sleep
                 auto-upgrade
                 svc-traefik
-            ]) ++ [
-                (lib.optional meta'.svc.forgejo.enable {
+            ])
+            ++  (lib.optional meta'.svc.forgejo.enable {
                     imports = [ self.modules.nixos.svc-forgejo ];
                     preservation.preserveAt.${config'.disks.hdd.mountpoint}.directories = [
                         { directory = config'.forgejo.stateDir; user = config'.forgejo.user; group = config'.forgejo.group; mode = "0750"; }
                     ];
                     systemd.services.forgejo.unitConfig.RequiresMountsFor = [ config'.forgejo.stateDir ];
                 })
-                (lib.optional meta'.svc.monero.enable {
+            ++  (lib.optional meta'.svc.monero.enable {
                     imports = [ self.modules.nixos.svc-monero ];
                     preservation.preserveAt.${config'.disks.hdd.mountpoint}.directories = [
                         { directory = config'.monero.dataDir; user = config'.monero.User; group = config'.monero.Group; mode = "0750"; }
                     ];
                     systemd.services.monero.unitConfig.RequiresMountsFor = [ config'.monero.dataDir ];
                 })
-                (lib.optional meta'.svc.transmission.enable {
+            ++  (lib.optional meta'.svc.transmission.enable {
                     imports = [ self.modules.nixos.svc-transmission ];
                     preservation.preserveAt.${config'.disks.hdd.mountpoint}.directories = [
                         { directory = config'.transmission.home; user = config'.transmission.user; group = config'.transmission.group; mode = "0750"; }
@@ -109,7 +109,7 @@
                     systemd.services.transmission.unitConfig.RequiresMountsFor = [ config'.transmission.home ];
                     services.transmission.credentialsFile = "/persist/etc/transmission/credentials.json";
                 })
-                (lib.optional meta'.svc.jellyfin.enable {
+            ++  (lib.optional meta'.svc.jellyfin.enable {
                     imports = [ self.modules.nixos.svc-jellyfin ];
                     preservation.preserveAt.${config'.disks.hdd.mountpoint}.directories = [
                         { directory = config'.jellyfin.dataDir; user = config'.jellyfin.user; group = config'.jellyfin.group; mode = "0700"; }
@@ -134,7 +134,7 @@
                         vc1 = true;
                     };
                 })
-            ];
+            ;
 
             environment.systemPackages = [
                 nyx.pkgs.nyx-tty-display
