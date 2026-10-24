@@ -21,9 +21,11 @@
             else if source ? forgejo then let inherit (source.forgejo) url repo; in {
                 name = "forgejo:${url}/${repo}";
                 fetch = /*bash*/ ''
-                    asset="$("''${curl_cmd[@]}" ${lib.escapeShellArg "${url}/api/v1/repos/${repo}/releases/latest"} \
-                        | jq -re '.assets[] | select(.name == "hosts.json") | .browser_download_url')" \
-                        && "''${curl_cmd[@]}" "$asset"
+                    local release asset
+                    release="$("''${curl_cmd[@]}" ${lib.escapeShellArg "${url}/api/v1/repos/${repo}/releases/latest"})" || return 1
+                    asset="$(jq -re 'first(.assets[] | select(.name == "hosts.json") | .browser_download_url)' <<< "$release" 2> /dev/null)" \
+                        || { echo "latest release has no hosts.json asset" >&2; return 1; }
+                    "''${curl_cmd[@]}" "$asset"
                 '';
                 flake = "git+${url}/${repo}?rev=@rev@";
             }
@@ -31,20 +33,48 @@
         sources = map resolve cfg.sources;
 
         # Shared by both scripts, which set the `curl_cmd` array first.
-        # `latest` sets `rev`, `out_path`, `flake` and `source` from the first source with a valid entry for this host.
+        # `latest` sets `rev`, `out_path`, `flake` and `source` from the first source with a valid entry for this host,
+        # and `reasons` to why each source before it (or every source, on failure) was unusable.
         latest = /*bash*/ ''
-            # Prints this host's entry from a source's manifest, or fails.
+            fetch_log="$(mktemp)"
+            trap 'rm -f -- "$fetch_log"' EXIT
+            entry_rev="" entry_out="" reason="" reasons=()
+
+            # Explains a failed fetch from the last line it printed to stderr.
+            fetch_error() {
+                local line message=""
+                while IFS= read -r line; do
+                    [[ -n "''${line//[[:space:]]/}" ]] && message="$line"
+                done < "$fetch_log"
+                message="''${message#curl: }"
+                case "$message" in
+                    *"error: 404"*) echo "no published release with hosts.json (404, drafts don't count)" ;;
+                    "") echo "fetch failed" ;;
+                    *) echo "$message" ;;
+                esac
+            }
+
+            # Sets `entry_rev` and `entry_out` from this host's entry in a source's manifest, or `reason` on failure.
             host_entry() {
-                local manifest entry out_path rev
-                manifest="$("$@")" || return 1
-                entry="$(jq -ce --arg host ${lib.escapeShellArg hostname} '.hosts[$host] // empty' <<< "$manifest")" || return 1
-                out_path="$(jq -r .outPath <<< "$entry")"
-                rev="$(jq -r .rev <<< "$entry")"
-                if [[ ! "$rev" =~ ^[0-9a-f]{40}$ || ! "$out_path" =~ ^/nix/store/[0-9a-z]{32}-[^/]+$ ]]; then
-                    echo "malformed release entry: $entry" >&2
+                local manifest entry
+                if ! manifest="$("$1" 2> "$fetch_log")"; then
+                    reason="$(fetch_error)"
                     return 1
                 fi
-                printf '%s %s\n' "$rev" "$out_path"
+                if ! jq -e 'type == "object"' > /dev/null 2>&1 <<< "$manifest"; then
+                    reason="hosts.json is not a JSON object"
+                    return 1
+                fi
+                if ! entry="$(jq -ce --arg host ${lib.escapeShellArg hostname} '.hosts[$host]? // empty' <<< "$manifest")"; then
+                    reason="${hostname} is not in the latest release"
+                    return 1
+                fi
+                entry_out="$(jq -r .outPath <<< "$entry")"
+                entry_rev="$(jq -r .rev <<< "$entry")"
+                if [[ ! "$entry_rev" =~ ^[0-9a-f]{40}$ || ! "$entry_out" =~ ^/nix/store/[0-9a-z]{32}-[^/]+$ ]]; then
+                    reason="malformed entry for ${hostname}: $entry"
+                    return 1
+                fi
             }
 
             ${lib.concatImapStringsSep "\n" (i: source: /*bash*/ ''
@@ -58,16 +88,16 @@
 
             # shellcheck disable=SC2034 # results are for the caller, which may not use all of them
             latest() {
-                local i found
-                rev="" out_path="" flake="" source=""
+                local i
+                rev="" out_path="" flake="" source="" reasons=()
                 for i in "''${!source_names[@]}"; do
-                    if found="$(host_entry "source_$((i + 1))")"; then
-                        read -r rev out_path <<< "$found"
+                    if host_entry "source_$((i + 1))"; then
+                        rev="$entry_rev" out_path="$entry_out"
                         flake="''${source_flakes[i]//@rev@/$rev}"
                         source="''${source_names[i]}"
                         return 0
                     fi
-                    echo "''${source_names[i]} has no usable entry for ${hostname}" >&2
+                    reasons+=("''${source_names[i]}: $reason")
                 done
                 return 1
             }
@@ -103,7 +133,8 @@
                 echo "system: $current"
                 echo "rev:    ''${running:-unknown (not a released system)}"
                 if [[ -z "$latest_rev" ]]; then
-                    echo "latest: unavailable"
+                    printf -v why '%s; ' "''${reasons[@]}"
+                    echo "latest: unavailable (''${why%; })"
                 elif [[ "$running" == "$latest_rev" ]]; then
                     echo "latest: $latest_rev (up to date, from $source)"
                 else
@@ -121,8 +152,12 @@
                 ${latest}
 
                 if ! latest; then
-                    echo "${hostname} is not listed in any source's latest release, nothing to do"
+                    printf '%s\n' "''${reasons[@]}" >&2
+                    echo "no source has a usable release for ${hostname}, nothing to do"
                     exit 0
+                fi
+                if [[ "''${#reasons[@]}" -gt 0 ]]; then
+                    printf 'skipped %s\n' "''${reasons[@]}" >&2
                 fi
                 echo "using $source"
 

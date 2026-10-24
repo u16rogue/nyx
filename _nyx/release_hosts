@@ -79,4 +79,15 @@ fi
 
 tag="hosts-$(date -u +%Y%m%d-%H%M%S)-${rev:0:7}"
 gh release create "$tag" "$work/hosts.json" --target "$rev" --title "$tag" --notes "$notes" --latest
+
+# Hosts only see published releases, and `gh` publishes in a separate request after uploading,
+# so make sure it didn't stay a draft.
+if [[ "$(gh release view "$tag" --json isDraft --jq .isDraft)" != false ]]; then
+    echo "[warn] $tag was left as a draft, publishing it" >&2
+    gh release edit "$tag" --draft=false --latest
+    if [[ "$(gh release view "$tag" --json isDraft --jq .isDraft)" != false ]]; then
+        echo "[err] $tag is still a draft, hosts won't see it" >&2
+        exit 1
+    fi
+fi
 echo "[info] released $tag"
