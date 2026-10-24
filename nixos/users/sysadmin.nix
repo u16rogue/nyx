@@ -47,6 +47,7 @@
                         bind l select-pane -R
                         bind -r W select-pane -t .+1 \; resize-pane -Z
 
+                        set -g window-status-current-style default
                         set-option -g status-position top
                         set-option -g status-interval 5
                         set-option -g status-justify left
