@@ -66,7 +66,6 @@
                 # Scripts
                 nyx.pkgs.tmuxss
                 nyx.pkgs.sbx-shell
-                nyx.pkgs.git-cans
                 nyx.pkgs.git-log
                 nyx.pkgs.mkignore
                 nyx.pkgs.nix-develop

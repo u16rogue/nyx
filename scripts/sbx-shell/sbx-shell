@@ -9,7 +9,6 @@ set -o pipefail
 prog_name="sbx-shell"
 ctxlink_marker_name=".nyx-sbx"
 
-# Clanker modified: madd/mcover help text
 modeOf_help() {
     echo \
 "--------------------------------------------------------------------------------
@@ -1149,62 +1148,23 @@ modeOf_enter() {
     fi
 
     # Initialize - Group and Users
-    local passwd_at="$context_path/passwd"
-    [[ -L "$passwd_at" || ( -e "$passwd_at" && ! -f "$passwd_at" ) ]] && { printErr "passwd must be a non-symlink regular file: $passwd_at"; exit 1; };
-    if [[ ! -f "$passwd_at" ]]; then
-        printWarn "sandbox context does not have a passwd file. generating."
-        local bin_nologin
-        if ! bin_nologin="$(which nologin)"; then
-            printErr "couldnt resolve nologin binary"
-            exit 1
-        fi
-
-        local id_un
-        if ! id_un="$(id -un)"; then
-            printErr "failed to resolve user name"
-            exit 1
-        fi
-
-        local id_u
-        if ! id_u="$(id -u)"; then
-            printErr "failed to resolve user id"
-            exit 1
-        fi
-
-        local id_g
-        if ! id_g="$(id -g)"; then
-            printErr "failed to resolve user group"
-            exit 1
-        fi
-
-        if ! printf "root:x:0:0:System administrator:/root:%s\n%s:x:%s:%s::%s:%s" "$bin_nologin" "$id_un" "$id_u" "$id_g" "$HOME" "$bin_nologin" > "$passwd_at"; then
-            printErr "failed to create passwd file"
-            exit 1
-        fi
+    local bin_nologin id_un id_u id_g id_gn passwd_fd group_fd
+    if ! bin_nologin="$(which nologin)"; then
+        printErr "couldnt resolve nologin binary"
+        exit 1
     fi
-
-    local group_at="$context_path/group"
-    [[ -L "$group_at" || ( -e "$group_at" && ! -f "$group_at" ) ]] && { printErr "group must be a non-symlink regular file: $group_at"; exit 1; };
-    if [[ ! -f "$group_at" ]]; then
-        printWarn "sandbox context does not have a group file. generating."
-
-        local id_gn
-        if ! id_gn="$(id -gn)"; then
-            printErr "failed to resolve user group name"
-            exit 1
-        fi
-
-        local id_g
-        if ! id_g="$(id -g)"; then
-            printErr "failed to resolve user group"
-            exit 1
-        fi
-
-        if ! printf "root:x:0:\n%s:x:%s:" "$id_gn" "$id_g" > "$group_at"; then
-            printErr "failed to create group file"
-            exit 1
-        fi
+    if ! id_un="$(id -un)" || ! id_u="$(id -u)" || ! id_g="$(id -g)" || ! id_gn="$(id -gn)"; then
+        printErr "failed to resolve user identity"
+        exit 1
     fi
+    if [[ "$HOME$id_un$id_gn$bin_nologin" == *[:$'\n']* ]]; then
+        printErr "account fields must not contain ':' or newlines"
+        exit 1
+    fi
+    exec {passwd_fd}<<< "root:x:0:0:System administrator:/root:$bin_nologin
+$id_un:x:$id_u:$id_g::$HOME:$bin_nologin"
+    exec {group_fd}<<< "root:x:0:
+$id_gn:x:$id_g:"
 
     local ffs_root="$context_path/fs-root"
     if [[ "$HOME" != /* || "$HOME" == / || "$(realpath -ms -- "$HOME")" != "$HOME" ]]; then
@@ -1227,17 +1187,17 @@ modeOf_enter() {
     # END CLANKER: validate fixed runtime mount sources
 
     # Setup root and fs
-    args_for_bwrap+=(                           \
-        --bind "$ffs_root" "/"                  \
-        --ro-bind "/nix" "/nix"                 \
-        --dev /dev                              \
-        --proc /proc                            \
-        --tmpfs /run                            \
-        --tmpfs /tmp                            \
-        --ro-bind "$group_at" "/etc/group"      \
-        --ro-bind "$passwd_at" "/etc/passwd"    \
-        --ro-bind "/bin/sh" "/bin/sh"           \
-        --ro-bind "/usr/bin/env" "/usr/bin/env" \
+    args_for_bwrap+=(                             \
+        --bind "$ffs_root" "/"                    \
+        --ro-bind "/nix" "/nix"                   \
+        --dev /dev                                \
+        --proc /proc                              \
+        --tmpfs /run                              \
+        --tmpfs /tmp                              \
+        --ro-bind-data "$group_fd" "/etc/group"   \
+        --ro-bind-data "$passwd_fd" "/etc/passwd" \
+        --ro-bind "/bin/sh" "/bin/sh"             \
+        --ro-bind "/usr/bin/env" "/usr/bin/env"   \
     );
 
     # Setup network
