@@ -1,7 +1,7 @@
 # THIS WAS WRITTEN BY A CLANKER
-# Polls the latest `hosts.json` release published by `_nyx/release_hosts` and
-# rebuilds from that exact commit only when this host's released system differs
-# from the running one.
+# Polls the latest `hosts.json` published by `_nyx/release_hosts` and rebuilds
+# from that exact commit only when this host's released system differs from the
+# running one.
 #
 # Sources are tried in order; the first one with a valid entry for this host is
 # used. Every source can deploy any system as root, so only list trusted ones.
@@ -12,14 +12,25 @@
         stateDir = "/var/lib/nyx-auto-upgrade";
         # Each source resolves to a name, a bash snippet printing its latest
         # `hosts.json`, and a flake ref where `@rev@` is replaced by the release rev.
-        resolve = source:
-            if source ? github then let inherit (source.github) repo; in {
-                name = "github:${repo}";
+        resolve = i: source:
+            if source ? git then let inherit (source.git) url branch flake; dir = ''"$tmp/source_${toString i}"''; in {
+                name = "git:${url}#${branch}";
+                fetch = /*bash*/ ''
+                    "''${git_cmd[@]}" init --quiet ${dir} \
+                        && "''${git_cmd[@]}" -C ${dir} fetch --quiet --depth=1 --no-tags ${lib.escapeShellArgs [ url "refs/heads/${branch}" ]} \
+                        || return 1
+                    "''${git_cmd[@]}" -C ${dir} show FETCH_HEAD:hosts.json 2> /dev/null \
+                        || { echo ${lib.escapeShellArg "${branch} has no hosts.json"} >&2; return 1; }
+                '';
+                inherit flake;
+            }
+            else if source ? github-releases then let inherit (source.github-releases) repo; in {
+                name = "github-releases:${repo}";
                 fetch = /*bash*/ ''"''${curl_cmd[@]}" ${lib.escapeShellArg "https://github.com/${repo}/releases/latest/download/hosts.json"}'';
                 flake = "github:${repo}/@rev@";
             }
-            else if source ? forgejo then let inherit (source.forgejo) url repo; in {
-                name = "forgejo:${url}/${repo}";
+            else if source ? forgejo-releases then let inherit (source.forgejo-releases) url repo; in {
+                name = "forgejo-releases:${url}/${repo}";
                 fetch = /*bash*/ ''
                     local release asset
                     release="$("''${curl_cmd[@]}" ${lib.escapeShellArg "${url}/api/v1/repos/${repo}/releases/latest"})" || return 1
@@ -29,27 +40,37 @@
                 '';
                 flake = "git+${url}/${repo}?rev=@rev@";
             }
-            else throw "nyxos.auto-upgrade: unknown source ${builtins.toJSON source}";
-        sources = map resolve cfg.sources;
-
-        # Shared by both scripts, which set the `curl_cmd` array first.
+            else throw "nyxos.auto-upgrade: unknown source ${builtins.toJSON source}"
+        ;
+        sources = lib.imap1 resolve cfg.sources;
+        # Shared by both scripts, which set the `curl_cmd` and `git_cmd` arrays first.
         # `latest` sets `rev`, `out_path`, `flake` and `source` from the first source with a valid entry for this host,
         # and `reasons` to why each source before it (or every source, on failure) was unusable.
         latest = /*bash*/ ''
-            fetch_log="$(mktemp)"
-            trap 'rm -f -- "$fetch_log"' EXIT
+            tmp="$(mktemp -d)"
+            trap 'rm -rf -- "$tmp"' EXIT
+            fetch_log="$tmp/fetch.log"
             entry_rev="" entry_out="" reason="" reasons=()
+            export GIT_TERMINAL_PROMPT=0
 
-            # Explains a failed fetch from the last line it printed to stderr.
+            # Explains a failed fetch from what it printed to stderr: git's first `fatal:` line, otherwise the last line.
             fetch_error() {
                 local line message=""
                 while IFS= read -r line; do
+                    if [[ "$line" == "fatal: "* ]]; then
+                        message="$line"
+                        break
+                    fi
                     [[ -n "''${line//[[:space:]]/}" ]] && message="$line"
                 done < "$fetch_log"
                 message="''${message#curl: }"
+                message="''${message#fatal: }"
                 case "$message" in
                     *"error: 404"*) echo "no published release with hosts.json (404, drafts don't count)" ;;
-                    "") echo "fetch failed" ;;
+                    *"couldn't find remote ref"*) echo "branch not found" ;;
+                    *"could not read Username"* | *"Repository not found"* | *"does not appear to be a git repository"*)
+                        echo "repository not found (or not public)" ;;
+                    "") echo "fetch failed (or timed out)" ;;
                     *) echo "$message" ;;
                 esac
             }
@@ -66,7 +87,7 @@
                     return 1
                 fi
                 if ! entry="$(jq -ce --arg host ${lib.escapeShellArg hostname} '.hosts[$host]? // empty' <<< "$manifest")"; then
-                    reason="${hostname} is not in the latest release"
+                    reason="${hostname} is not in hosts.json"
                     return 1
                 fi
                 entry_out="$(jq -r .outPath <<< "$entry")"
@@ -105,11 +126,12 @@
 
         nyx-what-version = pkgs.writeShellApplication {
             name = "nyx-what-version";
-            runtimeInputs = [ pkgs.curl pkgs.jq pkgs.coreutils ];
+            runtimeInputs = [ pkgs.curl pkgs.gitMinimal pkgs.jq pkgs.coreutils ];
             text = /*bash*/ ''
                 # The rev is resolved from `nyx-auto-upgrade`'s state and the latest release since the
                 # system itself doesn't embed it (that would change every host's outPath on every commit).
-                curl_cmd=(curl -fsSL --max-time 15)
+                # shellcheck disable=SC2034 # only used by the sources that need them
+                curl_cmd=(curl -fsSL --max-time 15) git_cmd=(timeout 15 git)
                 ${latest}
 
                 current="$(readlink -f /run/current-system)"
@@ -145,10 +167,11 @@
 
         nyx-auto-upgrade = pkgs.writeShellApplication {
             name = "nyx-auto-upgrade";
-            runtimeInputs = [ pkgs.curl pkgs.jq pkgs.coreutils config.system.build.nixos-rebuild ];
+            runtimeInputs = [ pkgs.curl pkgs.gitMinimal pkgs.jq pkgs.coreutils config.system.build.nixos-rebuild ];
             text = /*bash*/ ''
                 attempted="''${STATE_DIRECTORY:-${stateDir}}/attempted"
-                curl_cmd=(curl -fsSL --retry 3 --max-time 60)
+                # shellcheck disable=SC2034 # only used by the sources that need them
+                curl_cmd=(curl -fsSL --retry 3 --max-time 60) git_cmd=(timeout 60 git)
                 ${latest}
 
                 if ! latest; then
@@ -211,23 +234,49 @@
         };
 
         options.nyxos.auto-upgrade.sources = lib.mkOption {
-            description = "Where to poll `hosts.json` releases from, in order of preference.";
+            description = "Where to poll `hosts.json` from, in order of preference.";
             type = lib.types.nonEmptyListOf (lib.types.attrTag {
-                github = lib.mkOption {
-                    description = "GitHub repository releases.";
+                git = lib.mkOption {
+                    description = "`hosts.json` at the tip of a branch in any git repository (eg. a separate release repository).";
+                    type = lib.types.submodule ({ config, ... }: {
+                        options.url = lib.mkOption {
+                            description = "Repository to fetch, any URL `git fetch` accepts. Needs to be readable without credentials.";
+                            type = lib.types.str;
+                            example = "https://github.com/user/nyx-release.git";
+                        };
+                        options.branch = lib.mkOption {
+                            description = "Branch whose `hosts.json` is the latest release.";
+                            type = lib.types.str;
+                            default = "main";
+                        };
+                        options.flake = lib.mkOption {
+                            description = "Flake to rebuild from, `@rev@` is replaced by the released rev. Defaults to `url` itself, which only fits when the releases live in the code repository.";
+                            type = lib.types.strMatching ".*@rev@.*";
+                            default = "git+${config.url}?rev=@rev@";
+                            defaultText = lib.literalExpression ''"git+''${url}?rev=@rev@"'';
+                            example = "github:user/nyx/@rev@";
+                        };
+                    });
+                };
+                github-releases = lib.mkOption {
+                    description = "The latest GitHub release's `hosts.json` asset; also the flake that is rebuilt from.";
                     type = lib.types.submodule {
                         options.repo = lib.mkOption { type = lib.types.str; example = "user/nyx"; };
                     };
                 };
-                forgejo = lib.mkOption {
-                    description = "Forgejo (or Gitea) repository releases.";
+                forgejo-releases = lib.mkOption {
+                    description = "The latest Forgejo (or Gitea) release's `hosts.json` asset; also the flake that is rebuilt from.";
                     type = lib.types.submodule {
                         options.url = lib.mkOption { type = lib.types.strMatching "https?://[^/]+"; example = "https://git.example.com"; };
                         options.repo = lib.mkOption { type = lib.types.str; example = "user/nyx"; };
                     };
                 };
             });
-            example = [ { forgejo = { url = "https://git.example.com"; repo = "user/nyx"; }; } { github.repo = "user/nyx"; } ];
+            example = [
+                { git = { url = "https://github.com/user/nyx-release.git"; flake = "github:user/nyx/@rev@"; }; }
+                { forgejo-releases = { url = "https://git.example.com"; repo = "user/nyx"; }; }
+                { github-releases.repo = "user/nyx"; }
+            ];
         };
 
         config = {

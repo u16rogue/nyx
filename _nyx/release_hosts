@@ -4,9 +4,12 @@
 
 set -euo pipefail
 
-# Publishes a `hosts.json` GitHub release whenever any host's evaluated system
-# changes. Hosts importing the `auto-upgrade` nixos module poll the latest
-# release and only rebuild when their entry differs from /run/current-system.
+# Publishes `hosts.json` as a commit on a branch of a git repository whenever any
+# host's evaluated system changes. Hosts importing the `auto-upgrade` nixos module
+# poll it and only rebuild when their entry differs from /run/current-system.
+#
+# The release repository is separate from this one so nothing mirroring this
+# repository (eg. a Forgejo push mirror, which prunes refs) can remove releases.
 #
 # A host's `outPath` changes exactly when something that ends up in its system
 # changes (host, module, user, override, flake.lock), so no path filters are
@@ -15,8 +18,8 @@ set -euo pipefail
 # hosts.json:
 #   { "version": 1, "rev": "<commit>", "hosts": { "<host>": { "outPath": "...", "rev": "<commit that last changed it>" } } }
 #
-# Usage: release_hosts <commit sha>    (needs `gh` with GH_TOKEN, `nix`, `jq`)
-#        NYX_DRY_RUN=1 release_hosts <commit sha>    to only print the result
+# Usage: NYX_RELEASE_REPO=<git url> [NYX_RELEASE_BRANCH=main] release_hosts <commit sha>    (needs `git`, `nix`, `jq`)
+#        NYX_DRY_RUN=1 release_hosts <commit sha>    to only print the result (compared against NYX_RELEASE_REPO when set)
 
 PROJECT_DIR="$(realpath "$(dirname "$(realpath "${BASH_SOURCE[0]}")")/..")"
 cd "$PROJECT_DIR"
@@ -24,20 +27,41 @@ cd "$PROJECT_DIR"
 rev="${1:?missing commit sha}"
 [[ "$rev" =~ ^[0-9a-f]{40}$ ]] || { echo "[err] invalid commit sha '$rev'" >&2; exit 1; }
 
+dry_run="${NYX_DRY_RUN:-0}"
+release_repo="${NYX_RELEASE_REPO:-}"
+release_branch="${NYX_RELEASE_BRANCH:-main}"
+[[ "$dry_run" == 1 || -n "$release_repo" ]] || { echo "[err] NYX_RELEASE_REPO is not set" >&2; exit 1; }
+export GIT_TERMINAL_PROMPT=0
+
 work="$(mktemp -d)"
 trap 'rm -rf -- "$work"' EXIT
+release="$work/release"
 
 echo "[info] evaluating host systems at $rev"
 nix eval --json .#nixosConfigurations \
     --apply 'builtins.mapAttrs (_: c: c.config.system.build.toplevel.outPath)' \
     > "$work/current.json"
 
-if [[ "${NYX_DRY_RUN:-0}" != 1 ]] && gh release download --pattern hosts.json --dir "$work/previous" 2>/dev/null; then
-    previous="$work/previous/hosts.json"
-else
-    echo '{ "hosts": {} }' > "$work/empty.json"
-    previous="$work/empty.json"
-    [[ "${NYX_DRY_RUN:-0}" == 1 ]] || echo "[info] no previous release, treating every host as changed"
+echo '{ "hosts": {} }' > "$work/empty.json"
+previous="$work/empty.json"
+if [[ -n "$release_repo" ]]; then
+    status=0
+    git ls-remote --exit-code --heads "$release_repo" "$release_branch" > /dev/null || status=$?
+    if [[ "$status" -eq 0 ]]; then
+        git clone --quiet --depth=1 --branch "$release_branch" "$release_repo" "$release"
+        if [[ -f "$release/hosts.json" ]]; then
+            previous="$release/hosts.json"
+        else
+            echo "[info] $release_branch has no hosts.json yet, treating every host as changed"
+        fi
+    elif [[ "$status" -eq 2 ]]; then
+        echo "[info] $release_branch does not exist yet, treating every host as changed"
+        git init --quiet --initial-branch "$release_branch" "$release"
+        git -C "$release" remote add origin "$release_repo"
+    else
+        echo "[err] could not reach $release_repo" >&2
+        exit 1
+    fi
 fi
 
 # Unchanged hosts keep the rev that last changed them.
@@ -53,7 +77,8 @@ jq -n --arg rev "$rev" --slurpfile current "$work/current.json" --slurpfile prev
     }
 ' > "$work/hosts.json"
 
-mapfile -t changed < <(jq -r --arg rev "$rev" '.hosts | to_entries[] | select(.value.rev == $rev) | .key' "$work/hosts.json")
+mapfile -t changed < <(jq -rn --slurpfile current "$work/current.json" --slurpfile previous "$previous" \
+    '($previous[0].hosts // {}) as $prev | $current[0] | to_entries[] | select($prev[.key].outPath != .value) | .key')
 mapfile -t removed < <(jq -rn --slurpfile current "$work/current.json" --slurpfile previous "$previous" \
     '($previous[0].hosts // {} | keys) - ($current[0] | keys) | .[]')
 
@@ -72,22 +97,17 @@ if [[ "${#removed[@]}" -gt 0 ]]; then
 fi
 echo "$notes"
 
-if [[ "${NYX_DRY_RUN:-0}" == 1 ]]; then
+if [[ "$dry_run" == 1 ]]; then
     echo "[info] dry run, not releasing"
     exit 0
 fi
 
-tag="hosts-$(date -u +%Y%m%d-%H%M%S)-${rev:0:7}"
-gh release create "$tag" "$work/hosts.json" --target "$rev" --title "$tag" --notes "$notes" --latest
-
-# Hosts only see published releases, and `gh` publishes in a separate request after uploading,
-# so make sure it didn't stay a draft.
-if [[ "$(gh release view "$tag" --json isDraft --jq .isDraft)" != false ]]; then
-    echo "[warn] $tag was left as a draft, publishing it" >&2
-    gh release edit "$tag" --draft=false --latest
-    if [[ "$(gh release view "$tag" --json isDraft --jq .isDraft)" != false ]]; then
-        echo "[err] $tag is still a draft, hosts won't see it" >&2
-        exit 1
-    fi
-fi
-echo "[info] released $tag"
+cp "$work/hosts.json" "$release/hosts.json"
+git -C "$release" add hosts.json
+git -C "$release" \
+    -c user.name="${NYX_RELEASE_AUTHOR_NAME:-nyx release_hosts}" \
+    -c user.email="${NYX_RELEASE_AUTHOR_EMAIL:-release_hosts@nyx.invalid}" \
+    commit --quiet -m "hosts ${rev:0:7}" -m "$notes" -m "Source: $rev"
+# Not forced: a concurrent release makes this fail instead of being overwritten.
+git -C "$release" push --quiet origin "HEAD:refs/heads/$release_branch"
+echo "[info] released ${rev:0:7} to $release_repo ($release_branch)"

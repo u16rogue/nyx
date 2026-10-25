@@ -179,18 +179,31 @@
                         vc1 = true;
                     };
                 })
+                ++
+                (lib.optional (builtins.elem true (with meta'.svc; [
+                    monero.enable
+                    forgejo.enable
+                    transmission.enable
+                    jellyfin.enable
+                ])) {
+                    services.traefik = {
+                        enable = true;
+                        staticConfigOptions = {
+                            entryPoints.web.address = ":80";
+                            log.level = "INFO";
+                        };
+                    };
+                    networking.firewall.allowedTCPPorts = [ 80 ];
+                })
             ;
 
-            nyxos.auto-upgrade.sources = [ { github.repo = "u16rogue/nyx"; } ];
-
-            services.traefik = {
-                enable = true;
-                staticConfigOptions = {
-                    entryPoints.web.address = ":80";
-                    log.level = "INFO";
+            nyxos.auto-upgrade.sources = [ {
+                git = {
+                    url = "https://github.com/u16rogue/nyx-release.git";
+                    branch = "main";
+                    flake = "github:u16rogue/nyx/@rev@";
                 };
-            };
-            networking.firewall.allowedTCPPorts = [ 80 ];
+            } ];
 
             environment.systemPackages = [
                 nyx.pkgs.nyx-tty-display
