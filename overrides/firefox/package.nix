@@ -58,6 +58,11 @@ in (mkNixPak {
                                 Alias = "@nixpkgs";
                                 URLTemplate = "https://search.nixos.org/packages?channel=unstable&query={searchTerms}";
                             }
+                            {
+                                Name = "NixOs Options";
+                                Alias = "@nixos";
+                                URLTemplate = "https://search.nixos.org/options?channel=unstable&query={searchTerms}";
+                            }
                         ];
                     };
                     SearchSuggestEnabled = false;
