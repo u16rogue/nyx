@@ -33,6 +33,7 @@ reset_project() {
 
     # In cp mode .ssm is a read-only bind mount and must stay.
     local keep=()
+    # shellcheck disable=SC2153
     [[ "$USE_NIX" == 1 ]] || keep=(! -name .ssm)
 
     # nix flake init may produce read-only files, make sure they can be removed.
@@ -43,8 +44,10 @@ reset_project() {
     fi
 
     if [[ "$USE_NIX" == 1 ]]; then
+        # shellcheck disable=SC2153
         nix flake init -t "path:$REPO#ssm"
     else
+        # shellcheck disable=SC2153
         find "$TEMPLATE" -mindepth 1 -maxdepth 1 ! -name .ssm \
             -exec cp -r --no-preserve=ownership -t . -- {} +
     fi

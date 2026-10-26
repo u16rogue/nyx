@@ -172,21 +172,210 @@ main() {
     esac
 }
 
+# "<key> :: <value> <meta>", every listing of the options goes through here
+optLine() {
+    local key="$1"
+    local value=
+    case "$key" in
+        flake_systems) value="${flake_systems[*]}" ;;
+        flake_devshell_frags) value="${flake_devshell_frags[*]}" ;;
+        *) value="${d["$key"]}" ;;
+    esac
+    printf '%-20s :: %s%s\n' "$key" "$value" "${d_meta["$key"]:+" ${d_meta["$key"]}"}"
+}
+
+optLines() {
+    local key
+    for key in "${d_opts[@]}"; do
+        optLine "$key"
+    done
+}
+
+drawTuiSearch() {
+    local searched=
+    if ! searched=$(optLines | gum filter --limit 1 --height 12); then
+        return 1
+    fi
+    printf '%s' "$searched"
+}
+
+drawTuiMainMenu() {
+    local -a lines=()
+    mapfile -t lines < <(optLines)
+
+    local selected=
+    if ! selected=$(gum choose --limit 1 --height $(( ${#lines[@]} + 3 )) --header "SSM Options" \
+        "<search>" \
+        "<cancel>" \
+        "<confirm>" \
+        "${lines[@]}" \
+    ); then
+        return 1
+    fi
+    printf '%s' "$selected"
+}
+
+# empty input falls back to $2 (default "<nil>")
+drawTuiInput() {
+    local key="$1"
+    local fallback="${2:-"<nil>"}"
+    local value="${d["$key"]}"
+    [[ "$value" == "<nil>" ]] && value=
+
+    if ! value=$(gum input --header "$key" --value "$value"); then
+        return 1
+    fi
+    d["$key"]="${value:-"$fallback"}"
+    d_meta["$key"]=""
+}
+
+drawTuiSystems() {
+    local -a systems=("x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin")
+    local current=
+    current="$(IFS=,; printf '%s' "${flake_systems[*]}")"
+
+    local selected=
+    if ! selected=$(gum choose --no-limit --header "flake_systems" --selected "$current" "${systems[@]}"); then
+        return 1
+    fi
+    if [[ -z "$selected" ]]; then
+        printErr "pick at least one flake system"
+        return 1
+    fi
+    mapfile -t flake_systems <<< "$selected"
+}
+
+drawTuiFragsAdd() {
+    local frag=
+    if ! frag=$(gum input --header "new devshell frag" --placeholder "eg. minimal"); then
+        return 1
+    fi
+    [[ -z "$frag" ]] && return 0
+
+    if [[ ! "$frag" =~ ^[A-Za-z_][A-Za-z0-9_-]*$ ]]; then
+        printErr "invalid frag name: '$frag'"
+        return 1
+    fi
+
+    local existing
+    for existing in "${flake_devshell_frags[@]}"; do
+        if [[ "$existing" == "$frag" ]]; then
+            printErr "frag already exists: '$frag'"
+            return 1
+        fi
+    done
+    flake_devshell_frags+=("$frag")
+}
+
+drawTuiFragsRemove() {
+    if (( ${#flake_devshell_frags[@]} <= 1 )); then
+        printErr "keep at least one devshell frag"
+        return 1
+    fi
+
+    local -a kept=()
+    local frag
+    for frag in "${flake_devshell_frags[@]}"; do
+        [[ "$frag" == "$1" ]] || kept+=("$frag")
+    done
+    flake_devshell_frags=("${kept[@]}")
+}
+
+drawTuiFrags() {
+    while true; do
+        local selected=
+        if ! selected=$(gum choose --limit 1 --height 12 --header "flake_devshell_frags (select to remove)" \
+            "<back>" \
+            "<add>" \
+            "${flake_devshell_frags[@]}" \
+        ); then
+            return 1
+        fi
+
+        if [[ "$selected" == "<back>" ]]; then
+            return 0
+        elif [[ "$selected" == "<add>" ]]; then
+            drawTuiFragsAdd
+        else
+            drawTuiFragsRemove "$selected"
+        fi
+    done
+}
+
+# fills git_user/git_signkey from git_mail if they're still <nil>
+# or were derived from a previous mail
+resolveGitFromMail() {
+    local mail="${d["git_mail"]}"
+
+    if [[ "${d["git_user"]}" == "<nil>" || "${d_meta["git_user"]}" == "(from mail)" ]]; then
+        local user=
+        [[ "$mail" =~ ^([^@]+)@ ]] && user="${BASH_REMATCH[1]}"
+        d["git_user"]="${user:-"<nil>"}"
+        d_meta["git_user"]="${user:+"(from mail)"}"
+    fi
+
+    if [[ "${d["git_signkey"]}" == "<nil>" || "${d_meta["git_signkey"]}" == "(from gpg)" ]]; then
+        local key=
+        if command -v gpg &> /dev/null; then
+            key="$(gpg --list-secret-keys --with-colons "<$mail>" 2> /dev/null | awk -F: '$1 == "fpr" { print $10; exit }')"
+        fi
+        d["git_signkey"]="${key:-"<nil>"}"
+        d_meta["git_signkey"]="${key:+"(from gpg)"}"
+    fi
+}
+
+drawTuiEdit() {
+    local key="$1"
+    case "$key" in
+        flake_systems) drawTuiSystems ;;
+        flake_devshell_frags) drawTuiFrags ;;
+        git_mail) drawTuiInput "$key" && resolveGitFromMail ;;
+        sandbox_id)
+            if drawTuiInput "$key" "?" && [[ "${d["sandbox_id"]}" == "?" ]]; then
+                d_meta["sandbox_id"]="(auto generate)"
+            fi
+            ;;
+        *) drawTuiInput "$key" ;;
+    esac
+}
+
+drawTui() {
+    while true; do
+        local selected=
+        if ! selected=$(drawTuiMainMenu); then
+            continue;
+        fi
+
+        if [[ "$selected" == "<search>" ]]; then
+            if ! selected=$(drawTuiSearch); then
+                gum choose --header "invalid search" "ok" 1> /dev/null
+                continue
+            fi
+        elif [[ "$selected" == "<cancel>" ]]; then
+            exit 0
+        elif [[ "$selected" == "<confirm>" ]]; then
+            return 0
+        fi
+
+        drawTuiEdit "${selected%% *}"
+    done
+}
+
 modeOf_init() {
+    local -a d_opts=("project_name" "project_description" "sandbox_id" "nixpkgs_pin" "flake_systems" "flake_devshell_frags" "git_mail" "git_user" "git_signkey" "git_ssh_id")
     local -A d
     local -A d_meta # has the same keys as d(ata) but it just contains "messages"
 
-    d["prjname"]="$(basename "$PWD")"
-    d["prjdesc"]="ssm initialized '${d["prjname"]:-"<err>"}' project"
-    d["sbxid"]="${d["prjname"]:-"?"}"; [[ "${d["sbxid"]}" == "?" ]] && d_meta["sbxid"]="(auto generate)";
+    d["project_name"]="$(basename "$PWD")"
+    d["project_description"]="ssm initialized '${d["project_name"]:-"<err>"}' project"
+    d["sandbox_id"]="${d["project_name"]:-"?"}"; [[ "${d["sandbox_id"]}" == "?" ]] && d_meta["sandbox_id"]="(auto generate)";
     d["nixpkgs_pin"]="<latest>"
-    local -a d_nixfsystems=("x86_64-linux")
-    local -a d_nixfdevshellfrags=("default" "minimal")
-    d["gitusr"]="<latest>"
-    d["gitmail"]="<latest>"
-    d["gitsign"]="<latest>"
-    d["gitsshident"]="<latest>"
-
+    local -a flake_systems=("x86_64-linux")
+    local -a flake_devshell_frags=("default")
+    d["git_user"]="<nil>"
+    d["git_mail"]="<nil>"
+    d["git_signkey"]="<nil>"
+    d["git_ssh_id"]="<nil>"
     
     if command -v "nixos-version" &> /dev/null; then
         if d["nixpkgs_pin"]="$(nixos-version --json | jq -r '.nixpkgsRevision')"; then
@@ -198,7 +387,44 @@ modeOf_init() {
     else
         d_meta["nixpkgs_pin"]="(no nix-version)"
     fi
-    exit 1
+
+    if ! drawTui; then
+        printErr "an error occured when tui form returned"
+        exit 1
+    fi
+
+    [[ "${d["nixpkgs_pin"]}" == "<nil>" ]] && d["nixpkgs_pin"]="";
+
+    local -a run_commands=();
+    [[ ! -d "$ssm_root/.git" ]] && run_commands+=("git init")
+    [[ ! -d "$ssm_root/.jj" ]] && run_commands+=("jj git init")
+    local ssh_command="ssh -i ${d["git_ssh_id"]@Q}"
+    [[ "${d["git_user"]}" != "<nil>" ]] && run_commands+=("git config user.name ${d["git_user"]@Q}")
+    [[ "${d["git_mail"]}" != "<nil>" ]] && run_commands+=("git config user.email ${d["git_mail"]@Q}")
+    [[ "${d["git_signkey"]}" != "<nil>" ]] && run_commands+=("git config user.signingKey ${d["git_signkey"]@Q}")
+    [[ "${d["git_ssh_id"]}" != "<nil>" ]] && run_commands+=("git config core.sshCommand ${ssh_command@Q}")
+
+    printLog "creating root flake.nix"
+    if ! use_flakeparts='' nixpkgs_pin="${d["nixpkgs_pin"]}"\
+        mo "$ssm_dir/flake.nix.mo" > "$ssm_root/flake.nix";
+    then
+        printErr "failed to create root flake.nix"
+    fi
+    if [[ "${d["nixpkgs_pin"]}" == "<latest>" ]]; then
+        run_commands+=("nix flake lock")
+    elif [[ "${d["nixpkgs_pin"]}" != "" ]]; then
+        run_commands+=("nix flake lock --override-input nixpkgs \"github:NixOS/nixpkgs/${d["nixpkgs_pin"]}\"")
+    fi
+
+    if (( ${#run_commands[@]} )); then
+        # shellcheck disable=SC2016
+        gum format -- "" "## auto config will execute the following command(s):" "$(printf -- '- `%s`\n' "${run_commands[@]}")"
+        if gum confirm; then
+            printWarn "! todo !"
+        fi
+    fi
+
+    exit 0
 }
 
 main "$@"

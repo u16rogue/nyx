@@ -1,7 +1,9 @@
 {
     inputs = {
         nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
-        nixpkgs-host-pin.url = "github:nixos/nixpkgs/{{nyx_host_rev}}";
+        {{#nixpkgs_pin}}
+        nixpkgs-pin.url = "github:nixos/nixpkgs/{{nixpkgs_pin}}";
+        {{/nixpkgs_pin}}
         {{#use_flakeparts}}
         flake-parts.url = "github:hercules-ci/flake-parts";
         {{/use_flakeparts}}
@@ -11,7 +13,7 @@
     outputs = inputs@{ flake-parts, ... }: flake-parts.lib.mkFlake { inherit inputs; } {
         flake.description = "{{flake_description}}";
         imports = [];
-        systems = [ {{#d_nixfsystems}}"{{.}}" {{/d_nixfsystems}}];
+        systems = [ {{#flake_systems}}"{{.}}" {{/flake_systems}}];
         perSystem = { pkgs, ... }: {
             devShells.default = pkgs.mkShellNoCC {
                 packages = [];
@@ -21,18 +23,21 @@
     };
     {{/use_flakeparts}}
     {{^use_flakeparts}}
-    outputs = inputs@{ ... }: {
+    outputs = inputs@{ ... }: let
+        systems = [ {{#flake_systems}}"{{.}}" {{/flake_systems}}];
+        perSystem = attr: builtins.listToAttrs (builtins.map (system: { name = system; value = (attr { pkgs = inputs.nixpkgs.legacyPackages."${system}"; inherit system; }); }) systems);
+    in {
         description = "{{flake_description}}";
-        {{#d_nixfsystems}}
-        devShells."{{.}}" = {
-        {{#d_nixfdevshellfrags}}
+        packages = perSystem ({ pkgs, ... }: {
+        });
+        devShells = perSystem ({ pkgs, ... }: {
+        {{#flake_devshell_frags}}
             {{.}} = pkgs.mkShellNoCC {
                 packages = [];
                 shellHook = /*bash*/ ''export NIX_FRAGMENT="{{.}}"'';
             };
-        {{/d_nixfdevshellfrags}}
-        };
-        {{/d_nixfsystems}}
+        {{/flake_devshell_frags}}
+        });
     };
     {{/use_flakeparts}}
 }
