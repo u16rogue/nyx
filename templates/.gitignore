@@ -2,6 +2,8 @@
 .*
 !.gitignore
 !default.nix
+!test-ssm
+
 !dev/
 !dev/**
 
@@ -9,5 +11,3 @@
 !ssm/init
 !ssm/.ssm/
 !ssm/.ssm/**
-
-**/.nyx-sbx/ptr

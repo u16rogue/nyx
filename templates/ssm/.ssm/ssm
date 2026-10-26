@@ -34,17 +34,51 @@ ssm <mode>
     init
         initialize the project
     add
+        ! todo !
         add more sub projects to an initialized project.
     sync
+        ! todo !
         re-render missing _meta files, re-pick the zellij panes and re-apply
         the sandbox mounts/covers.
     pin
+        ! todo !
         pin the flake's nixpkgs to the host's nixpkgs revision.
     update
+        ! todo !
         check for the latest template from the nyx repo
     help
         show this message.
 --------------------------------------------------------------------------------"
+}
+
+# Resolves the host's pinned nixpkgs as a flake ref so `nixpkgs#...` doesn't
+# fall through to the global registry (nixpkgs-unstable, refetched per tarball-ttl).
+# Prints nothing if no host pin could be found.
+hostNixpkgsRef() {
+    local entry rev path
+
+    # system/user registry pin (e.g. nix.registry.nixpkgs.flake = inputs.nixpkgs)
+    entry="$(nix registry list 2>/dev/null | awk '$1 != "global" && $2 == "flake:nixpkgs" { print $3; exit }')"
+    if [[ -n "$entry" ]]; then
+        printf '%s\n' "$entry"
+        return
+    fi
+
+    # revision the running NixOS system was built from
+    if command -v nixos-version &> /dev/null; then
+        rev="$(nixos-version --revision 2>/dev/null)"
+        if [[ "$rev" =~ ^[0-9a-f]{40}$ ]]; then
+            printf 'github:NixOS/nixpkgs/%s\n' "$rev"
+            return
+        fi
+    fi
+
+    # legacy channel / NIX_PATH
+    path="$(nix-instantiate --find-file nixpkgs 2>/dev/null)"
+    if [[ -n "$path" ]]; then
+        printf 'path:%s\n' "$(realpath -- "$path")"
+        return
+    fi
 }
 
 main() {
@@ -61,6 +95,11 @@ main() {
         gum nixpkgs#gum          \
         jq  nixpkgs#jq           \
     );
+
+    if [[ -z "${NYX_NIXPKGS:-}" ]] && command -v nix &> /dev/null; then
+        NYX_NIXPKGS="$(hostNixpkgsRef)";
+    fi
+    export NYX_NIXPKGS;
 
     local -a packages=();
     local missing=0;
@@ -79,7 +118,13 @@ main() {
             echo "init: nix is required to fetch missing programs" >&2;
             exit 1;
         fi
-        NYX_INIT_IN_SHELL=1 exec nix shell "${packages[@]}" --command bash "$ssm_dir/ssm" "$@";
+        local -a override=();
+        if [[ -n "$NYX_NIXPKGS" ]]; then
+            override=(--override-flake nixpkgs "$NYX_NIXPKGS");
+        else
+            printWarn "couldn't find the host's pinned nixpkgs, falling back to the registry's nixpkgs."
+        fi
+        NYX_INIT_IN_SHELL=1 exec nix shell "${override[@]}" "${packages[@]}" --command bash "$ssm_dir/ssm" "$@";
     fi
 
     if ! command -v "sbx-shell" &> /dev/null; then
@@ -128,6 +173,31 @@ main() {
 }
 
 modeOf_init() {
+    local -A d
+    local -A d_meta # has the same keys as d(ata) but it just contains "messages"
+
+    d["prjname"]="$(basename "$PWD")"
+    d["prjdesc"]="ssm initialized '${d["prjname"]:-"<err>"}' project"
+    d["sbxid"]="${d["prjname"]:-"?"}"; [[ "${d["sbxid"]}" == "?" ]] && d_meta["sbxid"]="(auto generate)";
+    d["nixpkgs_pin"]="<latest>"
+    local -a d_nixfsystems=("x86_64-linux")
+    local -a d_nixfdevshellfrags=("default" "minimal")
+    d["gitusr"]="<latest>"
+    d["gitmail"]="<latest>"
+    d["gitsign"]="<latest>"
+    d["gitsshident"]="<latest>"
+
+    
+    if command -v "nixos-version" &> /dev/null; then
+        if d["nixpkgs_pin"]="$(nixos-version --json | jq -r '.nixpkgsRevision')"; then
+            d_meta["nixpkgs_pin"]="(from host)"
+        else
+            d_meta["nixpkgs_pin"]="(cant resolve)"
+            d["nixpkgs_pin"]="<latest>"
+        fi
+    else
+        d_meta["nixpkgs_pin"]="(no nix-version)"
+    fi
     exit 1
 }
 

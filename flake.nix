@@ -42,7 +42,11 @@
         systems = [ "x86_64-linux" ];
         perSystem = { self', config, pkgs, ... }: {
             devShells.default = pkgs.mkShellNoCC {
-                packages = with pkgs; [ rage jujutsu ];
+                packages = with pkgs; [
+                    jujutsu # git
+                    rage    # secrets
+                    gum     # used by ssm
+                ];
                 shellHook = /*bash*/ ''export NIX_FRAGMENT="default"'';
             };
         };
