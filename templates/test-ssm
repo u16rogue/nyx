@@ -6,14 +6,80 @@
 # `nix flake init -t`) and sbx-shell keeps its store in the tmpfs home, so
 # every run starts clean. Exit the shell to throw everything away.
 #
-# usage: test-ssm.sh [-n|--nix] [project name]
+# In the default (cp) mode the template's .ssm is bind-mounted read-only from
+# the repo, so edits to the ssm script on the host are picked up live.
+#
+# Inside the sandbox `ssmreset` restores the project to a freshly initialized
+# template without leaving the sandbox.
+#
+# usage: test-ssm [-n|--nix] [project name]
 #   -n, --nix   use the real `nix flake init -t path:<repo>#ssm` instead of cp
 
 set -euo pipefail
-command -v bwrap > /dev/null || { echo "bwrap is required" >&2; exit 1; }
 
-repo="$(realpath -- "$(dirname -- "${BASH_SOURCE[0]}")/..")"
+self="$(realpath -- "${BASH_SOURCE[0]}")"
+repo="$(dirname -- "$(dirname -- "$self")")"
 template="$repo/templates/ssm"
+
+log() {
+    printf '\033[37m[test-ssm]\033[0m %s\n' "$1" >&2
+}
+
+# --- inside the sandbox ------------------------------------------------------
+
+reset_project() {
+    [[ "${TEST_SSM_SANDBOX:-}" == 1 ]] || { log "refusing to reset outside the sandbox"; return 1; }
+    cd -- "$PRJ"
+
+    # In cp mode .ssm is a read-only bind mount and must stay.
+    local keep=()
+    [[ "$USE_NIX" == 1 ]] || keep=(! -name .ssm)
+
+    # nix flake init may produce read-only files, make sure they can be removed.
+    find . -mindepth 1 -maxdepth 1 "${keep[@]}" -exec chmod -R u+w -- {} + 2> /dev/null || true
+    if ! find . -mindepth 1 -maxdepth 1 "${keep[@]}" -exec rm -rf -- {} +; then
+        log "can't clear files for reset"
+        return 1
+    fi
+
+    if [[ "$USE_NIX" == 1 ]]; then
+        nix flake init -t "path:$REPO#ssm"
+    else
+        find "$TEMPLATE" -mindepth 1 -maxdepth 1 ! -name .ssm \
+            -exec cp -r --no-preserve=ownership -t . -- {} +
+    fi
+}
+
+enter() {
+    mkdir -p -- "$NYX_SBX_SHELL_DIR" "$PRJ"
+
+    # A real executable instead of a function so it works in any $SHELL.
+    local bin=/tmp/test-ssm/bin
+    mkdir -p -- "$bin"
+    printf '#!/usr/bin/env bash\nexec bash %q --reset "$@"\n' "$self" > "$bin/ssmreset"
+    chmod +x -- "$bin/ssmreset"
+    export PATH="$bin:$PATH"
+
+    reset_project
+    cd -- "$PRJ"
+
+    local mode=cp
+    [[ "$USE_NIX" == 1 ]] && mode="nix flake init"
+    log "project: $PRJ (template from $TEMPLATE via $mode)"
+    log "shell: $SHELL"
+    log "run ./init, exit the shell to discard everything"
+    log "run ssmreset to do a quick reset"
+    exec "$SHELL" -i
+}
+
+case "${1:-}" in
+    --enter) enter; exit ;;
+    --reset) reset_project; exit ;;
+esac
+
+# --- on the host -------------------------------------------------------------
+
+command -v bwrap > /dev/null || { echo "bwrap is required" >&2; exit 1; }
 
 use_nix=0
 if [[ "${1:-}" == -n || "${1:-}" == --nix ]]; then
@@ -23,40 +89,27 @@ fi
 name="${1:-testprj}"
 [[ "$name" =~ ^[A-Za-z0-9_-]+$ ]] || { echo "invalid project name: $name" >&2; exit 1; }
 
+host_binds=()
 # Shared so pinned flake refs (e.g. the host nixpkgs) resolve without refetching.
 [[ -d "$HOME/.cache/nix" ]] && host_binds+=(--bind "$HOME/.cache/nix" "$HOME/.cache/nix")
-
-# Runs inside the sandbox: emulate the template init, then hand over a shell.
-# shellcheck disable=SC2016
-setup=$(printf '
-set -euo pipefail
-mkdir -p -- "$NYX_SBX_SHELL_DIR" "$PRJ"
-cd -- "$PRJ"
-if (( USE_NIX )); then
-    nix flake init -t "path:$REPO#ssm"
-else
-    cp -r --no-preserve=ownership -- "$TEMPLATE/." .
-fi
-printf "\033[37m[test-ssm]\033[0m project: %%s (template from %%s)\n" "$PRJ" "$TEMPLATE" >&2
-printf "\033[37m[test-ssm]\033[0m shell: %%s\n" "$SHELL" >&2
-printf "\033[37m[test-ssm]\033[0m run ./init, exit the shell to discard everything\n" >&2
-exec "$SHELL" -i
-')
+# nix flake init writes .ssm itself, so only bind it in cp mode.
+[[ "$use_nix" == 1 ]] || host_binds+=(--ro-bind "$template/.ssm" "$HOME/$name/.ssm")
 
 exec bwrap \
     --dev-bind / / \
     --tmpfs /tmp \
     --tmpfs "$HOME" \
-    "${host_binds[@]}" \
     --ro-bind "$repo" "$repo" \
+    "${host_binds[@]}" \
     --unshare-pid \
     --proc /proc \
     --die-with-parent \
     --setenv TMPDIR /tmp \
+    --setenv TEST_SSM_SANDBOX 1 \
     --setenv NYX_SBX_SHELL_DIR "$HOME/.nyx/sbx-shell" \
     --setenv PRJ "$HOME/$name" \
     --setenv REPO "$repo" \
     --setenv TEMPLATE "$template" \
     --setenv USE_NIX "$use_nix" \
     --chdir "$HOME" \
-    bash -c "$setup"
+    bash "$self" --enter
