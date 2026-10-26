@@ -1260,7 +1260,7 @@ $id_gn:x:$id_g:"
             printErr "shared config must be a readable, non-symlink directory: $share_path"
             exit 1
         fi
-        args_for_bwrap+=(--ro-bind "$share_path" "$share_path")
+        args_for_bwrap+=(--bind "$share_path" "$share_path")
     fi
     # END CLANKER: expose the project's shared config directory
 
