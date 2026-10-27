@@ -23,7 +23,7 @@
             subpath = lib.mkOption {
                 description = "Path the RPC and web panel are served under, kept by the proxy (no prefix stripping).";
                 type = lib.types.strMatching "(/[^/]+)*";
-                default = "/transmission";
+                default = "";
             };
         };
 

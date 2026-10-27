@@ -10,8 +10,8 @@ my nix slop
 * Q: Why a separate `nyx` "namespace" ? A: To query `#nyx` for the builtin scripts, to extend `nixosSystem` way beyond (especially `users.users.*.*`), to make things easier to assert, and to minimize duplication (eg. if the `users` extended options was implemented in nixosSystem).
 
 * Naming
-    * `nyx` = flake
-    * `nyxos` = nixos options/modules derived/provided by nyx
+    * `nyx` = flake (available in flake level `.#nyx.*`)
+    * `nyxos` = nixos options/modules derived/provided by nyx (available in nixos level `.#nixosConfigurations.host.config.nyxos.*`)
 
 * Separation of concern. Things should go where they belong.
     * The desktop is a user preference. It goes to the [user](./nixos/users/)
@@ -44,6 +44,10 @@ my nix slop
     * Host configurations must provide the disks for the paths `/boot` and `/persist`. Hosts should follow the common `fileSystems` provided by `nyx`.
     * Systems/NixOS/Hosts are expected to use an ephemeral filesystem where each host and user are required to explicitly state which files and directories are to be preserved.
     * [modules](./nixos/modules) - Set of flake-parts `nixos` modules. All `*.nix` are aggregated and imported to be available.
+        * service modules...
+            * `svc-*` should be in its base preconfigured state and should not modify anything external such as opening ports. that should be something the host should decide.
+                * the only exception are for "meta" services. services for the host and other services (idk whats a good term for this) such as reverse proxies, mdns, vpn, etc...
+            * should provide configuration necessary to its host via `nyxos.<exact module name>` and defaults should not assume the shape (eg. ports are expected but setting a subpath by default is not)
     * [hosts](./nixos/hosts) - Set of flake-parts+nyx modules specifically defining host machines.
         * All `*.nix` are aggregated and imported to be evaluated.
         * Hosts must derive its users from `nyx.nixos.users`.

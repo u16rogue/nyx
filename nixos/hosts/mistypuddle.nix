@@ -1,10 +1,24 @@
 { config, ... }: {
     nyx.nixos.hosts."mistypuddle" = let meta' = {
         svc = {
-            forgejo.enable = true;
-            monero.enable = true;
-            transmission.enable = true;
-            jellyfin.enable = false;
+            traefik.enable = true;
+            forgejo = {
+                enable = true;
+                subpath = "/git";
+            };
+            monero = {
+                enable = true;
+                port = 18089;
+            };
+            transmission = {
+                enable = true;
+                subpath = "/transmission";
+            };
+            jellyfin = {
+                enable = false;
+                subpath = "/jellyfin";
+            };
+            i2pd.enable = false;
         };
     }; in {
         platform = "x86_64-linux";
@@ -60,109 +74,151 @@
         ];
 
         configuration = { self, config, pkgs, lib, nyx, ... }: let
-            config' = {
-                forgejo = config.services.forgejo;
-                monero = {
-                    inherit (config.services.monero) dataDir;
-                    inherit (config.systemd.services.monero.serviceConfig) User Group;
-                };
-                transmission = config.services.transmission;
-                jellyfin = config.services.jellyfin;
-                disks = lib.flip builtins.mapAttrs config.disko.devices.disk (_: value: let
-                    part = value.content.partitions.data;
-                    luks = part.content;
-                    mountpoint = luks.content.mountpoint;
-                in { inherit part luks mountpoint; });
-            };
-        in {
-            imports =
-                (with self.modules.nixos; [
-                    systemd-boot
-                    cpu-intel
-                    luks
-                    networkmanager
-                    mdns-publish
-                    ssh-server
-                    lid-switch-ignore
-                    no-sleep
-                    auto-upgrade
-                ])
-                ++
-                (lib.optional meta'.svc.forgejo.enable (let subpath = "/git"; in {
-                    imports = [ self.modules.nixos.svc-forgejo ];
-                    nyxos.svc-forgejo.url = "http://${config.networking.hostName}.local${subpath}";
-                    preservation.preserveAt.${config'.disks.hdd.mountpoint}.directories = [
-                        { directory = config'.forgejo.stateDir; user = config'.forgejo.user; group = config'.forgejo.group; mode = "0750"; }
-                    ];
-                    systemd.services.forgejo.unitConfig.RequiresMountsFor = [ config'.forgejo.stateDir ];
-                    services.traefik.dynamicConfigOptions.http = {
-                        routers.forgejo = {
-                            entryPoints = [ "web" ];
-                            # Matched on the path only so the host is also reachable by IP (the Host header is then the IP, not the domain)
-                            rule = "Path(`${subpath}`) || PathPrefix(`${subpath}/`)";
-                            middlewares = [ "forgejo-strip-prefix" ];
-                            service = "forgejo";
+            disks' = lib.flip builtins.mapAttrs config.disko.devices.disk (_: value: let
+                part = value.content.partitions.data;
+                luks = part.content;
+                mountpoint = luks.content.mountpoint;
+            in { inherit part luks mountpoint; });
+            # Generic setup for a service unit, as a module:
+            #   preserve: preserves `directories` (paths or preservation entries) at `at` and makes the unit wait for their mounts
+            #   route: routes `rule` on `entryPoints` through traefik to the local `port`, optionally stripping `stripPrefix`
+            nyxosUnitSetup = { unit, preserve ? null, route ? null }: {
+                imports = [
+                    (lib.optionalAttrs (preserve != null) (let
+                        entries = builtins.map (dir: { inherit (preserve) user group; mode = "0750"; } // (if builtins.isString dir then { directory = dir; } else dir)) preserve.directories;
+                    in {
+                        preservation.preserveAt.${preserve.at}.directories = entries;
+                        systemd.services.${unit}.unitConfig.RequiresMountsFor = builtins.map (entry: entry.directory) entries;
+                    }))
+                    (lib.optionalAttrs (route != null) (let
+                        name = route.name or unit;
+                        stripPrefix = lib.defaultTo "" (route.stripPrefix or null);
+                    in {
+                        services.traefik.dynamicConfigOptions.http = {
+                            routers.${name} = {
+                                entryPoints = route.entryPoints or [ "web" ];
+                                inherit (route) rule;
+                                service = name;
+                            } // lib.optionalAttrs (stripPrefix != "") {
+                                middlewares = [ "${name}-strip-prefix" ];
+                            };
+                            services.${name}.loadBalancer.servers = [{ url = "http://127.0.0.1:${toString route.port}"; }];
+                        } // lib.optionalAttrs (stripPrefix != "") {
+                            middlewares."${name}-strip-prefix".stripPrefix.prefixes = [ stripPrefix ];
                         };
-                        middlewares.forgejo-strip-prefix.stripPrefix.prefixes = [ subpath ];
-                        services.forgejo.loadBalancer.servers = [{ url = "http://127.0.0.1:${toString config.nyxos.svc-forgejo.listen.port}"; }];
-                    };
-                }))
-                ++
-                (lib.optional meta'.svc.monero.enable (let publicRpcPort = 18089; in {
-                    imports = [ self.modules.nixos.svc-monero ];
-                    preservation.preserveAt.${config'.disks.hdd.mountpoint}.directories = [
-                        { directory = config'.monero.dataDir; user = config'.monero.User; group = config'.monero.Group; mode = "0750"; }
-                    ];
-                    systemd.services.monero.unitConfig.RequiresMountsFor = [ config'.monero.dataDir ];
-                    # Remote node for wallets at `http://<hostname>.local:18089`
+                    }))
+                ];
+            };
+            # Matches the path itself and everything under it (`""` is the root)
+            traefikPathRule = path: if path == "" then "PathPrefix(`/`)" else "Path(`${path}`) || PathPrefix(`${path}/`)";
+        in {
+            imports = let smnos = self.modules.nixos; in [
+                smnos.systemd-boot
+                smnos.cpu-intel
+                smnos.luks
+                smnos.networkmanager
+                smnos.mdns-publish
+                smnos.ssh-server
+                smnos.lid-switch-ignore
+                smnos.no-sleep
+                smnos.auto-upgrade
+
+                (lib.optionalAttrs meta'.svc.traefik.enable {
                     services.traefik = {
-                        staticConfigOptions.entryPoints.monero-rpc.address = ":${toString publicRpcPort}";
-                        dynamicConfigOptions.http = {
-                            routers.monero-rpc = {
+                        enable = true;
+                        staticConfigOptions = {
+                            entryPoints.web.address = ":80";
+                            log.level = "INFO";
+                        };
+                    };
+                    networking.firewall.allowedTCPPorts = [ 80 ];
+                })
+
+                (lib.optionalAttrs meta'.svc.forgejo.enable {
+                    imports = [
+                        smnos.svc-forgejo
+                        (nyxosUnitSetup {
+                            unit = "forgejo";
+                            preserve = {
+                                at = disks'.hdd.mountpoint;
+                                inherit (config.services.forgejo) user group;
+                                directories = [ config.services.forgejo.stateDir ];
+                            };
+                            route = {
+                                # Matched on the path only so the host is also reachable by IP (the Host header is then the IP, not the domain)
+                                rule = traefikPathRule meta'.svc.forgejo.subpath;
+                                stripPrefix = meta'.svc.forgejo.subpath;
+                                port = config.nyxos.svc-forgejo.listen.port;
+                            };
+                        })
+                    ];
+                    nyxos.svc-forgejo.url = "http://${config.networking.hostName}.local${meta'.svc.forgejo.subpath}";
+                })
+
+                (lib.optionalAttrs meta'.svc.monero.enable {
+                    imports = [
+                        smnos.svc-monero
+                        (nyxosUnitSetup {
+                            unit = "monero";
+                            preserve = let serviceConfig = config.systemd.services.monero.serviceConfig; in {
+                                at = disks'.hdd.mountpoint;
+                                user = serviceConfig.User;
+                                group = serviceConfig.Group;
+                                directories = [ config.services.monero.dataDir ];
+                            };
+                            route = {
+                                name = "monero-rpc";
                                 entryPoints = [ "monero-rpc" ];
                                 rule = "PathPrefix(`/`)";
-                                service = "monero-rpc";
+                                port = config.nyxos.svc-monero.listen.port;
                             };
-                            services.monero-rpc.loadBalancer.servers = [{ url = "http://127.0.0.1:${toString config.nyxos.svc-monero.listen.port}"; }];
-                        };
-                    };
-                    networking.firewall.allowedTCPPorts = [ publicRpcPort ];
-                }))
-                ++
-                (lib.optional meta'.svc.transmission.enable {
-                    imports = [ self.modules.nixos.svc-transmission ];
-                    preservation.preserveAt.${config'.disks.hdd.mountpoint}.directories = [
-                        { directory = config'.transmission.home; user = config'.transmission.user; group = config'.transmission.group; mode = "0750"; }
+                        })
                     ];
-                    systemd.services.transmission.unitConfig.RequiresMountsFor = [ config'.transmission.home ];
-                    services.transmission.credentialsFile = "/persist/etc/transmission/credentials.json";
-                    services.traefik.dynamicConfigOptions.http = {
-                        routers.transmission = {
-                            entryPoints = [ "web" ];
-                            rule = "PathPrefix(`${config.nyxos.svc-transmission.subpath}/`)";
-                            service = "transmission";
-                        };
-                        services.transmission.loadBalancer.servers = [{ url = "http://127.0.0.1:${toString config.nyxos.svc-transmission.listen.port}"; }];
-                    };
+                    services.traefik.staticConfigOptions.entryPoints.monero-rpc.address = ":${toString meta'.svc.monero.port}";
+                    networking.firewall.allowedTCPPorts = [ meta'.svc.monero.port ];
                 })
-                ++
-                (lib.optional meta'.svc.jellyfin.enable {
-                    imports = [ self.modules.nixos.svc-jellyfin ];
-                    nyxos.svc-jellyfin.subpath = "/jellyfin";
-                    services.traefik.dynamicConfigOptions.http = {
-                        routers.jellyfin = {
-                            entryPoints = [ "web" ];
-                            rule = "Path(`${config.nyxos.svc-jellyfin.subpath}`) || PathPrefix(`${config.nyxos.svc-jellyfin.subpath}/`)"; # Jellyfin expects the base URL to be kept, so no prefix stripping
-                            service = "jellyfin";
-                        };
-                        services.jellyfin.loadBalancer.servers = [{ url = "http://127.0.0.1:${toString config.nyxos.svc-jellyfin.listen.port}"; }];
-                    };
-                    preservation.preserveAt.${config'.disks.hdd.mountpoint}.directories = [
-                        { directory = config'.jellyfin.dataDir; user = config'.jellyfin.user; group = config'.jellyfin.group; mode = "0700"; }
-                        { directory = config'.jellyfin.cacheDir; user = config'.jellyfin.user; group = config'.jellyfin.group; mode = "0700"; }
+
+                (lib.optionalAttrs meta'.svc.transmission.enable {
+                    imports = [
+                        smnos.svc-transmission
+                        (nyxosUnitSetup {
+                            unit = "transmission";
+                            preserve = {
+                                at = disks'.hdd.mountpoint;
+                                inherit (config.services.transmission) user group;
+                                directories = [ config.services.transmission.home ];
+                            };
+                            route = {
+                                rule = "PathPrefix(`${config.nyxos.svc-transmission.subpath}/`)";
+                                port = config.nyxos.svc-transmission.listen.port;
+                            };
+                        })
                     ];
-                    systemd.services.jellyfin.unitConfig.RequiresMountsFor = [ config'.jellyfin.dataDir config'.jellyfin.cacheDir ];
-                    users.users.${config'.jellyfin.user}.extraGroups = [ "render" "video" ] ++ lib.optional meta'.svc.transmission.enable config'.transmission.group;
+                    nyxos.svc-transmission.subpath = meta'.svc.transmission.subpath;
+                    services.transmission.credentialsFile = "/persist/etc/transmission/credentials.json";
+                })
+
+                (lib.optionalAttrs meta'.svc.jellyfin.enable {
+                    imports = [
+                        smnos.svc-jellyfin
+                        (nyxosUnitSetup {
+                            unit = "jellyfin";
+                            preserve = let jellyfin' = config.services.jellyfin; in {
+                                at = disks'.hdd.mountpoint;
+                                inherit (jellyfin') user group;
+                                directories = [
+                                    { directory = jellyfin'.dataDir; mode = "0700"; }
+                                    { directory = jellyfin'.cacheDir; mode = "0700"; }
+                                ];
+                            };
+                            route = {
+                                rule = traefikPathRule config.nyxos.svc-jellyfin.subpath; # Jellyfin expects the base URL to be kept, so no prefix stripping
+                                port = config.nyxos.svc-jellyfin.listen.port;
+                            };
+                        })
+                    ];
+                    nyxos.svc-jellyfin.subpath = meta'.svc.jellyfin.subpath;
+                    users.users.${config.services.jellyfin.user}.extraGroups = [ "render" "video" ] ++ lib.optional meta'.svc.transmission.enable config.services.transmission.group;
                     # Transcode on the Intel iGPU (00:02.0); the AMD dGPU (01:00.0) stays asleep
                     hardware.graphics = {
                         enable = true;
@@ -179,31 +235,15 @@
                         vc1 = true;
                     };
                 })
-                ++
-                (lib.optional (builtins.elem true (with meta'.svc; [
-                    monero.enable
-                    forgejo.enable
-                    transmission.enable
-                    jellyfin.enable
-                ])) {
-                    services.traefik = {
-                        enable = true;
-                        staticConfigOptions = {
-                            entryPoints.web.address = ":80";
-                            log.level = "INFO";
-                        };
-                    };
-                    networking.firewall.allowedTCPPorts = [ 80 ];
-                })
-            ;
+            ];
 
-            nyxos.auto-upgrade.sources = [ {
+            nyxos.auto-upgrade.sources = [{
                 git = {
                     url = "https://github.com/u16rogue/nyx-release.git";
                     branch = "main";
                     flake = "github:u16rogue/nyx/@rev@";
                 };
-            } ];
+            }];
 
             environment.systemPackages = [
                 nyx.pkgs.nyx-tty-display
@@ -341,7 +381,7 @@
                     };
                 };
             };
-            environment.etc.crypttab.text = ''${config'.disks.hdd.luks.name} ${config'.disks.hdd.part.device} ${config'.disks.hdd.luks.settings.keyFile} luks,nofail'';
+            environment.etc.crypttab.text = ''${disks'.hdd.luks.name} ${disks'.hdd.part.device} ${disks'.hdd.luks.settings.keyFile} luks,nofail'';
         };
     };
 }
