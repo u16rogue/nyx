@@ -4,6 +4,7 @@
             traefik.enable = true;
             forgejo = {
                 enable = true;
+                port = 3000;
                 subpath = "/git";
             };
             monero = {
@@ -12,10 +13,12 @@
             };
             transmission = {
                 enable = true;
+                port = 9091;
                 subpath = "/transmission";
             };
             jellyfin = {
                 enable = false;
+                port = 8096;
                 subpath = "/jellyfin";
             };
             i2pd.enable = false;
@@ -149,89 +152,141 @@
                 })
 
                 (lib.optionalAttrs meta'.svc.forgejo.enable {
-                    imports = [
-                        smnos.svc-forgejo
-                        (nyxosUnitSetup {
-                            unit = "forgejo";
-                            preserve = {
-                                at = disks'.ssd.partitions.persist.mountpoint;
-                                inherit (config.services.forgejo) user group;
-                                directories = [ config.services.forgejo.stateDir ];
+                    imports = [(nyxosUnitSetup {
+                        unit = "forgejo";
+                        preserve = {
+                            at = disks'.ssd.partitions.persist.mountpoint;
+                            inherit (config.services.forgejo) user group;
+                            directories = [ config.services.forgejo.stateDir ];
+                        };
+                        route = {
+                            # Matched on the path only so the host is also reachable by IP (the Host header is then the IP, not the domain)
+                            rule = traefikPathRule meta'.svc.forgejo.subpath;
+                            stripPrefix = meta'.svc.forgejo.subpath;
+                            port = meta'.svc.forgejo.port;
+                        };
+                    })];
+                    # Git over SSH goes through the system sshd: `forgejo@<host>:<owner>/<repo>.git`
+                    services.forgejo = {
+                        enable = true;
+                        settings = {
+                            server = rec {
+                                DOMAIN = "${config.networking.hostName}.local";
+                                ROOT_URL = "http://${DOMAIN}${meta'.svc.forgejo.subpath}/";
+                                HTTP_ADDR = "127.0.0.1";
+                                HTTP_PORT = meta'.svc.forgejo.port;
                             };
-                            route = {
-                                # Matched on the path only so the host is also reachable by IP (the Host header is then the IP, not the domain)
-                                rule = traefikPathRule meta'.svc.forgejo.subpath;
-                                stripPrefix = meta'.svc.forgejo.subpath;
-                                port = config.nyxos.svc-forgejo.listen.port;
-                            };
-                        })
-                    ];
-                    nyxos.svc-forgejo.url = "http://${config.networking.hostName}.local${meta'.svc.forgejo.subpath}";
+                            # Accounts are created with `forgejo admin user create`
+                            service.DISABLE_REGISTRATION = true;
+                            # Actions is opt-in: new repos start without it (Forgejo's default list minus `repo.actions`)
+                            repository.DEFAULT_REPO_UNITS = lib.concatStringsSep "," [
+                                "repo.code" "repo.releases" "repo.issues" "repo.pulls" "repo.wiki" "repo.projects" "repo.packages"
+                            ];
+                        };
+                    };
+                    # For the `forgejo admin` CLI
+                    environment.systemPackages = [ config.services.forgejo.package ];
                 })
 
                 (lib.optionalAttrs meta'.svc.monero.enable {
-                    imports = [
-                        smnos.svc-monero
-                        (nyxosUnitSetup {
-                            unit = "monero";
-                            preserve = let serviceConfig = config.systemd.services.monero.serviceConfig; in {
-                                at = disks'.hdd.partitions.data.mountpoint;
-                                user = serviceConfig.User;
-                                group = serviceConfig.Group;
-                                directories = [ config.services.monero.dataDir ];
-                            };
-                            route = {
-                                name = "monero-rpc";
-                                entryPoints = [ "monero-rpc" ];
-                                rule = "PathPrefix(`/`)";
-                                port = config.nyxos.svc-monero.listen.port;
-                            };
-                        })
-                    ];
+                    imports = [(nyxosUnitSetup {
+                        unit = "monero";
+                        preserve = let serviceConfig = config.systemd.services.monero.serviceConfig; in {
+                            at = disks'.hdd.partitions.data.mountpoint;
+                            user = serviceConfig.User;
+                            group = serviceConfig.Group;
+                            directories = [ config.services.monero.dataDir ];
+                        };
+                        route = {
+                            name = "monero-rpc";
+                            entryPoints = [ "monero-rpc" ];
+                            rule = "PathPrefix(`/`)";
+                            port = config.services.monero.rpc.port;
+                        };
+                    })];
+                    services.monero = {
+                        enable = true;
+                        prune = true;
+                        rpc = {
+                            address = "127.0.0.1";
+                            port = 18081;
+                            restricted = true;
+                        };
+                    };
                     services.traefik.staticConfigOptions.entryPoints.monero-rpc.address = ":${toString meta'.svc.monero.port}";
                     networking.firewall.allowedTCPPorts = [ meta'.svc.monero.port ];
                 })
 
                 (lib.optionalAttrs meta'.svc.transmission.enable {
-                    imports = [
-                        smnos.svc-transmission
-                        (nyxosUnitSetup {
-                            unit = "transmission";
-                            preserve = {
-                                at = disks'.hdd.partitions.data.mountpoint;
-                                inherit (config.services.transmission) user group;
-                                directories = [ config.services.transmission.home ];
-                            };
-                            route = {
-                                rule = "PathPrefix(`${config.nyxos.svc-transmission.subpath}/`)";
-                                port = config.nyxos.svc-transmission.listen.port;
-                            };
-                        })
-                    ];
-                    nyxos.svc-transmission.subpath = meta'.svc.transmission.subpath;
-                    services.transmission.credentialsFile = "/persist/etc/transmission/credentials.json";
+                    imports = [(nyxosUnitSetup {
+                        unit = "transmission";
+                        preserve = {
+                            at = disks'.hdd.partitions.data.mountpoint;
+                            inherit (config.services.transmission) user group;
+                            directories = [ config.services.transmission.home ];
+                        };
+                        route = {
+                            rule = "PathPrefix(`${meta'.svc.transmission.subpath}/`)";
+                            port = meta'.svc.transmission.port;
+                        };
+                    })];
+                    services.transmission = {
+                        enable = true;
+                        openPeerPorts = true;
+                        settings = {
+                            rpc-bind-address = "127.0.0.1";
+                            rpc-port = meta'.svc.transmission.port;
+                            rpc-url = "${meta'.svc.transmission.subpath}/";
+                            rpc-authentication-required = true;
+                            rpc-host-whitelist-enabled = false;
+                            rpc-whitelist-enabled = false;
+                        };
+                        credentialsFile = "/persist/etc/transmission/credentials.json";
+                    };
                 })
 
                 (lib.optionalAttrs meta'.svc.jellyfin.enable {
-                    imports = [
-                        smnos.svc-jellyfin
-                        (nyxosUnitSetup {
-                            unit = "jellyfin";
-                            preserve = let jellyfin' = config.services.jellyfin; in {
-                                at = disks'.hdd.partitions.data.mountpoint;
-                                inherit (jellyfin') user group;
-                                directories = [
-                                    { directory = jellyfin'.dataDir; mode = "0700"; }
-                                    { directory = jellyfin'.cacheDir; mode = "0700"; }
-                                ];
-                            };
-                            route = {
-                                rule = traefikPathRule config.nyxos.svc-jellyfin.subpath; # Jellyfin expects the base URL to be kept, so no prefix stripping
-                                port = config.nyxos.svc-jellyfin.listen.port;
-                            };
-                        })
-                    ];
-                    nyxos.svc-jellyfin.subpath = meta'.svc.jellyfin.subpath;
+                    imports = [(nyxosUnitSetup {
+                        unit = "jellyfin";
+                        preserve = let jellyfin' = config.services.jellyfin; in {
+                            at = disks'.hdd.partitions.data.mountpoint;
+                            inherit (jellyfin') user group;
+                            directories = [
+                                { directory = jellyfin'.dataDir; mode = "0700"; }
+                                { directory = jellyfin'.cacheDir; mode = "0700"; }
+                            ];
+                        };
+                        route = {
+                            rule = traefikPathRule meta'.svc.jellyfin.subpath; # Jellyfin expects the base URL to be kept, so no prefix stripping
+                            port = meta'.svc.jellyfin.port;
+                        };
+                    })];
+                    # The first visitor gets the setup wizard and becomes the admin; libraries are added from the dashboard
+                    services.jellyfin.enable = true;
+                    # Listen address and base URL have no NixOS option, they live in Jellyfin's `network.xml`.
+                    # Seeded only when missing so the dashboard can still change the other network settings.
+                    systemd.services.jellyfin.preStart = let
+                        networkXmlPath = lib.escapeShellArg "${config.services.jellyfin.configDir}/network.xml";
+                        networkXml = pkgs.writeText "network.xml" ''
+                            <?xml version="1.0" encoding="utf-8"?>
+                            <NetworkConfiguration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+                              <BaseUrl>${meta'.svc.jellyfin.subpath}</BaseUrl>
+                              <InternalHttpPort>${toString meta'.svc.jellyfin.port}</InternalHttpPort>
+                              <LocalNetworkAddresses>
+                                <string>127.0.0.1</string>
+                              </LocalNetworkAddresses>
+                              <KnownProxies>
+                                <string>127.0.0.1</string>
+                              </KnownProxies>
+                              <AutoDiscovery>false</AutoDiscovery>
+                              <EnableUPnP>false</EnableUPnP>
+                            </NetworkConfiguration>
+                        '';
+                    in lib.mkBefore ''
+                        if [[ ! -e ${networkXmlPath} ]]; then
+                            install -D -m 600 ${networkXml} ${networkXmlPath}
+                        fi
+                    '';
                     users.users.${config.services.jellyfin.user}.extraGroups = [ "render" "video" ] ++ lib.optional meta'.svc.transmission.enable config.services.transmission.group;
                     # Transcode on the Intel iGPU (00:02.0); the AMD dGPU (01:00.0) stays asleep
                     hardware.graphics = {

@@ -47,7 +47,10 @@
                     rage    # secrets
                     gum     # used by ssm
                 ];
-                shellHook = /*bash*/ ''export NIX_FRAGMENT="default"'';
+                shellHook = /*bash*/ ''
+                    export NIX_FRAGMENT="default"
+                    export PATH="$PATH:$PWD/_nyx:$PWD/templates"
+                '';
             };
         };
     });
