@@ -74,11 +74,25 @@
         ];
 
         configuration = { self, config, pkgs, lib, nyx, ... }: let
-            disks' = lib.flip builtins.mapAttrs config.disko.devices.disk (_: value: let
-                part = value.content.partitions.data;
-                luks = part.content;
-                mountpoint = luks.content.mountpoint;
-            in { inherit part luks mountpoint; });
+            disks' =
+                let
+                    diskoPartitionContentToMountpoint = (content: if content != null then
+                        if builtins.hasAttr "mountpoint" content then
+                            content.mountpoint
+                        else if builtins.hasAttr "content" content then
+                            diskoPartitionContentToMountpoint content.content
+                        else
+                            null
+                    else null);
+                in lib.pipe config.disko.devices.disk [
+                    (builtins.mapAttrs (_: disk: {
+                        partitions = lib.pipe (disk.content.partitions) [
+                            (builtins.mapAttrs (_: partition: { mountpoint = diskoPartitionContentToMountpoint partition.content; }))
+                        ];
+                    }))
+                ]
+            ;
+
             # Generic setup for a service unit, as a module:
             #   preserve: preserves `directories` (paths or preservation entries) at `at` and makes the unit wait for their mounts
             #   route: routes `rule` on `entryPoints` through traefik to the local `port`, optionally stripping `stripPrefix`
@@ -140,7 +154,7 @@
                         (nyxosUnitSetup {
                             unit = "forgejo";
                             preserve = {
-                                at = disks'.hdd.mountpoint;
+                                at = disks'.ssd.partitions.persist.mountpoint;
                                 inherit (config.services.forgejo) user group;
                                 directories = [ config.services.forgejo.stateDir ];
                             };
@@ -161,7 +175,7 @@
                         (nyxosUnitSetup {
                             unit = "monero";
                             preserve = let serviceConfig = config.systemd.services.monero.serviceConfig; in {
-                                at = disks'.hdd.mountpoint;
+                                at = disks'.hdd.partitions.data.mountpoint;
                                 user = serviceConfig.User;
                                 group = serviceConfig.Group;
                                 directories = [ config.services.monero.dataDir ];
@@ -184,7 +198,7 @@
                         (nyxosUnitSetup {
                             unit = "transmission";
                             preserve = {
-                                at = disks'.hdd.mountpoint;
+                                at = disks'.hdd.partitions.data.mountpoint;
                                 inherit (config.services.transmission) user group;
                                 directories = [ config.services.transmission.home ];
                             };
@@ -204,7 +218,7 @@
                         (nyxosUnitSetup {
                             unit = "jellyfin";
                             preserve = let jellyfin' = config.services.jellyfin; in {
-                                at = disks'.hdd.mountpoint;
+                                at = disks'.hdd.partitions.data.mountpoint;
                                 inherit (jellyfin') user group;
                                 directories = [
                                     { directory = jellyfin'.dataDir; mode = "0700"; }
@@ -381,7 +395,10 @@
                     };
                 };
             };
-            environment.etc.crypttab.text = ''${disks'.hdd.luks.name} ${disks'.hdd.part.device} ${disks'.hdd.luks.settings.keyFile} luks,nofail'';
+            environment.etc.crypttab.text = let
+                part = config.disko.devices.disk.hdd.content.partitions.data;
+                luks = part.content;
+            in ''${luks.name} ${part.device} ${luks.settings.keyFile} luks,nofail'';
         };
     };
 }
