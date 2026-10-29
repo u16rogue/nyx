@@ -179,6 +179,12 @@ optLine() {
     case "$key" in
         flake_systems) value="${flake_systems[*]}" ;;
         flake_devshell_frags) value="${flake_devshell_frags[*]}" ;;
+        subprojects)
+            local sub
+            for sub in "${subprojects[@]}"; do
+                value+="${value:+", "}$(subprojectLabel "$sub")"
+            done
+            ;;
         *) value="${d["$key"]}" ;;
     esac
     printf '%-20s :: %s%s\n' "$key" "$value" "${d_meta["$key"]:+" ${d_meta["$key"]}"}"
@@ -302,6 +308,226 @@ drawTuiFrags() {
     done
 }
 
+subprojectLabel() {
+    printf '%s (%s)' "$1" "${subproject_types["$1"]}"
+}
+
+hasSubproject() {
+    local sub
+    for sub in "${subprojects[@]}"; do
+        [[ "$sub" == "$1" ]] && return 0
+    done
+    return 1
+}
+
+# the name doubles as the sub project's directory and its flake attribute
+validateNewSubprojectName() {
+    if [[ ! "$1" =~ ^[A-Za-z_][A-Za-z0-9_-]*$ ]]; then
+        printErr "invalid subproject name: '$1'"
+        return 1
+    fi
+    if hasSubproject "$1"; then
+        printErr "subproject already exists: '$1'"
+        return 1
+    fi
+}
+
+# $1 header, $2 currently selected type
+drawTuiSubprojectType() {
+    gum choose --limit 1 --header "$1" --selected "${2:-}" "${subproject_template_types[@]}"
+}
+
+drawTuiSubprojectsAdd() {
+    local name=
+    if ! name=$(gum input --header "new subproject name" --placeholder "eg. web"); then
+        return 1
+    fi
+    [[ -z "$name" ]] && return 0
+    validateNewSubprojectName "$name" || return 1
+
+    local type=
+    if ! type=$(drawTuiSubprojectType "$name template type"); then
+        return 1
+    fi
+    subprojects+=("$name")
+    subproject_types["$name"]="$type"
+}
+
+drawTuiSubprojectsRename() {
+    local old="$1"
+    local new=
+    if ! new=$(gum input --header "rename subproject '$old'" --value "$old"); then
+        return 1
+    fi
+    [[ -z "$new" || "$new" == "$old" ]] && return 0
+    validateNewSubprojectName "$new" || return 1
+
+    local i
+    for i in "${!subprojects[@]}"; do
+        [[ "${subprojects[i]}" == "$old" ]] && subprojects[i]="$new"
+    done
+    subproject_types["$new"]="${subproject_types["$old"]}"
+    unset 'subproject_types[$old]'
+}
+
+drawTuiSubprojectsRemove() {
+    if (( ${#subprojects[@]} <= 1 )); then
+        printErr "keep at least one subproject"
+        return 1
+    fi
+
+    local -a kept=()
+    local sub
+    for sub in "${subprojects[@]}"; do
+        [[ "$sub" == "$1" ]] || kept+=("$sub")
+    done
+    subprojects=("${kept[@]}")
+    unset 'subproject_types[$1]'
+}
+
+drawTuiSubprojectsEdit() {
+    local name="$1"
+    local selected=
+    if ! selected=$(gum choose --limit 1 --header "subproject: $(subprojectLabel "$name")" \
+        "<back>" \
+        "<rename>" \
+        "<template>" \
+        "<remove>" \
+    ); then
+        return 1
+    fi
+
+    case "$selected" in
+        "<rename>") drawTuiSubprojectsRename "$name" ;;
+        "<template>")
+            local type=
+            if ! type=$(drawTuiSubprojectType "$name template type" "${subproject_types["$name"]}"); then
+                return 1
+            fi
+            subproject_types["$name"]="$type"
+            ;;
+        "<remove>") drawTuiSubprojectsRemove "$name" ;;
+    esac
+}
+
+drawTuiSubprojects() {
+    while true; do
+        local -a labels=()
+        local sub
+        for sub in "${subprojects[@]}"; do
+            labels+=("$(subprojectLabel "$sub")")
+        done
+
+        local selected=
+        if ! selected=$(gum choose --limit 1 --height 12 --header "subprojects" \
+            "<back>" \
+            "<add>" \
+            "${labels[@]}" \
+        ); then
+            return 1
+        fi
+
+        if [[ "$selected" == "<back>" ]]; then
+            return 0
+        elif [[ "$selected" == "<add>" ]]; then
+            drawTuiSubprojectsAdd
+        else
+            drawTuiSubprojectsEdit "${selected%% *}"
+        fi
+    done
+}
+
+# writes an explicit inverse ignore into <dst dir> listing the entries of <template dir>,
+# `.mo` entries are listed without the extension
+# writeInverseIgnore <template dir> <dst dir> <display path>
+writeInverseIgnore() {
+    local tpl_dir="$1"
+    local dst_dir="$2"
+    local file="$dst_dir/.gitignore"
+    if [[ -e "$file" ]]; then
+        printWarn "$3/.gitignore already exists, skipping"
+        return 0
+    fi
+    mkdir -p -- "$dst_dir" || { printErr "failed to create $3"; return 1; }
+
+    local -a files=() dirs=()
+    local path entry
+    for path in "$tpl_dir"/* "$tpl_dir"/.*; do
+        entry="${path##*/}"
+        [[ -e "$path" ]] || continue
+        [[ "$entry" == . || "$entry" == .. || "$entry" == .gitignore ]] && continue
+        if [[ -d "$path" ]]; then
+            dirs+=("!$entry/")
+        else
+            files+=("!${entry%.mo}")
+        fi
+    done
+
+    if ! {
+        printf '%s\n' '**' '.*' '!.gitignore'
+        (( ${#files[@]} )) && printf '%s\n' "${files[@]}" | sort
+        (( ${#dirs[@]} )) && printf '%s\n' "${dirs[@]}" | sort
+        true
+    } > "$file";
+    then
+        printErr "failed to create $3/.gitignore"
+        return 1
+    fi
+}
+
+# renders <template dir> into "$ssm_root/<dst>", `.mo` files are rendered with the variables
+# in scope and have the extension dropped, everything else is copied as is. existing files are
+# kept. the template's own `.gitignore` files only apply to the nyx repo and are skipped
+# renderTree <template dir> <dst>
+renderTree() {
+    local tpl_dir="$1"
+    local dst_root="$2"
+
+    local src rel dst
+    while IFS= read -r -d '' src; do
+        rel="${src#"$tpl_dir/"}"
+        rel="$dst_root/${rel%.mo}"
+        dst="$ssm_root/$rel"
+        if [[ -e "$dst" ]]; then
+            printWarn "$rel already exists, skipping"
+            continue
+        fi
+        mkdir -p -- "$(dirname -- "$dst")" || { printErr "failed to create $rel"; continue; }
+
+        if [[ "$src" == *.mo ]]; then
+            mo "$src" > "$dst" || printErr "failed to create $rel"
+        else
+            cp -- "$src" "$dst" || printErr "failed to create $rel"
+        fi
+    done < <(find "$tpl_dir" -type f ! -name .gitignore -print0)
+}
+
+# renders "$ssm_dir/templates/<type>" into "$ssm_root/<name>", every directory gets
+# a generated inverse ignore
+renderSubproject() {
+    local name="$1"
+    local type="$2"
+    local tpl_dir="$ssm_dir/templates/$type"
+    if [[ ! -d "$tpl_dir" ]]; then
+        printErr "unknown subproject template type: '$type'"
+        return 1
+    fi
+
+    printLog "creating subproject '$name' ($type)"
+    mkdir -p -- "$ssm_root/$name" || { printErr "failed to create subproject directory '$name'"; return 1; }
+
+    # shellcheck disable=SC2034 # used by the mo templates
+    local subproject_name="$name" subproject_version="0.1.0"
+    renderTree "$tpl_dir" "$name"
+
+    local dir rel
+    while IFS= read -r -d '' dir; do
+        rel="${dir#"$tpl_dir"}"
+        rel="${rel#/}"
+        writeInverseIgnore "$dir" "$ssm_root/$name${rel:+"/$rel"}" "$name${rel:+"/$rel"}"
+    done < <(find "$tpl_dir" -type d -print0)
+}
+
 # fills git_user/git_signkey from git_mail if they're still <nil>
 # or were derived from a previous mail
 resolveGitFromMail() {
@@ -329,14 +555,27 @@ drawTuiEdit() {
     case "$key" in
         flake_systems) drawTuiSystems ;;
         flake_devshell_frags) drawTuiFrags ;;
+        subprojects) drawTuiSubprojects ;;
         git_mail) drawTuiInput "$key" && resolveGitFromMail ;;
-        sandbox_id)
-            if drawTuiInput "$key" "?" && [[ "${d["sandbox_id"]}" == "?" ]]; then
-                d_meta["sandbox_id"]="(auto generate)"
-            fi
-            ;;
+        sandbox_id) drawTuiSandboxId ;;
         *) drawTuiInput "$key" ;;
     esac
+}
+
+# sbx-shell context ids only allow A-Z, a-z, 0-9, _ and -, or `?` to derive one from the path
+drawTuiSandboxId() {
+    local previous="${d["sandbox_id"]}"
+    local previous_meta="${d_meta["sandbox_id"]}"
+    drawTuiInput "sandbox_id" "?" || return 1
+
+    if [[ "${d["sandbox_id"]}" == "?" ]]; then
+        d_meta["sandbox_id"]="(auto generate)"
+    elif [[ ! "${d["sandbox_id"]}" =~ ^[A-Za-z0-9_-]+$ ]]; then
+        printErr "invalid sandbox id: '${d["sandbox_id"]}'"
+        d["sandbox_id"]="$previous"
+        d_meta["sandbox_id"]="$previous_meta"
+        return 1
+    fi
 }
 
 drawTui() {
@@ -362,23 +601,38 @@ drawTui() {
 }
 
 modeOf_init() {
-    local -a d_opts=("project_name" "project_description" "sandbox_id" "nixpkgs_pin" "flake_systems" "flake_devshell_frags" "git_mail" "git_user" "git_signkey" "git_ssh_id")
+    local -a d_opts=("project_name" "project_description" "sandbox_id" "nixpkgs_pin" "flake_systems" "flake_devshell_frags" "subprojects" "git_mail" "git_user" "git_signkey" "git_ssh_id")
     local -A d
     local -A d_meta # has the same keys as d(ata) but it just contains "messages"
 
     d["project_name"]="$(basename "$PWD")"
     d["project_description"]="ssm initialized '${d["project_name"]:-"<err>"}' project"
-    d["sandbox_id"]="${d["project_name"]:-"?"}"; [[ "${d["sandbox_id"]}" == "?" ]] && d_meta["sandbox_id"]="(auto generate)";
+    d["sandbox_id"]="${d["project_name"]//[^A-Za-z0-9_-]/-}"
+    d["sandbox_id"]="${d["sandbox_id"]:-"?"}"; [[ "${d["sandbox_id"]}" == "?" ]] && d_meta["sandbox_id"]="(auto generate)";
     d["nixpkgs_pin"]="<latest>"
     local -a flake_systems=("x86_64-linux")
     local -a flake_devshell_frags=("default")
+    # every directory in .ssm/templates is a subproject template type
+    local -a subproject_template_types=()
+    local tpl
+    for tpl in "$ssm_dir"/templates/*/; do
+        [[ -d "$tpl" ]] && subproject_template_types+=("$(basename -- "$tpl")")
+    done
+    (( ${#subproject_template_types[@]} )) || die "no subproject templates found in $ssm_dir/templates"
+    # names in order, subproject_types maps each name to its template type
+    local -a subprojects=()
+    local -A subproject_types=()
+    local default_subproject="${d["project_name"]//[^A-Za-z0-9_-]/-}"
+    [[ "$default_subproject" =~ ^[A-Za-z_] ]] || default_subproject="_$default_subproject"
+    subprojects+=("$default_subproject")
+    subproject_types["$default_subproject"]="base"
     d["git_user"]="<nil>"
     d["git_mail"]="<nil>"
     d["git_signkey"]="<nil>"
     d["git_ssh_id"]="<nil>"
     
     if command -v "nixos-version" &> /dev/null; then
-        if d["nixpkgs_pin"]="$(nixos-version --json | jq -r '.nixpkgsRevision')"; then
+        if d["nixpkgs_pin"]="$(nixos-version --json | jq -re '.nixpkgsRevision')"; then
             d_meta["nixpkgs_pin"]="(from host)"
         else
             d_meta["nixpkgs_pin"]="(cant resolve)"
@@ -397,34 +651,98 @@ modeOf_init() {
 
     local -a run_commands=();
     [[ ! -d "$ssm_root/.git" ]] && run_commands+=("git init")
-    [[ ! -d "$ssm_root/.jj" ]] && run_commands+=("jj git init")
+    if [[ ! -d "$ssm_root/.jj" ]]; then
+        if command -v jj &> /dev/null; then
+            run_commands+=("jj git init --colocate")
+        else
+            printWarn "jj is unavailable, skipping jj git init"
+        fi
+    fi
     local ssh_command="ssh -i ${d["git_ssh_id"]@Q}"
     [[ "${d["git_user"]}" != "<nil>" ]] && run_commands+=("git config user.name ${d["git_user"]@Q}")
     [[ "${d["git_mail"]}" != "<nil>" ]] && run_commands+=("git config user.email ${d["git_mail"]@Q}")
     [[ "${d["git_signkey"]}" != "<nil>" ]] && run_commands+=("git config user.signingKey ${d["git_signkey"]@Q}")
     [[ "${d["git_ssh_id"]}" != "<nil>" ]] && run_commands+=("git config core.sshCommand ${ssh_command@Q}")
 
+    # `<latest>` only affects the lock command below, it must not end up as a revision in the flake
+    local flake_nixpkgs_pin="${d["nixpkgs_pin"]}"
+    [[ "$flake_nixpkgs_pin" == "<latest>" ]] && flake_nixpkgs_pin=""
+
     printLog "creating root flake.nix"
-    if ! use_flakeparts='' nixpkgs_pin="${d["nixpkgs_pin"]}"\
+    if ! use_flakeparts='' nixpkgs_pin="$flake_nixpkgs_pin" flake_description="${d["project_description"]}" \
         mo "$ssm_dir/flake.nix.mo" > "$ssm_root/flake.nix";
     then
         printErr "failed to create root flake.nix"
     fi
+
+    printLog "creating root .gitignore"
+    if ! mo "$ssm_dir/.gitignore.mo" > "$ssm_root/.gitignore"; then
+        printErr "failed to create root .gitignore"
+    fi
+
+    printLog "creating sandbox config .nyx-sbx"
+    renderTree "$ssm_dir/.nyx-sbx" ".nyx-sbx"
+
+    local sub
+    for sub in "${subprojects[@]}"; do
+        renderSubproject "$sub" "${subproject_types["$sub"]}"
+    done
+
+    # flakes only see files tracked by git
+    local -a tracked=(".gitignore" "flake.nix" ".nyx-sbx" "${subprojects[@]}")
+    run_commands+=("git add -- ${tracked[*]@Q}")
     if [[ "${d["nixpkgs_pin"]}" == "<latest>" ]]; then
         run_commands+=("nix flake lock")
     elif [[ "${d["nixpkgs_pin"]}" != "" ]]; then
         run_commands+=("nix flake lock --override-input nixpkgs \"github:NixOS/nixpkgs/${d["nixpkgs_pin"]}\"")
     fi
 
+    local has_sbx=0
+    if command -v sbx-shell &> /dev/null; then
+        has_sbx=1
+        if [[ -L "$ssm_root/.nyx-sbx/ptr" ]]; then
+            printWarn "sandbox context is already linked, skipping sbx-shell init"
+        else
+            run_commands+=("sbx-shell init ${d["sandbox_id"]@Q}")
+        fi
+        run_commands+=("sbx-shell madd . rw .")
+    fi
+
     if (( ${#run_commands[@]} )); then
         # shellcheck disable=SC2016
         gum format -- "" "## auto config will execute the following command(s):" "$(printf -- '- `%s`\n' "${run_commands[@]}")"
         if gum confirm; then
-            printWarn "! todo !"
+            runCommands "${run_commands[@]}" || exit 1
+            # shellcheck disable=SC2016
+            (( has_sbx )) && printLog 'enter the dev environment with `sbx-shell nix-develop`'
+        else
+            printWarn "skipped auto config, run the command(s) manually:"
+            printf '    %s\n' "${run_commands[@]}" >&2
         fi
     fi
 
     exit 0
+}
+
+# runs each command from "$ssm_root" in order and stops at the first failure
+# since the later commands depend on the earlier ones (eg. git config needs git init)
+runCommands() {
+    local -a cmds=("$@")
+    local i rc
+    for (( i = 0; i < ${#cmds[@]}; i++ )); do
+        printLog "running: ${cmds[i]}"
+        ( cd -- "$ssm_root" && bash -c "${cmds[i]}" )
+        rc=$?
+        if (( rc != 0 )); then
+            printErr "command failed (exit $rc): ${cmds[i]}"
+            if (( i + 1 < ${#cmds[@]} )); then
+                printWarn "skipped the remaining command(s), run them manually after fixing the issue:"
+                printf '    %s\n' "${cmds[@]:i+1}" >&2
+            fi
+            return 1
+        fi
+    done
+    printLog "auto config done"
 }
 
 main "$@"

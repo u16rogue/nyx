@@ -10,7 +10,7 @@
 # the repo, so edits to the ssm script on the host are picked up live.
 #
 # Inside the sandbox `ssmreset` restores the project to a freshly initialized
-# template without leaving the sandbox.
+# template and clears the sbx-shell store without leaving the sandbox.
 #
 # usage: test-ssm [-n|--nix] [project name]
 #   -n, --nix   use the real `nix flake init -t path:<repo>#ssm` instead of cp
@@ -40,6 +40,14 @@ reset_project() {
     find . -mindepth 1 -maxdepth 1 "${keep[@]}" -exec chmod -R u+w -- {} + 2> /dev/null || true
     if ! find . -mindepth 1 -maxdepth 1 "${keep[@]}" -exec rm -rf -- {} +; then
         log "can't clear files for reset"
+        return 1
+    fi
+
+    # sbx-shell contexts live in the tmpfs home, drop them so `ssm init` can link a fresh one.
+    [[ "$NYX_SBX_SHELL_DIR" == "$HOME"/* ]] || { log "refusing to reset sbx-shell store outside \$HOME: $NYX_SBX_SHELL_DIR"; return 1; }
+    chmod -R u+w -- "$NYX_SBX_SHELL_DIR" 2> /dev/null || true
+    if ! rm -rf -- "$NYX_SBX_SHELL_DIR" || ! mkdir -p -- "$NYX_SBX_SHELL_DIR"; then
+        log "can't reset sbx-shell store: $NYX_SBX_SHELL_DIR"
         return 1
     fi
 

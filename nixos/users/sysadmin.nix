@@ -22,13 +22,13 @@
             partial.directories = [];
         };
 
-        configuration = { pkgs, nyx, ... }: {
+        configuration = { pkgs, nyx, ... }: let shell = nyx.pkgs.fish; in {
             isNormalUser = true;
             extraGroups = [ "wheel" ];
-            shell = nyx.pkgs.fish;
+            inherit shell;
             openssh.authorizedKeys.keys = [ "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDn13+K2p5yC5bbpm0Y9I5AGBLhKQuPRo9oiW/ICQnzf " ];
             packages = [
-                nyx.pkgs.fish
+                shell
                 (inputs.wrappers.lib.wrapPackage {
                     inherit pkgs;
                     package = pkgs.tmux;

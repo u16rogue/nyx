@@ -1,0 +1,49 @@
+keybinds {
+    shared {
+        bind "Alt 1" { GoToTab 1; }
+        bind "Alt 2" { GoToTab 2; }
+        bind "Alt 3" { GoToTab 3; }
+        bind "Alt f" { ToggleFloatingPanes; }
+    }
+}
+
+layout {
+    default_tab_template {
+        pane size=2 split_direction="vertical" {
+            pane size=55 borderless=true {
+                plugin location="compact-bar"
+            }
+            pane borderless=true {
+                plugin location="status-bar"
+            }
+        }
+        children
+    }
+
+    swap_floating_layout {
+        floating_panes max_panes=1 {
+            pane x="5%" y="5%" width="90%" height="90%"
+        }
+    }
+
+    tab name=" " focus=true {
+        pane name="neovim" borderless=true start_suspended=true command="sh" {
+            args "-c" "if [ -f .nvimsession ]; then exec nvim -S .nvimsession; else exec nvim; fi"
+        }
+    }
+
+    tab name=" " split_direction="horizontal" {
+        {{#ssm_zellij_panes}}
+        {{.}}
+        {{/ssm_zellij_panes}}
+        {{^ssm_zellij_panes}}
+        pane start_suspended=true command="$SHELL"
+        {{/ssm_zellij_panes}}
+    }
+
+    tab name="󱚠 " split_direction="horizontal" {
+        pane name="clanker" borderless=true start_suspended=true command="opencode" {
+            args "--standalone"
+        }
+    }
+}
