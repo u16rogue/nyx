@@ -10,6 +10,7 @@
             monero = {
                 enable = true;
                 port = 18089;
+                i2p = true;
             };
             transmission = {
                 enable = true;
@@ -17,11 +18,18 @@
                 subpath = "/transmission";
             };
             jellyfin = {
-                enable = false;
+                enable = true;
                 port = 8096;
                 subpath = "/jellyfin";
             };
-            i2pd.enable = false;
+            i2pd = {
+                enable = true;
+                port = 7070;
+                subpath = "/i2pd";
+                httpProxyPort = 4444;
+                socksProxyPort = 4447;
+                transportPort = 24816; # NTCP2 (tcp) + SSU2 (udp), only reachable over IPv6
+            };
         };
     }; in {
         platform = "x86_64-linux";
@@ -79,6 +87,7 @@
         configuration = { self, config, pkgs, lib, nyx, ... }: let
             disks' =
                 let
+                    mapAttrsFlip = lib.flip builtins.mapAttrs;
                     diskoPartitionContentToMountpoint = (content: if content != null then
                         if builtins.hasAttr "mountpoint" content then
                             content.mountpoint
@@ -87,13 +96,11 @@
                         else
                             null
                     else null);
-                in lib.pipe config.disko.devices.disk [
-                    (builtins.mapAttrs (_: disk: {
-                        partitions = lib.pipe (disk.content.partitions) [
-                            (builtins.mapAttrs (_: partition: { mountpoint = diskoPartitionContentToMountpoint partition.content; }))
-                        ];
-                    }))
-                ]
+                in mapAttrsFlip config.disko.devices.disk (_: disk: {
+                    partitions = mapAttrsFlip disk.content.partitions (_: partition: {
+                        mountpoint = diskoPartitionContentToMountpoint partition.content;
+                    });
+                })
             ;
 
             # Generic setup for a service unit, as a module:
@@ -189,21 +196,38 @@
                 })
 
                 (lib.optionalAttrs meta'.svc.monero.enable {
-                    imports = [(nyxosUnitSetup {
-                        unit = "monero";
-                        preserve = let serviceConfig = config.systemd.services.monero.serviceConfig; in {
-                            at = disks'.hdd.partitions.data.mountpoint;
-                            user = serviceConfig.User;
-                            group = serviceConfig.Group;
-                            directories = [ config.services.monero.dataDir ];
-                        };
-                        route = {
-                            name = "monero-rpc";
-                            entryPoints = [ "monero-rpc" ];
-                            rule = "PathPrefix(`/`)";
-                            port = config.services.monero.rpc.port;
-                        };
-                    })];
+                    imports = [
+                        (nyxosUnitSetup {
+                            unit = "monero";
+                            preserve = let serviceConfig = config.systemd.services.monero.serviceConfig; in {
+                                at = disks'.hdd.partitions.data.mountpoint;
+                                user = serviceConfig.User;
+                                group = serviceConfig.Group;
+                                directories = [ config.services.monero.dataDir ];
+                            };
+                            route = {
+                                name = "monero-rpc";
+                                entryPoints = [ "monero-rpc" ];
+                                rule = "PathPrefix(`/`)";
+                                port = config.services.monero.rpc.port;
+                            };
+                        })
+                        (lib.optionalAttrs meta'.svc.monero.i2p {
+                            assertions = [{
+                                assertion = meta'.svc.i2pd.enable;
+                                message = "`meta'.svc.monero.i2p` needs `meta'.svc.i2pd.enable`";
+                            }];
+                            # Only our own transactions are broadcast over I2P (to the built-in I2P seed peers);
+                            # block sync and the public RPC stay on clearnet
+                            services.monero.extraConfig = ''
+                                tx-proxy=i2p,127.0.0.1:${toString meta'.svc.i2pd.socksProxyPort}
+                            '';
+                            systemd.services.monero = {
+                                wants = [ "i2pd.service" ];
+                                after = [ "i2pd.service" ];
+                            };
+                        })
+                    ];
                     services.monero = {
                         enable = true;
                         prune = true;
@@ -304,6 +328,68 @@
                         vc1 = true;
                     };
                 })
+
+                (lib.optionalAttrs meta'.svc.i2pd.enable {
+                    imports = [(nyxosUnitSetup {
+                        unit = "i2pd";
+                        # Keeps the router identity (`router.keys`), netDb, peer profiles and tunnel destination keys
+                        preserve = {
+                            at = disks'.hdd.partitions.data.mountpoint;
+                            user = "i2pd";
+                            group = "i2pd";
+                            directories = [ "/var/lib/i2pd" ];
+                        };
+                        route = {
+                            rule = traefikPathRule meta'.svc.i2pd.subpath; # Webconsole serves under `http.webroot`, so no prefix stripping
+                            port = meta'.svc.i2pd.port;
+                        };
+                    })];
+                    services.i2pd = {
+                        enable = true;
+                        settings = {
+                            # IPv4 is behind the ISP's lockdown and can't take inbound, so it's pinned as firewalled
+                            # (reached through introducers, NTCP2 v4 unpublished). Inbound comes over the global IPv6 address.
+                            port = meta'.svc.i2pd.transportPort;
+                            ipv6 = true;
+                            ssu2.firewalled4 = true;
+                            bandwidth = "P"; # 2048KBps, of which `share` percent goes to transit
+                            share = 50;
+                            # Shared with the LAN; they only resolve `.i2p` as no outproxy is configured
+                            httpproxy = {
+                                address = "0.0.0.0";
+                                port = meta'.svc.i2pd.httpProxyPort;
+                            };
+                            socksproxy = {
+                                address = "0.0.0.0";
+                                port = meta'.svc.i2pd.socksProxyPort;
+                            };
+                            http = {
+                                address = "127.0.0.1";
+                                port = meta'.svc.i2pd.port;
+                                webroot = "${meta'.svc.i2pd.subpath}/";
+                                # Reached through traefik by `<host>.local` or by IP, so the Host header can't be pinned
+                                strictheaders = false;
+                                # The webconsole can shut down the router and drop tunnels; user is `i2pd`
+                                auth = true;
+                                pass._secret = "/persist/etc/i2pd/webconsole.pass";
+                            };
+                        };
+                    };
+                    # The module uses `DynamicUser`, which can't own a preserved directory; pin a static user instead
+                    systemd.services.i2pd.serviceConfig.DynamicUser = lib.mkForce false;
+                    users.users.i2pd = {
+                        isSystemUser = true;
+                        group = "i2pd";
+                    };
+                    users.groups.i2pd = { };
+                    networking.firewall = {
+                        allowedTCPPorts = [ meta'.svc.i2pd.transportPort meta'.svc.i2pd.httpProxyPort meta'.svc.i2pd.socksProxyPort ];
+                        allowedUDPPorts = [ meta'.svc.i2pd.transportPort ];
+                    };
+                    # Keep privacy addresses but source from the stable one, otherwise the published IPv6 rotates with
+                    # the temporary address and peers lose the router
+                    networking.tempAddresses = "enabled";
+                })
             ];
 
             nyxos.auto-upgrade.sources = [{
@@ -379,7 +465,6 @@
 
             system.stateVersion = "25.11";
             boot.initrd.availableKernelModules = [ "xhci_pci" "ahci" "usb_storage" "sd_mod" "sr_mod" "rtsx_usb_sdmmc" "r8169" "realtek" ];
-            # SSD: boot + system state (/persist, including /nix)
             disko.devices.disk.ssd = let id = "/dev/disk/by-id/ata-TOSHIBA_KSG60ZMV512G_M.2_2280_512GB_19HA11FWK8HN"; in {
                 type = "disk";
                 device = id;
@@ -416,7 +501,6 @@
                     };
                 };
             };
-            # HDD: bulk service data, unlocked after boot with a keyfile kept on the SSD
             disko.devices.disk.hdd = let id = "/dev/disk/by-id/ata-ST2000LM007-1R8174_WDZ76VAB"; in {
                 type = "disk";
                 device = id;
