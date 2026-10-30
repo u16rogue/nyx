@@ -29,9 +29,13 @@ $prog_name [...args] <mode> [...mode args]
         <r> read only, <rw> readwrite, or to use an <o> overlay. sandbox
         id must name an existing context. use '.' to select the context from
         the working-directory ctxlink. e.g. \`$prog_name madd . rw .\`.
-    mcover <id|ctxlink> <path>
+    mcover [--force|--move] <id|ctxlink> <path>
         covers a directory with an initially empty, persistent directory stored
         in the context. host contents are hidden, not used as an overlay lower.
+        if <path> already exists on the host, one of these is required:
+        --force covers it as is, so its host contents are hidden in the sandbox;
+        --move moves its contents into the cover and leaves the host directory
+        empty. --move refuses entries that already exist in the cover.
         selects an existing context by id or ctxlink; use './name' for a linked
         directory whose name could be an id. path is a required sandbox target;
         relative paths use the working directory, regardless of the selector.
@@ -113,7 +117,7 @@ assertEnvironment() {
 
     # Assert programs
     local prog
-    for prog in realpath mkdir rm bwrap which md5sum cut ln nologin id getent readlink sort; do
+    for prog in realpath mkdir rm mv bwrap which md5sum cut ln nologin id getent readlink sort; do
         if ! command -v "$prog" &> /dev/null; then
             has_reported_err=1
             printErr "missing required program '$prog' is not available."
@@ -567,20 +571,73 @@ modeOf_madd() {
 # mcover mode
 # Clanker implemented
 modeOf_mcover() {
-    if (( $# != 3 )) || [[ -z "$2" || -z "$3" ]]; then
-        printErr "usage: $prog_name mcover <id|ctxlink> <path>"
+    local usage="usage: $prog_name mcover [--force|--move] <id|ctxlink> <path>"
+    local existing_policy=arg
+    local -a positional=()
+    shift
+    for arg in "$@"; do
+        case "$arg" in
+            --force|--move)
+                if [[ -n "$existing_policy" ]]; then
+                    printErr "--force and --move are mutually exclusive"
+                    exit 1
+                fi
+                existing_policy="${arg#--}" ;;
+            *) positional+=("$arg") ;;
+        esac
+    done
+    if (( ${#positional[@]} != 2 )) || [[ -z "${positional[0]}" || -z "${positional[1]}" ]]; then
+        printErr "$usage"
         exit 1
     fi
 
     local context_id
-    context_id="$(resolveContextSelector "$2")" || exit 1
+    context_id="$(resolveContextSelector "${positional[0]}")" || exit 1
     local cover_target
-    cover_target="$(resolveCoverTarget "$3")" || exit 1
+    cover_target="$(resolveCoverTarget "${positional[1]}")" || exit 1
+
+    local target_exists=0
+    [[ -e "$cover_target" || -L "$cover_target" ]] && target_exists=1
+    if (( target_exists )) && [[ -z "$existing_policy" ]]; then
+        printErr "cover target already exists: $cover_target; use --force to hide its contents or --move to move them into the cover"
+        exit 1
+    fi
+
+    local -a move_entries=()
+    if (( target_exists )) && [[ "$existing_policy" == move ]]; then
+        dirPathAssert "$cover_target" || exit 1
+        if [[ ! -d "$cover_target" || ! -w "$cover_target" ]]; then
+            printErr "--move requires a writable directory: $cover_target"
+            exit 1
+        fi
+        dirEntriesRead "$cover_target" move_entries || exit 1
+        local entry
+        for entry in "${move_entries[@]}"; do
+            if [[ "${entry##*/}" == "$ctxlink_marker_name" ]]; then
+                printErr "refusing to move a ctxlink into a cover: $entry"
+                exit 1
+            fi
+        done
+    fi
 
     local cover_id cover_directory
     cover_id="$(mkHash "$cover_target")" || exit 1
     cover_directory="$NYX_SBX_SHELL_DIR/$context_id/cover/$cover_id"
     dirPathCreate "$cover_directory/upper" || exit 1
+
+    local entry destination
+    for entry in "${move_entries[@]}"; do
+        destination="$cover_directory/upper/${entry##*/}"
+        if [[ -e "$destination" || -L "$destination" ]]; then
+            printErr "cover already contains '${entry##*/}'; resolve it manually and retry: $destination"
+            exit 1
+        fi
+        if ! mv -T -- "$entry" "$destination"; then
+            printErr "couldn't move '$entry' into the cover; moved entries remain in $cover_directory/upper"
+            exit 1
+        fi
+    done
+    (( ${#move_entries[@]} > 0 )) && printLog "moved ${#move_entries[@]} entries from '$cover_target' into the cover"
     if ! ln -sfnT -- "$cover_target" "$cover_directory/ptr"; then
         printErr "couldn't register cover for '$cover_target'"
         exit 1
