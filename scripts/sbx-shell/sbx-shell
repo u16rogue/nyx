@@ -49,7 +49,7 @@ $prog_name [...args] <mode> [...mode args]
         directory's ref, so it is released when that ref is collected.
         load the dev environment inside the sandbox, restore host \$SHELL,
         then source .nyx-sbx/dev-hook.sh if present before starting the shell.
-        in every mode, .nyx-sbx/share/ is mounted read-only if present; the
+        in every mode, .nyx-sbx/share/ is mounted read-write if present; the
         rest of .nyx-sbx stays hidden.
     gc
         garbage collect stale backlinks and unreferenced contexts. preserves
@@ -572,7 +572,7 @@ modeOf_madd() {
 # Clanker implemented
 modeOf_mcover() {
     local usage="usage: $prog_name mcover [--force|--move] <id|ctxlink> <path>"
-    local existing_policy=arg
+    local existing_policy='' arg
     local -a positional=()
     shift
     for arg in "$@"; do
