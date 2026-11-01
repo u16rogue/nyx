@@ -49,13 +49,11 @@
         inherit (nixpkgs) lib;
         systems = [ {{#flake_systems}}"{{.}}" {{/flake_systems}}];
         perSystem = attr: lib.genAttrs systems (system: attr { pkgs = nixpkgs.legacyPackages.${system}; inherit system; });
-
         subprojects = [
             {{#subprojects}}
             ./{{.}}
             {{/subprojects}}
         ];
-        # `callEach` picks the sub projects that provide `file`, named after their directory
         callEach = pkgs: file: lib.pipe subprojects [
             (lib.filter (path: builtins.pathExists (path + "/${file}")))
             (map (path: lib.nameValuePair (baseNameOf path) (pkgs.callPackage (path + "/${file}") {})))

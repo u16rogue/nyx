@@ -33,9 +33,10 @@ ssm <mode>
 <mode>:
     init
         initialize the project
-    add
-        ! todo !
-        add more sub projects to an initialized project.
+    add [<name> [<type>]]
+        add more sub projects to an initialized project. without a name the
+        subprojects are picked in the tui, otherwise <name> is created from
+        the <type> template (default: base).
     sync
         ! todo !
         re-render missing _meta files, re-pick the zellij panes and re-apply
@@ -94,6 +95,7 @@ main() {
         mo  nixpkgs#mo           \
         gum nixpkgs#gum          \
         jq  nixpkgs#jq           \
+        awk nixpkgs#gawk         \
     );
 
     if [[ -z "${NYX_NIXPKGS:-}" ]] && command -v nix &> /dev/null; then
@@ -164,7 +166,7 @@ main() {
 
     case "${1:-help}" in
         init) modeOf_init ;;
-        #add) modeOf_add ;;
+        add) modeOf_add "${@:2}" ;;
         #sync) modeOf_sync ;;
         #pin) modeOf_pin ;;
         help|-h|--help) modeOf_help ;;
@@ -308,13 +310,39 @@ drawTuiFrags() {
     done
 }
 
+# shared by `init` and `add`, the functions work on these variables from the caller's scope:
+#   subproject_template_types  every available template type (see loadSubprojectTemplateTypes)
+#   subprojects                names to create, in order
+#   subproject_types           maps each name in subprojects to its template type
+#   subprojects_existing       names already in the project, only checked against (optional)
+#   subprojects_min            least amount of subprojects that has to be kept (default 1)
+#   subprojects_exit           set by drawTuiSubprojects to the exit entry that was picked
+
+# every directory in .ssm/templates is a subproject template type
+loadSubprojectTemplateTypes() {
+    subproject_template_types=()
+    local tpl
+    for tpl in "$ssm_dir"/templates/*/; do
+        [[ -d "$tpl" ]] && subproject_template_types+=("$(basename -- "$tpl")")
+    done
+    (( ${#subproject_template_types[@]} ))
+}
+
+hasSubprojectTemplateType() {
+    local type
+    for type in "${subproject_template_types[@]}"; do
+        [[ "$type" == "$1" ]] && return 0
+    done
+    return 1
+}
+
 subprojectLabel() {
     printf '%s (%s)' "$1" "${subproject_types["$1"]}"
 }
 
 hasSubproject() {
     local sub
-    for sub in "${subprojects[@]}"; do
+    for sub in "${subprojects[@]}" "${subprojects_existing[@]}"; do
         [[ "$sub" == "$1" ]] && return 0
     done
     return 1
@@ -328,6 +356,10 @@ validateNewSubprojectName() {
     fi
     if hasSubproject "$1"; then
         printErr "subproject already exists: '$1'"
+        return 1
+    fi
+    if [[ -e "$ssm_root/$1" ]]; then
+        printErr "'$1' already exists in the project root"
         return 1
     fi
 }
@@ -371,8 +403,9 @@ drawTuiSubprojectsRename() {
 }
 
 drawTuiSubprojectsRemove() {
-    if (( ${#subprojects[@]} <= 1 )); then
-        printErr "keep at least one subproject"
+    local min="${subprojects_min:-1}"
+    if (( ${#subprojects[@]} <= min )); then
+        printErr "keep at least $min subproject(s)"
         return 1
     fi
 
@@ -410,7 +443,12 @@ drawTuiSubprojectsEdit() {
     esac
 }
 
+# the arguments are the exit entries listed above <add> (default "<back>"),
+# the picked one is stored in subprojects_exit
 drawTuiSubprojects() {
+    local -a exits=("$@")
+    (( ${#exits[@]} )) || exits=("<back>")
+
     while true; do
         local -a labels=()
         local sub
@@ -418,23 +456,123 @@ drawTuiSubprojects() {
             labels+=("$(subprojectLabel "$sub")")
         done
 
+        local header="subprojects"
+        (( ${#subprojects_existing[@]} )) && header+=" (existing: ${subprojects_existing[*]})"
+
         local selected=
-        if ! selected=$(gum choose --limit 1 --height 12 --header "subprojects" \
-            "<back>" \
+        if ! selected=$(gum choose --limit 1 --height 12 --header "$header" \
+            "${exits[@]}" \
             "<add>" \
             "${labels[@]}" \
         ); then
             return 1
         fi
 
-        if [[ "$selected" == "<back>" ]]; then
-            return 0
-        elif [[ "$selected" == "<add>" ]]; then
+        local exit_entry
+        for exit_entry in "${exits[@]}"; do
+            if [[ "$selected" == "$exit_entry" ]]; then
+                subprojects_exit="$selected"
+                return 0
+            fi
+        done
+
+        if [[ "$selected" == "<add>" ]]; then
             drawTuiSubprojectsAdd
         else
             drawTuiSubprojectsEdit "${selected%% *}"
         fi
     done
+}
+
+# renders "$ssm_dir/templates/<type>" into "$ssm_root/<name>", every directory gets
+# a generated inverse ignore
+renderSubproject() {
+    local name="$1"
+    local type="$2"
+    local tpl_dir="$ssm_dir/templates/$type"
+    if [[ ! -d "$tpl_dir" ]]; then
+        printErr "unknown subproject template type: '$type'"
+        return 1
+    fi
+
+    printLog "creating subproject '$name' ($type)"
+    mkdir -p -- "$ssm_root/$name" || { printErr "failed to create subproject directory '$name'"; return 1; }
+
+    # shellcheck disable=SC2034 # used by the mo templates
+    local subproject_name="$name" subproject_version="0.1.0"
+    renderTree "$tpl_dir" "$name"
+
+    local dir rel
+    while IFS= read -r -d '' dir; do
+        rel="${dir#"$tpl_dir"}"
+        rel="${rel#/}"
+        writeInverseIgnore "$dir" "$ssm_root/$name${rel:+"/$rel"}" "$name${rel:+"/$rel"}"
+    done < <(find "$tpl_dir" -type d -print0)
+}
+
+# prints the names listed in the `subprojects = [ ./<name> ... ];` block(s) of <flake>
+readProjectSubprojects() {
+    awk '
+        /^[[:space:]]*subprojects[[:space:]]*=[[:space:]]*\[[[:space:]]*$/ { inblock = 1; next }
+        inblock && /^[[:space:]]*\];/ { inblock = 0; next }
+        inblock && /^[[:space:]]*\.\// {
+            name = $0
+            sub(/^[[:space:]]*\.\//, "", name)
+            sub(/[[:space:]].*$/, "", name)
+            if (name != "" && !(name in seen)) { seen[name] = 1; print name }
+        }
+    ' "$1"
+}
+
+# adds <name>... to the `subprojects` block(s) of the root flake.nix and un-ignores them in
+# the root .gitignore, names that are already listed are left alone
+# registerSubprojects <name>...
+registerSubprojects() {
+    (( $# )) || return 0
+    local flake="$ssm_root/flake.nix"
+    local ignore="$ssm_root/.gitignore"
+    local tmp=
+    local rc=0
+
+    printLog "adding $* to flake.nix"
+    tmp="$(mktemp)" || { printErr "failed to create a temporary file"; return 1; }
+    if awk -v names="$*" '
+        BEGIN { n = split(names, add, " ") }
+        /^[[:space:]]*subprojects[[:space:]]*=[[:space:]]*\[[[:space:]]*$/ {
+            inblock = 1; indent = ""; split("", seen); print; next
+        }
+        inblock && /^[[:space:]]*\];/ {
+            if (indent == "") { match($0, /^[[:space:]]*/); indent = substr($0, 1, RLENGTH) "    " }
+            for (i = 1; i <= n; i++) if (!(add[i] in seen)) print indent "./" add[i]
+            inblock = 0; found = 1; print; next
+        }
+        inblock && match($0, /^[[:space:]]*\.\//) {
+            if (indent == "") indent = substr($0, 1, RLENGTH - 2)
+            name = substr($0, RLENGTH + 1); sub(/[[:space:]].*$/, "", name); seen[name] = 1
+        }
+        { print }
+        END { exit !found }
+    ' "$flake" > "$tmp"; then
+        # written through instead of moved to keep the file mode
+        cat -- "$tmp" > "$flake" || { printErr "failed to update flake.nix"; rc=1; }
+    else
+        printErr "couldn't find the \`subprojects = [ ... ];\` list in flake.nix, add the subproject(s) manually"
+        rc=1
+    fi
+    rm -f -- "$tmp"
+
+    if [[ ! -f "$ignore" ]]; then
+        printWarn "no root .gitignore, skipping"
+        return "$rc"
+    fi
+    printLog "adding $* to .gitignore"
+    [[ -s "$ignore" && -n "$(tail -c 1 -- "$ignore")" ]] && printf '\n' >> "$ignore"
+    local name
+    for name in "$@"; do
+        grep -qxF -- "!$name/" "$ignore" && continue
+        printf '!%s/\n' "$name" >> "$ignore" || { printErr "failed to update .gitignore"; rc=1; }
+    done
+    return "$rc"
 }
 
 # writes an explicit inverse ignore into <dst dir> listing the entries of <template dir>,
@@ -500,32 +638,6 @@ renderTree() {
             cp -- "$src" "$dst" || printErr "failed to create $rel"
         fi
     done < <(find "$tpl_dir" -type f ! -name .gitignore -print0)
-}
-
-# renders "$ssm_dir/templates/<type>" into "$ssm_root/<name>", every directory gets
-# a generated inverse ignore
-renderSubproject() {
-    local name="$1"
-    local type="$2"
-    local tpl_dir="$ssm_dir/templates/$type"
-    if [[ ! -d "$tpl_dir" ]]; then
-        printErr "unknown subproject template type: '$type'"
-        return 1
-    fi
-
-    printLog "creating subproject '$name' ($type)"
-    mkdir -p -- "$ssm_root/$name" || { printErr "failed to create subproject directory '$name'"; return 1; }
-
-    # shellcheck disable=SC2034 # used by the mo templates
-    local subproject_name="$name" subproject_version="0.1.0"
-    renderTree "$tpl_dir" "$name"
-
-    local dir rel
-    while IFS= read -r -d '' dir; do
-        rel="${dir#"$tpl_dir"}"
-        rel="${rel#/}"
-        writeInverseIgnore "$dir" "$ssm_root/$name${rel:+"/$rel"}" "$name${rel:+"/$rel"}"
-    done < <(find "$tpl_dir" -type d -print0)
 }
 
 # fills git_user/git_signkey from git_mail if they're still <nil>
@@ -612,16 +724,12 @@ modeOf_init() {
     d["nixpkgs_pin"]="<latest>"
     local -a flake_systems=("x86_64-linux")
     local -a flake_devshell_frags=("default")
-    # every directory in .ssm/templates is a subproject template type
     local -a subproject_template_types=()
-    local tpl
-    for tpl in "$ssm_dir"/templates/*/; do
-        [[ -d "$tpl" ]] && subproject_template_types+=("$(basename -- "$tpl")")
-    done
-    (( ${#subproject_template_types[@]} )) || die "no subproject templates found in $ssm_dir/templates"
+    loadSubprojectTemplateTypes || die "no subproject templates found in $ssm_dir/templates"
     # names in order, subproject_types maps each name to its template type
-    local -a subprojects=()
+    local -a subprojects=() subprojects_existing=()
     local -A subproject_types=()
+    local subprojects_min=1 subprojects_exit=
     local default_subproject="${d["project_name"]//[^A-Za-z0-9_-]/-}"
     [[ "$default_subproject" =~ ^[A-Za-z_] ]] || default_subproject="_$default_subproject"
     subprojects+=("$default_subproject")
@@ -650,7 +758,13 @@ modeOf_init() {
     [[ "${d["nixpkgs_pin"]}" == "<nil>" ]] && d["nixpkgs_pin"]="";
 
     local -a run_commands=();
-    [[ ! -d "$ssm_root/.git" ]] && run_commands+=("git init")
+    [[ ! -d "$ssm_root/.git" ]] && {
+        if gum confirm "are you a homo?"; then
+            run_commands+=("git init -b main")
+        else
+            run_commands+=("git init")
+        fi
+    }
     if [[ ! -d "$ssm_root/.jj" ]]; then
         if command -v jj &> /dev/null; then
             run_commands+=("jj git init --colocate")
@@ -708,24 +822,80 @@ modeOf_init() {
         run_commands+=("sbx-shell madd . rw .")
     fi
 
-    if (( ${#run_commands[@]} )); then
+    if confirmRunCommands "${run_commands[@]}"; then
         # shellcheck disable=SC2016
-        gum format -- "" "## auto config will execute the following command(s):" "$(printf -- '- `%s`\n' "${run_commands[@]}")"
-        if gum confirm; then
-            runCommands "${run_commands[@]}" || exit 1
-            # shellcheck disable=SC2016
-            (( has_sbx )) && printLog 'enter the dev environment with `sbx-shell nix-develop`'
-        else
-            printWarn "skipped auto config, run the command(s) manually:"
-            printf '    %s\n' "${run_commands[@]}" >&2
-        fi
+        (( has_sbx )) && printLog 'enter the dev environment with `sbx-shell nix-develop`'
+    else
+        (( $? == 1 )) && exit 1
     fi
 
     exit 0
 }
 
+modeOf_add() {
+    # shellcheck disable=SC2016
+    [[ -f "$ssm_root/flake.nix" ]] || die "no flake.nix in $ssm_root, run \`ssm init\` first"
+
+    local -a subproject_template_types=()
+    loadSubprojectTemplateTypes || die "no subproject templates found in $ssm_dir/templates"
+    local -a subprojects=() subprojects_existing=()
+    local -A subproject_types=()
+    local subprojects_min=0 subprojects_exit=
+    mapfile -t subprojects_existing < <(readProjectSubprojects "$ssm_root/flake.nix")
+
+    if (( $# )); then
+        local type="${2:-base}"
+        validateNewSubprojectName "$1" || exit 1
+        hasSubprojectTemplateType "$type" || die "unknown subproject template type: '$type' (available: ${subproject_template_types[*]})"
+        subprojects+=("$1")
+        subproject_types["$1"]="$type"
+    else
+        drawTuiSubprojectsAdd
+        if ! drawTuiSubprojects "<confirm>" "<cancel>" || [[ "$subprojects_exit" == "<cancel>" ]]; then
+            exit 0
+        fi
+    fi
+
+    if (( ${#subprojects[@]} == 0 )); then
+        printLog "no subprojects to add"
+        exit 0
+    fi
+
+    local sub
+    for sub in "${subprojects[@]}"; do
+        renderSubproject "$sub" "${subproject_types["$sub"]}"
+    done
+    registerSubprojects "${subprojects[@]}"
+
+    # flakes only see files tracked by git
+    local -a run_commands=()
+    if [[ -d "$ssm_root/.git" ]]; then
+        local -a tracked=(".gitignore" "flake.nix" "${subprojects[@]}")
+        run_commands+=("git add -- ${tracked[*]@Q}")
+    fi
+    confirmRunCommands "${run_commands[@]}"
+    (( $? == 1 )) && exit 1
+
+    exit 0
+}
+
+# lists the commands and runs them once confirmed, returns 1 if a command failed
+# and 2 if they were skipped (or there were none)
+confirmRunCommands() {
+    (( $# )) || return 2
+    # shellcheck disable=SC2016
+    gum format -- "" "## auto config will execute the following command(s):" "$(printf -- '- `%s`\n' "$@")"
+    if gum confirm; then
+        runCommands "$@" || return 1
+    else
+        printWarn "skipped auto config, run the command(s) manually:"
+        printf '    %s\n' "$@" >&2
+        return 2
+    fi
+}
+
 # runs each command from "$ssm_root" in order and stops at the first failure
-# since the later commands depend on the earlier ones (eg. git config needs git init)
+# since the later commands depend on the earlier ones
 runCommands() {
     local -a cmds=("$@")
     local i rc

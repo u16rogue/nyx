@@ -36,7 +36,7 @@ my nix slop
     * Packages that expose `overridesOpts` can be further customized, for example `package.override { overridesOpts = { color = "#fff"; }; }`.
     * Sandboxed overrides uses `$HOME/.nyx/app-fake-root/<package>` as its bind point
 
-* [templates](./templates) - A set of templates with flakes. Mostly for development; includes a sandboxing shell hook.
+* [templates](./templates) - A set of templates with flakes. Mostly for development.
 
 * [nixos](./nixos) - NixOS configurations.
     * [nyxos-install](./nixos/nyxos-install) - Clanker-written, directly runnable installation script with automatic `nix shell` dependencies; bootstraps host identity and persistence, and can build a host-specific offline installer ISO.
