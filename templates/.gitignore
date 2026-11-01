@@ -2,7 +2,7 @@
 .*
 !.gitignore
 !default.nix
-!test-ssm
+!try-ssm
 
 !dev/
 !dev/**
