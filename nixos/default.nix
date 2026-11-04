@@ -87,6 +87,10 @@
                         assertion = let nyxhost_user_names = builtins.map (nyxhost_user: nyxhost_user.name) nyxhost.users; in builtins.length nyxhost_user_names == builtins.length (lib.unique nyxhost_user_names);
                         message = "nyx host '${hostname}' must not assign a user more than once.";
                     }
+                    {
+                        assertion = let nyxhost_workspaces = lib.concatMap (monitor: builtins.attrNames monitor.workspaces) nyxhost.monitors; in builtins.length nyxhost_workspaces == builtins.length (lib.unique nyxhost_workspaces);
+                        message = "nyx host '${hostname}' must not pin a workspace to more than one monitor.";
+                    }
                 ];
             })
             # Host users host configuration
@@ -172,6 +176,12 @@
                                 description = "Whether the display is enabled.";
                                 type = lib.types.bool;
                                 default = true;
+                            };
+                            workspaces = lib.mkOption {
+                                description = "Workspaces pinned to this monitor, keyed by workspace name or id.";
+                                type = lib.types.attrsOf (lib.types.submodule {});
+                                default = {};
+                                example = { "1" = {}; "3" = {}; };
                             };
                         };
                     });

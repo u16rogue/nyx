@@ -8,12 +8,21 @@
                 resolution = { x = 1440; y = 900; };
                 refreshrate = 75.11;
                 position = { x = 0; y = 0; };
+                workspaces = {
+                    "2" = {};
+                    "4" = {};
+                };
             };
             right = {
                 id = "DP-3";
                 resolution = { x = 1920; y = 1080; };
                 refreshrate = 165;
                 position = { x = left.resolution.x; y = 0; };
+                workspaces = {
+                    "1" = {};
+                    "3" = {};
+                    "5" = {};
+                };
             };
         in [ left right ];
 

@@ -4,7 +4,7 @@
 
 set -euo pipefail
 
-# Updates flake.lock and keeps the template locks on the same nixpkgs, so the
+# Updates flake.lock and keeps the template locks on the same shared inputs, so the
 # result passes `assert_templates`.
 #
 # Usage: update_lock [input...]    (no inputs: update all of them)
@@ -17,7 +17,7 @@ locks=(flake.lock templates/*/flake.lock)
 before="$(sha256sum "${locks[@]}")"
 
 nix flake update "$@"
-bash _nyx/sync_template_nixpkgs
+bash _nyx/sync_template_locks
 
 if [[ "$(sha256sum "${locks[@]}")" == "$before" ]]; then
     echo "[info] locks already up to date"

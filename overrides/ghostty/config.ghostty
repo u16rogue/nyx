@@ -1,4 +1,15 @@
 theme = Catppuccin Mocha
+# Pin the pre-1.4.0 Catppuccin Mocha colors; ghostty 1.4.0's bundled theme update washed out the bright palette.
+palette = 7=#a6adc8
+palette = 9=#f37799
+palette = 10=#89d88b
+palette = 11=#ebd391
+palette = 12=#74a8fc
+palette = 13=#f2aede
+palette = 14=#6bd7ca
+palette = 15=#bac2de
+selection-background = #585b70
+selection-foreground = #cdd6f4
 background-opacity = 0.9
 font-size = 11
 alpha-blending = linear

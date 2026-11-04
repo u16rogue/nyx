@@ -12,6 +12,7 @@
             writeText "hyprland.lua" (
                 builtins.readFile ./hyprland.lua
                 + "\n" + lib.concatMapStringsSep "\n" snippets.mkMonitor monitors + "\n"
+                + lib.concatMapStrings (line: line + "\n") (lib.concatMap snippets.mkWorkspaces (builtins.filter (monitor: monitor.enabled) monitors))
             )
         else # otherwise it can just directly import the file
             ./hyprland.lua

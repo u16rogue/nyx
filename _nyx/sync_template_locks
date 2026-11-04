@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+
+# THIS WAS WRITTEN BY A CLANKER
+
+set -euo pipefail
+
+# Pins every input a template shares with the root flake (and their transitive
+# inputs, e.g. flake-parts/nixpkgs-lib) to the root's locked source, so the
+# result passes `assert_templates`. Only `.locked` is copied: the template's
+# own `original` and input wiring (including follows) are kept as is.
+
+PROJECT_DIR="$(realpath "$(dirname "$(realpath "${BASH_SOURCE[0]}")")/..")"
+ROOT_LOCK="$PROJECT_DIR/flake.lock"
+
+if ! command -v jq >/dev/null 2>&1; then
+    echo "[err] jq is required to sync template lock entries." >&2
+    exit 1
+fi
+
+if [[ ! -f "$ROOT_LOCK" ]]; then
+    echo "[err] root flake lock not found: $ROOT_LOCK" >&2
+    exit 1
+fi
+
+sync_template_lock() {
+    local template_lock="$1"
+    local tmp_path=
+
+    if [[ ! -f "$template_lock" ]]; then
+        echo "[err] template flake lock not found: $template_lock" >&2
+        return 1
+    fi
+
+    tmp_path="$(mktemp "${template_lock}.tmp.XXXXXX")"
+    if ! jq --slurpfile root_lock "$ROOT_LOCK" '
+        $root_lock[0] as $root
+
+        # walk a template node alongside the matching root node, only through
+        # direct (string) references; follows are resolved by their targets
+        | def sync($tkey; $rkey):
+            if (.nodes[$tkey] | type) != "object" then
+                error("template missing node " + $tkey)
+            elif ($root.nodes[$rkey].locked | type) != "object" then
+                error("root missing locked source for node " + $rkey)
+            else
+                .nodes[$tkey].locked = $root.nodes[$rkey].locked
+                | reduce ((.nodes[$tkey].inputs // {}) | to_entries[]) as $input (.;
+                    ($root.nodes[$rkey].inputs // {})[$input.key] as $rref
+                    | if ($input.value | type) == "string" and ($rref | type) == "string" then
+                        sync($input.value; $rref)
+                      else
+                        .
+                      end
+                  )
+            end;
+
+        if (.root | type) != "string" or ($root.root | type) != "string" then
+            error("missing string .root")
+        else
+            . as $lock
+            | reduce (($lock.nodes[$lock.root].inputs // {}) | to_entries[]) as $input (.;
+                ($root.nodes[$root.root].inputs // {})[$input.key] as $rref
+                | if ($input.value | type) == "string" and ($rref | type) == "string" then
+                    sync($input.value; $rref)
+                  else
+                    .
+                  end
+              )
+        end
+    ' "$template_lock" > "$tmp_path"; then
+        rm -f "$tmp_path"
+        echo "[err] failed to sync $template_lock" >&2
+        return 1
+    fi
+    mv "$tmp_path" "$template_lock"
+
+    echo "[info] synced shared inputs in $template_lock"
+}
+
+for template_lock in "$PROJECT_DIR"/templates/*/flake.lock; do
+    sync_template_lock "$template_lock"
+done

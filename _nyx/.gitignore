@@ -4,7 +4,7 @@
 !assert_state
 !assert_templates
 !assert_hosts
-!sync_template_nixpkgs
+!sync_template_locks
 !release_hosts
 !assert_scan_whitelist
 !scan_hosts

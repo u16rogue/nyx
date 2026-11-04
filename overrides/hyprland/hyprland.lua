@@ -29,10 +29,10 @@ hl.bind(mainMod .. " + A", hl.dsp.focus({ direction = "l" }))
 hl.bind(mainMod .. " + W", hl.dsp.focus({ direction = "u" }))
 hl.bind(mainMod .. " + S", hl.dsp.focus({ direction = "d" }))
 
-local waybarSignal = hl.dsp.exec_cmd(resolvePathCommand("pkill") .. " -SIGUSR1 waybar")
--- Waybar starts hidden: toggle on modifier press, then toggle back on release.
-hl.bind(mainMod .. " + SUPER_L", waybarSignal, { ignore_mods = true, transparent = true })
-hl.bind(mainMod .. " + SUPER_L", waybarSignal, { ignore_mods = true, transparent = true, release = true })
+-- Waybar starts hidden: show on modifier press, hide on release (waybar maps SIGUSR1/2 to show/hide).
+-- Explicit show/hide instead of toggle so a missed or duplicated key event can't leave it stuck visible.
+hl.bind(mainMod .. " + SUPER_L", hl.dsp.exec_cmd(resolvePathCommand("pkill") .. " -SIGUSR1 waybar"), { ignore_mods = true, transparent = true })
+hl.bind(mainMod .. " + SUPER_L", hl.dsp.exec_cmd(resolvePathCommand("pkill") .. " -SIGUSR2 waybar"), { ignore_mods = true, transparent = true, release = true })
 
 -- AI-assisted: Sway-like tab movement without moving the whole Hyprland group.
 local function moveWindow(direction)
