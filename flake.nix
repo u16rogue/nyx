@@ -1,6 +1,8 @@
 {
     inputs = {
         nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
+        nixpkgs-opencode.url = "github:nixos/nixpkgs/0bb2eedc20e4739f29e8045034f2828ad7054f8f"; # TODO: remove once nixos-unstable includes nixpkgs c399e1b ("opencode: fix hash")
+
         flake-parts.url = "github:hercules-ci/flake-parts";
         preservation.url = "github:nix-community/preservation";
         wrappers = {
@@ -40,7 +42,14 @@
         ];
 
         systems = [ "x86_64-linux" ];
-        perSystem = { self', config, pkgs, ... }: {
+        perSystem = { self', config, pkgs, system, ... }: {
+            _module.args.pkgs = import nixpkgs {
+                inherit system;
+                overlays = [(final: prev: {
+                    opencode = inputs.nixpkgs-opencode.legacyPackages.${prev.stdenv.hostPlatform.system}.opencode;
+                })];
+            };
+
             devShells.default = pkgs.mkShellNoCC {
                 packages = with pkgs; [
                     jujutsu # git
