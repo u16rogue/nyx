@@ -29,10 +29,15 @@ hl.bind(mainMod .. " + A", hl.dsp.focus({ direction = "l" }))
 hl.bind(mainMod .. " + W", hl.dsp.focus({ direction = "u" }))
 hl.bind(mainMod .. " + S", hl.dsp.focus({ direction = "d" }))
 
--- Waybar starts hidden: show on modifier press, hide on release (waybar maps SIGUSR1/2 to show/hide).
--- Explicit show/hide instead of toggle so a missed or duplicated key event can't leave it stuck visible.
-hl.bind(mainMod .. " + SUPER_L", hl.dsp.exec_cmd(resolvePathCommand("pkill") .. " -SIGUSR1 waybar"), { ignore_mods = true, transparent = true })
-hl.bind(mainMod .. " + SUPER_L", hl.dsp.exec_cmd(resolvePathCommand("pkill") .. " -SIGUSR2 waybar"), { ignore_mods = true, transparent = true, release = true })
+-- Waybar starts hidden: toggle on modifier press, then toggle back on release.
+-- Uses the raw key event rather than binds: since 0.57 a `SUPER + SUPER_L` release bind
+-- doesn't match while another key is still held (e.g. releasing Super before 1 on a quick Super+1).
+local SUPER_L_KEYCODE = 133 -- xkb keycode (evdev KEY_LEFTMETA 125 + 8)
+hl.on("input.keyboard.key", function(keycode)
+    if keycode == SUPER_L_KEYCODE then
+        hl.dispatch(hl.dsp.exec_cmd(resolvePathCommand("pkill") .. " -SIGUSR1 waybar"))
+    end
+end)
 
 -- AI-assisted: Sway-like tab movement without moving the whole Hyprland group.
 local function moveWindow(direction)
