@@ -1,4 +1,4 @@
-{{! CLANKER EDITED: inputs, nixConfig and overlays are filled in by the subproject templates (_ssm.sh), outputs use an overlayed nixpkgs, the devshell frags carry the nix/bash language servers }}
+{{! CLANKER EDITED: inputs, nixConfig and overlays are filled in by the subproject templates (_ssm.sh), outputs use an overlayed nixpkgs, the devshell frags carry the nix/bash/lua language servers }}
 {
     # `ssm add` appends to the inputs, subprojects, overlays and nixConfig lists,
     # keep their `<name> = {` / `<name> = [` openers on their own line
@@ -63,8 +63,8 @@
             {{#flake_devshell_frags}}
                 {{.}} = pkgs.mkShellNoCC {
                     inputsFrom = lib.attrValues shells;
-                    # editor: nix (flake.nix, shell.nix) and bash (./do) servers
-                    packages = with pkgs; [ nil bash-language-server shellcheck ];
+                    # editor: nix (flake.nix, shell.nix), bash (./do) and lua (.nvim.lua) servers
+                    packages = with pkgs; [ nil bash-language-server shellcheck lua-language-server ];
                     shellHook = /*bash*/ ''export NIX_FRAGMENT="{{.}}"'';
                 };
             {{/flake_devshell_frags}}
@@ -99,8 +99,8 @@
         {{#flake_devshell_frags}}
             {{.}} = pkgs.mkShellNoCC {
                 inputsFrom = lib.attrValues shells;
-                # editor: nix (flake.nix, shell.nix) and bash (./do) servers
-                packages = with pkgs; [ nil bash-language-server shellcheck ];
+                # editor: nix (flake.nix, shell.nix), bash (./do) and lua (.nvim.lua) servers
+                packages = with pkgs; [ nil bash-language-server shellcheck lua-language-server ];
                 shellHook = /*bash*/ ''export NIX_FRAGMENT="{{.}}"'';
             };
         {{/flake_devshell_frags}}
