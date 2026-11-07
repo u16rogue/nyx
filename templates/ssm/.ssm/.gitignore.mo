@@ -9,6 +9,11 @@
 !.nyx-sbx/dev-hook.sh
 !.nyx-sbx/share/
 
+!.nvim.lua
+!.nvim/
+!.nvim/snippets/
+!.nvim/snippets/*.json
+
 {{#subprojects}}
 !{{.}}/
 {{/subprojects}}

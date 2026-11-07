@@ -12,6 +12,32 @@
 # Remote machines
 * When you are asked to diagnose a remote machine remember that you can offer to generate a keypair and offer your public key. Serve it as a one liner that can be run in a shell and ensure that this access expires in a few minutes or as appropriate to the requested operation (e.g. `expiry-time="YYYYMMDDHHMM"` in `authorized_keys`).
 
+# Code Style
+* Functions and methods are camel case. (eg. `treeAppend`)
+* Prefer noun verb for functions `arrayPush(&array, elem)` as it mirrors `array.push` and it simplified regex lookups.
+* Types are pascal case. (eg. `FlatArray`)
+* Variables and members are snake case (eg. `array_of_elems`)
+* Always minimize scope by localizing it to where its used. A scope that doesn't use it should not have it in the first place.
+    ```c
+    // DO NOT
+    void main() {
+        int x;
+        int y;
+        // use x
+        // ... a bunch of code ...
+        // use y
+    }
+
+    // DO
+    void main() {
+        int x;
+        // use x
+        // ... a bunch of code ...
+        int y;
+        // use y
+    }
+    ```
+
 # Disclosure
 * When you're writing anything important (code, configs, scripts) you are REQUIRED to add disclosure that it's written by you, a clanker. Use the comment syntax of the language you're writing in.
     * `CLANKER START/END`: wraps a block you wrote

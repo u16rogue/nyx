@@ -4,6 +4,7 @@
 !flake.lock
 !flake.nix
 !README.md
+!.nvim.lua
 !nixos/
 !overrides/
 !scripts/

@@ -1090,6 +1090,8 @@ modeOf_init() {
         addStep host_steps sbx-madd "sbx-shell madd . rw ."
     fi
     addSubprojectSteps "$has_sbx" "${subprojects[@]}"
+    # CLANKER ASSISTED: trust the rendered .nvim.lua where neovim runs
+    addEditorTrustStep
 
     # `<latest>` only affects the lock command below, it must not end up as a revision in the flake
     local flake_nixpkgs_pin="${d["nixpkgs_pin"]}"
@@ -1121,12 +1123,18 @@ modeOf_init() {
     printLog "creating sandbox config .nyx-sbx"
     renderTree "$ssm_dir/.nyx-sbx" ".nyx-sbx" || die "failed to create .nyx-sbx"
 
+    # CLANKER ASSISTED: the neovim project config (.nvim.lua, .nvim/snippets) goes into the project root
+    printLog "creating editor config .nvim.lua, .nvim"
+    mo "$ssm_dir/.nvim.lua.mo" > "$ssm_stage/.nvim.lua" || die "failed to create .nvim.lua"
+    renderTree "$ssm_dir/.nvim" ".nvim" || die "failed to create .nvim"
+
     for sub in "${subprojects[@]}"; do
         renderSubproject "$sub" "${subproject_types["$sub"]}" || die "failed to create subproject '$sub'"
     done
 
     # flakes only see files tracked by git
-    local -a tracked=(".gitignore" "flake.nix" ".nyx-sbx" "${subprojects[@]}")
+    # CLANKER EDITED: also tracks the editor config
+    local -a tracked=(".gitignore" "flake.nix" ".nyx-sbx" ".nvim.lua" ".nvim" "${subprojects[@]}")
     # CLANKER ASSISTED: track the copied agent instructions
     [[ -f "$ssm_stage/AGENTS.md" || -f "$ssm_root/AGENTS.md" ]] && tracked+=("AGENTS.md")
     addStep host_steps git-add "git add -- ${tracked[*]@Q}"
@@ -1149,6 +1157,16 @@ modeOf_init() {
 
     exit 0
 }
+
+# CLANKER START nvim_trust: sandbox step that adds the project's .nvim.lua to neovim's trust list
+# ('exrc'), so it runs without the prompt. the trust list is per environment, so it's done inside
+# the sandbox (or the plain `nix develop` without one). editing .nvim.lua asks again, as it should
+addEditorTrustStep() {
+    local lua='lua local ok, err = vim.secure.trust({ action = "allow", path = ".nvim.lua" }) if not ok then io.stderr:write(tostring(err) .. "\n") vim.cmd.cquit() end'
+    addStep sandbox_steps "sandbox:nvim:trust" \
+        "if command -v nvim &> /dev/null; then nvim --headless --clean -c ${lua@Q} -c 'qa!'; else printWarn 'nvim is unavailable, run :trust on .nvim.lua yourself'; fi"
+}
+# CLANKER END nvim_trust
 
 # CLANKER START sandbox_entry: host step that runs the sandbox steps inside the sandbox
 # addSandboxEntryStep <has sbx> <devshell fragment>

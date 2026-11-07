@@ -1,0 +1,12 @@
+{
+    "try": {
+        "prefix": "try",
+        "body": [
+            "try {",
+            "\t$1",
+            "} catch (ex) {",
+            "\tconsole.error(ex);",
+            "}"
+        ]
+    }
+}

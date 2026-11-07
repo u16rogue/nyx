@@ -1,0 +1,11 @@
+{
+    "try": {
+        "prefix": "try",
+        "body": [
+            "try {",
+            "\t$1",
+            "} catch (const std::exception & ex) {",
+            "}"
+        ]
+    }
+}

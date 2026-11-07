@@ -1,0 +1,6 @@
+{
+    "import-app-path": {
+        "prefix": "import-app-path",
+        "body": "import * as app_paths from \"\\$app/paths\";"
+    }
+}

@@ -1,0 +1,10 @@
+{
+    "Allocator": {
+        "prefix": "Allocator",
+        "body": "std.mem.Allocator"
+    },
+    "assert": {
+        "prefix": "assert",
+        "body": "std.debug.assert($1);"
+    }
+}
