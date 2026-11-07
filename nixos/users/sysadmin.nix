@@ -40,6 +40,8 @@
                         bind-key C-q send-prefix
                         set-option -g detach-on-destroy off
                         set-option -ga terminal-overrides ",xterm-256color:Tc"
+                        set-option -g set-clipboard on
+                        set-option -as terminal-features ",*:clipboard"
                         bind-key \` display-popup
                         bind j select-pane -D
                         bind k select-pane -U

@@ -52,6 +52,14 @@ vim.diagnostic.config({
 vim.api.nvim_create_autocmd('RecordingEnter', { callback = function() vim.o.cmdheight = 1 end })
 vim.api.nvim_create_autocmd('RecordingLeave', { callback = function() vim.o.cmdheight = 0 end })
 
+vim.api.nvim_create_autocmd('TextYankPost', {
+    callback = function()
+        if vim.v.event.operator == 'y' then
+            require('vim.ui.clipboard.osc52').copy('+')(vim.v.event.regcontents)
+        end
+    end,
+})
+
 -- restore buffers
 map('n', '<A-S-c>', require('restore_buffers').restore, 'Restore last closed buffer')
 
@@ -66,6 +74,7 @@ vim.api.nvim_create_autocmd('VimLeavePre', {
 })
 
 -- word wrap fix
+---@diagnostic disable-next-line: unused-local
 for _k, v in pairs({ 'j', 'k' }) do
     vim.keymap.set('n', v, 'v:count == 0 ? "g' .. v .. '" : "' .. v .. '"', { expr = true, silent = true })
 end

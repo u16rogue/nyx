@@ -150,6 +150,7 @@ hl.permission({
     type = "screencopy",
     mode = "allow",
 })
+
 hl.permission({
     binary = ".*/grim",
     type = "screencopy",
@@ -161,6 +162,7 @@ hl.window_rule({
     match = { class = ".*" },
     suppress_event = "maximize",
 })
+
 hl.window_rule({
     name = "fix-xwayland-drag",
     match = {

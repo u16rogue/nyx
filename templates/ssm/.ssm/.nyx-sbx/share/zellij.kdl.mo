@@ -1,3 +1,9 @@
+// workaround until zellij-org/zellij#5653 ships: side-by-side bar plugins aren't detected as a bar, so with
+// frames off they reserve a boundary row and a size=1 bar gets drawn over. full frames skip that for
+// borderless panes, so tiled panes here need borderless=true to stay frameless
+pane_frames true
+pane_frame_style "full"
+
 keybinds {
     shared {
         bind "Alt 1" { GoToTab 1; }
@@ -9,7 +15,7 @@ keybinds {
 
 layout {
     default_tab_template {
-        pane size=2 split_direction="vertical" {
+        pane size=1 split_direction="vertical" {
             pane size=55 borderless=true {
                 plugin location="compact-bar"
             }
@@ -37,7 +43,7 @@ layout {
         {{.}}
         {{/ssm_zellij_panes}}
         {{^ssm_zellij_panes}}
-        pane start_suspended=true command="$SHELL"
+        pane borderless=true start_suspended=true command="$SHELL"
         {{/ssm_zellij_panes}}
     }
 

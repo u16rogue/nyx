@@ -9,5 +9,5 @@ if (( $# == 0 )) && command -v zellij &>/dev/null; then
             echo "[warn] failed to remove previous Zellij session" >&2
         fi
     fi
-    exec zellij "${zellij_args[@]}" attach --create main options --pane-frames false
+    exec zellij "${zellij_args[@]}" attach --create main
 fi
