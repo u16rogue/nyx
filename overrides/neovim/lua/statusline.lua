@@ -1,5 +1,5 @@
--- AI-assisted: native status line, same layout and catppuccin colours as the old lualine one:
--- ▎mode ◤◢ icon path ◤ diff ........ lsp diagnostics ◢ search branch ◣◥ progress line:col format
+-- AI-assisted: native status line, plain catppuccin blocks without separator glyphs:
+-- [ mode ][ icon path ] diff ........ lsp diagnostics [ search branch ][ progress line:col format ]
 -- Sets 'statusline' when required; the option calls back into render().
 local C = require('catppuccin.palettes').get_palette('mocha')
 -- letter + colour, looked up by the first two then the first character of the mode
@@ -18,9 +18,7 @@ local function set_highlights()
     local color = current_mode()[2]
     local hl = function(name, spec) vim.api.nvim_set_hl(0, name, spec) end
     hl('NyxSlA',     { fg = C.mantle, bg = color, bold = true })
-    hl('NyxSlAEdge', { fg = color, bg = C.mantle })
     hl('NyxSlB',     { fg = color, bg = C.surface0 })
-    hl('NyxSlBEdge', { fg = C.surface0, bg = C.mantle })
     hl('NyxSlC',     { fg = C.text, bg = C.mantle })
     hl('StatusLine', { fg = C.text, bg = C.mantle })
     for name, fg in pairs({ Error = C.red, Warn = C.yellow, Info = C.sky, Hint = C.teal }) do
@@ -90,13 +88,13 @@ local function render()
     local formats = { unix = '\u{E712}', dos = '\u{E70F}', mac = '\u{E711}' }
 
     return table.concat({
-        '%#NyxSlAEdge#▎%#NyxSlA#', current_mode()[1], ' %#NyxSlAEdge#\u{E0BC}%#NyxSlBEdge#\u{E0BA}',
-        '%#NyxSlB# ', icon(name, bo.filetype), esc(path), flags, ' %#NyxSlBEdge#\u{E0BC}',
+        '%#NyxSlA# ', current_mode()[1], ' ',
+        '%#NyxSlB# ', icon(name, bo.filetype), esc(path), flags, ' ',
         '%#NyxSlC# ', table.concat(diff, ' '),
         '%=',
         esc(lsp), ' ', table.concat(diags, ' '), '%#NyxSlC# ',
-        '%#NyxSlBEdge#\u{E0BE}%#NyxSlB# ', esc(search), esc(branch), ' %#NyxSlBEdge#\u{E0B8}',
-        '%#NyxSlAEdge#\u{E0BE}%#NyxSlA# %P %3l:%-2v ', formats[bo.fileformat] or '', ' ',
+        '%#NyxSlB# ', esc(search), esc(branch), ' ',
+        '%#NyxSlA# %P %3l:%-2v ', formats[bo.fileformat] or '', ' ',
     })
 end
 
