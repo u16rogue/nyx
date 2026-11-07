@@ -4,7 +4,7 @@
     * Always take note of this especially on diagnosing. Never draw conclusions about the host from what you see in the sandbox.
 * You must notify the user if you need something from the host
 * If you need something create a bash script in `.nyx-sbx/share` with an appropriate name
-    * This script should generate a log in `.nyx-sbx/share` with the same name for you to read back since you can't run it yourself
+    * This script should write its output to a log in `.nyx-sbx/share` named after the script (`foo.sh` writes `foo.log`) for you to read back since you can't run it yourself
     * It must be concise and easy to read to be reviewed
     * It must only gather information unless the user explicitly asked for changes on the host
     * Wait for the user to run it, do not guess its result
@@ -86,9 +86,15 @@
     !.gitignore
     !build.zig
     !src/
+    # This makes sense because in this context `src` is expected to only contain zig source code
     !src/**/
     !src/**/*.zig
+    # This folder despite having a similar role is not "predictable" and hence should NOT be globbed, it gets its own .gitignore listing every file
     !assets/
+    # Same kind of content as `src`, but it's a small fixed set of files, so list them explicitly instead of globbing
+    !scripts/
+    !scripts/setup.sh
+    !scripts/deploy.sh
     ```
     * assets/.gitignore
     ```

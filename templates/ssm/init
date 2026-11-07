@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
-# this script will automatically be deleted after init
+# CLANKER EDITED: it's replaced by the generated run script instead of deleted
+# this script will automatically be replaced by the generated `./init` run script
 # and the .ssm templating will be automatically ignored
 # use the `ssm` script stored to control the templating further
 

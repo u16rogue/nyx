@@ -7,6 +7,13 @@ set -o pipefail
 
 ssm_dir="$(realpath -- "$(dirname -- "${BASH_SOURCE[0]}")")"
 ssm_root="$(dirname -- "$ssm_dir")"
+# CLANKER ASSISTED: the generated run script replaces the bootstrap `init`, the stage is created per run.
+# .ssm may be tracked or read only so everything temporary goes into the (ignored) .ssm-stage in the
+# project root, which also keeps the final moves on the same filesystem
+ssm_run_name="init"
+ssm_subproject_version="0.1.0"
+ssm_stage_dir="$ssm_root/.ssm-stage"
+ssm_stage=
 
 printErr() {
     printf '\033[37m[\033[91merr\033[37m]\033[0m %s\n' "$1" >&2
@@ -32,11 +39,14 @@ ssm <mode>
 --------------------------------------------------------------------------------
 <mode>:
     init
-        initialize the project
+        initialize the project. the files are rendered and the remaining
+        setup (git, sbx-shell, flake lock, sandbox steps) is written into
+        ./init, run it to finish the setup. it removes itself once done.
     add [<name> [<type>]]
         add more sub projects to an initialized project. without a name the
         subprojects are picked in the tui, otherwise <name> is created from
-        the <type> template (default: base).
+        the <type> template (default: base). the remaining setup is
+        written into ./init like \`init\` does.
     sync
         ! todo !
         re-render missing _meta files, re-pick the zellij panes and re-apply
@@ -369,18 +379,20 @@ drawTuiSubprojectType() {
     gum choose --limit 1 --header "$1" --selected "${2:-}" "${subproject_template_types[@]}"
 }
 
+# CLANKER EDITED: the template type is picked before the name
 drawTuiSubprojectsAdd() {
+    local type=
+    if ! type=$(drawTuiSubprojectType "new subproject template type"); then
+        return 1
+    fi
+
     local name=
-    if ! name=$(gum input --header "new subproject name" --placeholder "eg. web"); then
+    if ! name=$(gum input --header "new $type subproject name" --placeholder "eg. web"); then
         return 1
     fi
     [[ -z "$name" ]] && return 0
     validateNewSubprojectName "$name" || return 1
 
-    local type=
-    if ! type=$(drawTuiSubprojectType "$name template type"); then
-        return 1
-    fi
     subprojects+=("$name")
     subproject_types["$name"]="$type"
 }
@@ -484,31 +496,231 @@ drawTuiSubprojects() {
     done
 }
 
-# renders "$ssm_dir/templates/<type>" into "$ssm_root/<name>", every directory gets
-# a generated inverse ignore
+# CLANKER EDITED: renders into "$render_root" (the stage) instead of "$ssm_root", returns
+# failures and leaves the ignores to the template if it ships its own `.gitignore.mo`
+# renders "$ssm_dir/templates/<type>" into "$render_root/<name>", every directory gets
+# a generated inverse ignore unless the template provides a `.gitignore.mo`
 renderSubproject() {
     local name="$1"
     local type="$2"
     local tpl_dir="$ssm_dir/templates/$type"
+    local base="${render_root:-"$ssm_root"}"
     if [[ ! -d "$tpl_dir" ]]; then
         printErr "unknown subproject template type: '$type'"
         return 1
     fi
 
     printLog "creating subproject '$name' ($type)"
-    mkdir -p -- "$ssm_root/$name" || { printErr "failed to create subproject directory '$name'"; return 1; }
+    mkdir -p -- "$base/$name" || { printErr "failed to create subproject directory '$name'"; return 1; }
 
     # shellcheck disable=SC2034 # used by the mo templates
-    local subproject_name="$name" subproject_version="0.1.0"
-    renderTree "$tpl_dir" "$name"
+    local subproject_name="$name" subproject_version="$ssm_subproject_version"
+    renderTree "$tpl_dir" "$name" || return 1
 
+    [[ -f "$tpl_dir/.gitignore.mo" ]] && return 0
     local dir rel
     while IFS= read -r -d '' dir; do
         rel="${dir#"$tpl_dir"}"
         rel="${rel#/}"
-        writeInverseIgnore "$dir" "$ssm_root/$name${rel:+"/$rel"}" "$name${rel:+"/$rel"}"
+        writeInverseIgnore "$dir" "$base/$name${rel:+"/$rel"}" "$name${rel:+"/$rel"}" || return 1
     done < <(find "$tpl_dir" -type d -print0)
 }
+
+# CLANKER START template_hooks: per template `_ssm.sh` hooks
+# sources "$ssm_dir/templates/<type>/_ssm.sh" (if any) once per type and collects
+# its declarations into these variables from the caller's scope:
+#   tpl_loaded[<type>]     set once the type was loaded
+#   tpl_covers[<type>]     newline separated sbx-shell cover paths, relative to the subproject
+#   tpl_hooks[<type>]      space separated hooks it defines (scaffold stage finalize)
+#   run_functions          the hooks renamed to `tpl_<type>__<hook>` for the run script
+#   flake_inputs flake_overlays flake_substituters flake_trusted_keys (deduplicated)
+loadTemplateHook() {
+    local type="$1"
+    local hook_file="$ssm_dir/templates/$type/_ssm.sh"
+    [[ -n "${tpl_loaded["$type"]:-}" ]] && return 0
+    tpl_loaded["$type"]=1
+    tpl_covers["$type"]=
+    tpl_hooks["$type"]=
+    [[ -f "$hook_file" ]] || return 0
+
+    local -a ssm_tpl_covers=() ssm_tpl_flake_inputs=() ssm_tpl_flake_overlays=()
+    local -a ssm_tpl_flake_substituters=() ssm_tpl_flake_trusted_keys=()
+    local -a hooks=(scaffold stage finalize)
+    local hook fn
+    for hook in "${hooks[@]}"; do unset -f "ssm_tpl_$hook"; done
+
+    # shellcheck disable=SC1090
+    if ! source "$hook_file"; then
+        printErr "failed to load the '$type' template hooks"
+        return 1
+    fi
+
+    for hook in "${hooks[@]}"; do
+        declare -F "ssm_tpl_$hook" > /dev/null || continue
+        fn="$(declare -f "ssm_tpl_$hook")"
+        run_functions+=("tpl_${type}__${hook} ${fn#"ssm_tpl_$hook "}")
+        tpl_hooks["$type"]+="${tpl_hooks["$type"]:+" "}$hook"
+        unset -f "ssm_tpl_$hook"
+    done
+    (( ${#ssm_tpl_covers[@]} )) && tpl_covers["$type"]="$(printf '%s\n' "${ssm_tpl_covers[@]}")"
+
+    appendUnique flake_inputs "${ssm_tpl_flake_inputs[@]}"
+    appendUnique flake_overlays "${ssm_tpl_flake_overlays[@]}"
+    appendUnique flake_substituters "${ssm_tpl_flake_substituters[@]}"
+    appendUnique flake_trusted_keys "${ssm_tpl_flake_trusted_keys[@]}"
+}
+
+# appendUnique <array name> <value>...
+appendUnique() {
+    local -n __au_arr="$1"
+    shift
+    local value existing
+    for value in "$@"; do
+        for existing in "${__au_arr[@]}"; do
+            [[ "$existing" == "$value" ]] && continue 2
+        done
+        __au_arr+=("$value")
+    done
+}
+
+hasTemplateHook() {
+    [[ " ${tpl_hooks["$1"]} " == *" $2 "* ]]
+}
+
+# the run script's steps are pairs of <id> <command>, stored pre-quoted for the mo template
+# addStep <array name> <id> <command>
+addStep() {
+    local -n __as_arr="$1"
+    __as_arr+=("${2@Q} ${3@Q}")
+}
+
+# adds the cover and sandbox steps of the subprojects to `host_steps` and `sandbox_steps`
+# addSubprojectSteps <has sbx> <name>...
+addSubprojectSteps() {
+    local has_sbx="$1"
+    shift
+    local sub type cover
+    local -a covers
+    for sub in "$@"; do
+        type="${subproject_types["$sub"]}"
+        covers=()
+        [[ -n "${tpl_covers["$type"]}" ]] && mapfile -t covers <<< "${tpl_covers["$type"]}"
+        if (( has_sbx )); then
+            for cover in "${covers[@]}"; do
+                addStep host_steps "sbx-cover:$sub/$cover" "sbx-shell mcover . ${sub@Q}/${cover@Q}"
+            done
+        fi
+        if hasTemplateHook "$type" scaffold || hasTemplateHook "$type" stage; then
+            addStep sandbox_steps "sandbox:$sub:stage" \
+                "sandboxSubproject ${sub@Q} ${type@Q} ${ssm_subproject_version@Q}${covers[*]:+" ${covers[*]@Q}"}"
+        fi
+        if hasTemplateHook "$type" finalize; then
+            addStep sandbox_steps "sandbox:$sub:finalize" "finalizeSubproject ${sub@Q} ${type@Q} ${ssm_subproject_version@Q}"
+        fi
+    done
+}
+
+# refuses to replace a run script that didn't finish yet
+assertNoPendingRunScript() {
+    local file="$ssm_root/$ssm_run_name"
+    if [[ -f "$file" ]] && grep -qxF '# ssm-run-script' "$file"; then
+        die "./$ssm_run_name from a previous ssm run is still pending, run or delete it (and .ssm-stage/) first"
+    fi
+}
+
+# renders the run script from `host_steps`, `sandbox_steps`, `run_functions` and
+# `run_done_hints` into "$ssm_root/$ssm_run_name"
+# writeRunScript <mode> <expect sbx>
+writeRunScript() {
+    local tmp="$ssm_stage_dir/$ssm_run_name.tmp"
+    # shellcheck disable=SC2034 # used by the mo template
+    local run_mode="$1" run_expect_sbx="${2#0}" run_name="$ssm_run_name"
+    # shellcheck disable=SC2034
+    local -a run_host_steps=("${host_steps[@]}") run_sandbox_steps=("${sandbox_steps[@]}")
+    mkdir -p -- "$ssm_stage_dir" || { printErr "failed to create .ssm-stage"; return 1; }
+    rm -f -- "$ssm_stage_dir/$ssm_run_name.done"
+    if ! mo "$ssm_dir/run.sh.mo" > "$tmp" || ! chmod +x -- "$tmp" || ! mv -f -- "$tmp" "$ssm_root/$ssm_run_name"; then
+        rm -f -- "$tmp"
+        rmdir -- "$ssm_stage_dir" 2> /dev/null
+        printErr "failed to create ./$ssm_run_name"
+        return 1
+    fi
+    rmdir -- "$ssm_stage_dir" 2> /dev/null
+    printLog "created ./$ssm_run_name"
+}
+
+# shows the generated steps and offers to run them right away
+offerRunScript() {
+    # shellcheck disable=SC2016
+    gum format -- "" "## ./$ssm_run_name will run the following step(s):" \
+        "$(bash "$ssm_root/$ssm_run_name" --list | sed 's/^\[.\] *\([^ ]*\) *\(.*\)$/- **\1** `\2`/')"
+    if gum confirm "run ./$ssm_run_name now?"; then
+        cleanupStage
+        cd -- "$ssm_root" || die "couldn't enter $ssm_root"
+        exec bash "./$ssm_run_name"
+    fi
+    printLog "review and run ./$ssm_run_name when you're ready"
+}
+
+# a stage inside the project root keeps the final moves on the same filesystem
+createStage() {
+    mkdir -p -- "$ssm_stage_dir" || die "failed to create .ssm-stage"
+    ssm_stage="$(mktemp -d "$ssm_stage_dir/stage.XXXXXX")" || die "failed to create a stage"
+    trap cleanupStage EXIT
+}
+
+cleanupStage() {
+    [[ -n "${ssm_stage:-}" ]] && rm -rf -- "$ssm_stage"
+    ssm_stage=
+    # only goes away once nothing else (eg. a pending run's progress) uses it
+    [[ -d "$ssm_stage_dir" ]] && rmdir -- "$ssm_stage_dir" 2> /dev/null
+    return 0
+}
+
+# moves everything in the stage into "$ssm_root". new entries are moved as a whole,
+# existing directories are merged and existing files are kept unless they're listed in <force>
+# commitStage <force>...
+commitStage() {
+    local -A force=()
+    local entry
+    for entry in "$@"; do force["$entry"]=1; done
+
+    local rc=0 name
+    for entry in "$ssm_stage"/* "$ssm_stage"/.*; do
+        name="${entry##*/}"
+        [[ "$name" == . || "$name" == .. ]] && continue
+        [[ -e "$entry" || -L "$entry" ]] || continue
+        if [[ -n "${force["$name"]:-}" ]]; then
+            mv -fT -- "$entry" "$ssm_root/$name" || { printErr "failed to move $name into place"; rc=1; }
+        else
+            commitStageEntry "$entry" "$ssm_root/$name" "$name" || rc=1
+        fi
+    done
+    return "$rc"
+}
+
+# commitStageEntry <src> <dst> <display path>
+commitStageEntry() {
+    local src="$1" dst="$2"
+    if [[ ! -e "$dst" && ! -L "$dst" ]]; then
+        mv -T -- "$src" "$dst" || { printErr "failed to move $3 into place"; return 1; }
+        return 0
+    fi
+    if [[ ! -d "$src" || -L "$src" || ! -d "$dst" || -L "$dst" ]]; then
+        printWarn "$3 already exists, skipping"
+        return 0
+    fi
+
+    local rc=0 entry name
+    for entry in "$src"/* "$src"/.*; do
+        name="${entry##*/}"
+        [[ "$name" == . || "$name" == .. ]] && continue
+        [[ -e "$entry" || -L "$entry" ]] || continue
+        commitStageEntry "$entry" "$dst/$name" "$3/$name" || rc=1
+    done
+    return "$rc"
+}
+# CLANKER END template_hooks
 
 # prints the names listed in the `subprojects = [ ./<name> ... ];` block(s) of <flake>
 readProjectSubprojects() {
@@ -524,42 +736,101 @@ readProjectSubprojects() {
     ' "$1"
 }
 
+# CLANKER START flake_list_add: generalized the `subprojects` awk to any list/attrset block
+# adds <line>... to every `<block> = [` / `<block> = {` block of <file> whose opener is on its
+# own line, lines that are already in the block (ignoring the indentation) are left alone.
+# returns 2 if there's no such block
+# flakeListAdd <file> <block> <line>...
+flakeListAdd() {
+    local file="$1" block="$2"
+    shift 2
+    (( $# )) || return 0
+    local tmp rc=0
+    tmp="$(mktemp)" || { printErr "failed to create a temporary file"; return 1; }
+    awk -v block="$block" -v lines="$(printf '%s\n' "$@")" '
+        function trim(s) { sub(/^[[:space:]]+/, "", s); sub(/[[:space:]]+$/, "", s); return s }
+        BEGIN {
+            n = split(lines, add, "\n")
+            opener = "^[[:space:]]*" block "[[:space:]]*=[[:space:]]*[[{][[:space:]]*$"
+        }
+        !inblock && $0 ~ opener {
+            inblock = 1; indent = ""; split("", seen)
+            match($0, /^[[:space:]]*/); outer = substr($0, 1, RLENGTH)
+            closer = "^" outer "(\\]|\\});?[[:space:]]*$"
+            print; next
+        }
+        inblock && $0 ~ closer {
+            if (indent == "") indent = outer "    "
+            for (i = 1; i <= n; i++) {
+                if (add[i] == "" || (trim(add[i]) in seen)) continue
+                print indent add[i]; seen[trim(add[i])] = 1
+            }
+            inblock = 0; found = 1; print; next
+        }
+        inblock && trim($0) != "" {
+            seen[trim($0)] = 1
+            if (indent == "") { match($0, /^[[:space:]]*/); indent = substr($0, 1, RLENGTH) }
+        }
+        { print }
+        END { exit found ? 0 : 2 }
+    ' "$file" > "$tmp"
+    rc=$?
+    # written through instead of moved to keep the file mode
+    if (( rc == 0 )) && ! cat -- "$tmp" > "$file"; then
+        printErr "failed to update $file"
+        rc=1
+    fi
+    rm -f -- "$tmp"
+    return "$rc"
+}
+# inserts the empty nixConfig lists `ssm init` renders before the top level `outputs`
+# if the flake has no `nixConfig` yet
+# flakeEnsureNixConfig <file>
+flakeEnsureNixConfig() {
+    local file="$1" tmp
+    grep -q '^[[:space:]]*nixConfig[[:space:]]*=' "$file" && return 0
+    tmp="$(mktemp)" || { printErr "failed to create a temporary file"; return 1; }
+    if awk '
+        !done && /^[[:space:]]*outputs[[:space:]]*=/ {
+            match($0, /^[[:space:]]*/); i = substr($0, 1, RLENGTH)
+            print i "nixConfig = {"
+            print i "    extra-substituters = ["
+            print i "    ];"
+            print i "    extra-trusted-public-keys = ["
+            print i "    ];"
+            print i "};"
+            print ""
+            done = 1
+        }
+        { print }
+        END { exit !done }
+    ' "$file" > "$tmp"; then
+        cat -- "$tmp" > "$file" || printErr "failed to update $file"
+    fi
+    rm -f -- "$tmp"
+}
+# CLANKER END flake_list_add
+
+# CLANKER EDITED: works on the staged flake.nix/.gitignore ("$render_root"), the flake list
+# editing moved into flakeListAdd
 # adds <name>... to the `subprojects` block(s) of the root flake.nix and un-ignores them in
 # the root .gitignore, names that are already listed are left alone
 # registerSubprojects <name>...
 registerSubprojects() {
     (( $# )) || return 0
-    local flake="$ssm_root/flake.nix"
-    local ignore="$ssm_root/.gitignore"
-    local tmp=
+    local base="${render_root:-"$ssm_root"}"
+    local flake="$base/flake.nix"
+    local ignore="$base/.gitignore"
     local rc=0
 
     printLog "adding $* to flake.nix"
-    tmp="$(mktemp)" || { printErr "failed to create a temporary file"; return 1; }
-    if awk -v names="$*" '
-        BEGIN { n = split(names, add, " ") }
-        /^[[:space:]]*subprojects[[:space:]]*=[[:space:]]*\[[[:space:]]*$/ {
-            inblock = 1; indent = ""; split("", seen); print; next
-        }
-        inblock && /^[[:space:]]*\];/ {
-            if (indent == "") { match($0, /^[[:space:]]*/); indent = substr($0, 1, RLENGTH) "    " }
-            for (i = 1; i <= n; i++) if (!(add[i] in seen)) print indent "./" add[i]
-            inblock = 0; found = 1; print; next
-        }
-        inblock && match($0, /^[[:space:]]*\.\//) {
-            if (indent == "") indent = substr($0, 1, RLENGTH - 2)
-            name = substr($0, RLENGTH + 1); sub(/[[:space:]].*$/, "", name); seen[name] = 1
-        }
-        { print }
-        END { exit !found }
-    ' "$flake" > "$tmp"; then
-        # written through instead of moved to keep the file mode
-        cat -- "$tmp" > "$flake" || { printErr "failed to update flake.nix"; rc=1; }
-    else
-        printErr "couldn't find the \`subprojects = [ ... ];\` list in flake.nix, add the subproject(s) manually"
+    local -a lines=()
+    local name
+    for name in "$@"; do lines+=("./$name"); done
+    if ! flakeListAdd "$flake" subprojects "${lines[@]}"; then
+        printErr "couldn't add to the \`subprojects = [ ... ];\` list in flake.nix, add the subproject(s) manually"
         rc=1
     fi
-    rm -f -- "$tmp"
 
     if [[ ! -f "$ignore" ]]; then
         printWarn "no root .gitignore, skipping"
@@ -594,6 +865,8 @@ writeInverseIgnore() {
         entry="${path##*/}"
         [[ -e "$path" ]] || continue
         [[ "$entry" == . || "$entry" == .. || "$entry" == .gitignore ]] && continue
+        # CLANKER ASSISTED: the template hooks aren't rendered
+        [[ "$entry" == _ssm.sh && "$(dirname -- "$tpl_dir")" == "$ssm_dir/templates" ]] && continue
         if [[ -d "$path" ]]; then
             dirs+=("!$entry/")
         else
@@ -613,31 +886,46 @@ writeInverseIgnore() {
     fi
 }
 
-# renders <template dir> into "$ssm_root/<dst>", `.mo` files are rendered with the variables
+# CLANKER EDITED: renders into "$render_root" (the stage), skips the template root's `_ssm.sh`
+# hooks, warns about plain `.gitignore` files instead of silently skipping them and returns 1
+# if anything failed instead of only logging it
+# renders <template dir> into "$render_root/<dst>", `.mo` files are rendered with the variables
 # in scope and have the extension dropped, everything else is copied as is. existing files are
-# kept. the template's own `.gitignore` files only apply to the nyx repo and are skipped
+# kept. ignores meant for the project are shipped as `.gitignore.mo`, a plain `.gitignore`
+# would also apply to the repo the template lives in so those are skipped
 # renderTree <template dir> <dst>
 renderTree() {
     local tpl_dir="$1"
     local dst_root="$2"
+    local base="${render_root:-"$ssm_root"}"
+    local rc=0
 
     local src rel dst
     while IFS= read -r -d '' src; do
         rel="${src#"$tpl_dir/"}"
+        [[ "$rel" == _ssm.sh ]] && continue
+        if [[ "${rel##*/}" == .gitignore ]]; then
+            printWarn "skipping template file $rel, rename it to .gitignore.mo to ship it with the project"
+            continue
+        fi
         rel="$dst_root/${rel%.mo}"
-        dst="$ssm_root/$rel"
+        dst="$base/$rel"
         if [[ -e "$dst" ]]; then
             printWarn "$rel already exists, skipping"
             continue
         fi
-        mkdir -p -- "$(dirname -- "$dst")" || { printErr "failed to create $rel"; continue; }
+        mkdir -p -- "$(dirname -- "$dst")" || { printErr "failed to create $rel"; rc=1; continue; }
 
         if [[ "$src" == *.mo ]]; then
-            mo "$src" > "$dst" || printErr "failed to create $rel"
+            mo "$src" > "$dst" || { printErr "failed to create $rel"; rc=1; }
+            # CLANKER ASSISTED: rendered scripts stay executable
+            if [[ -x "$src" ]]; then chmod +x -- "$dst" || { printErr "failed to make $rel executable"; rc=1; }; fi
         else
-            cp -- "$src" "$dst" || printErr "failed to create $rel"
+            # CLANKER ASSISTED: the template may be read only (store, try-ssm), the copies have to be editable
+            { cp -- "$src" "$dst" && chmod u+w -- "$dst"; } || { printErr "failed to create $rel"; rc=1; }
         fi
-    done < <(find "$tpl_dir" -type f ! -name .gitignore -print0)
+    done < <(find "$tpl_dir" -type f -print0)
+    return "$rc"
 }
 
 # fills git_user/git_signkey from git_mail if they're still <nil>
@@ -757,59 +1045,39 @@ modeOf_init() {
 
     [[ "${d["nixpkgs_pin"]}" == "<nil>" ]] && d["nixpkgs_pin"]="";
 
-    local -a run_commands=();
+    # CLANKER EDITED: everything is rendered into a stage that is only moved into place once it all
+    # succeeded, and the commands are written into the ./init run script (replacing the bootstrap
+    # one) instead of being run. templates add their own flake inputs, sbx-shell covers and sandbox
+    # steps through their `_ssm.sh` hooks, removed confirmRunCommands
+    assertNoPendingRunScript
+
+    local -a flake_inputs=() flake_overlays=() flake_substituters=() flake_trusted_keys=() run_functions=()
+    local -A tpl_loaded=() tpl_covers=() tpl_hooks=()
+    local sub
+    for sub in "${subprojects[@]}"; do
+        loadTemplateHook "${subproject_types["$sub"]}" || exit 1
+    done
+
+    local -a host_steps=() sandbox_steps=() run_done_hints=()
     [[ ! -d "$ssm_root/.git" ]] && {
-        if gum confirm "are you a homo?"; then
-            run_commands+=("git init -b main")
+        if gum confirm "use branch 'main' instead of 'master'?"; then
+            addStep host_steps git-init "git init -b main"
         else
-            run_commands+=("git init")
+            addStep host_steps git-init "git init"
         fi
     }
     if [[ ! -d "$ssm_root/.jj" ]]; then
         if command -v jj &> /dev/null; then
-            run_commands+=("jj git init --colocate")
+            addStep host_steps jj-init "jj git init --colocate"
         else
             printWarn "jj is unavailable, skipping jj git init"
         fi
     fi
     local ssh_command="ssh -i ${d["git_ssh_id"]@Q}"
-    [[ "${d["git_user"]}" != "<nil>" ]] && run_commands+=("git config user.name ${d["git_user"]@Q}")
-    [[ "${d["git_mail"]}" != "<nil>" ]] && run_commands+=("git config user.email ${d["git_mail"]@Q}")
-    [[ "${d["git_signkey"]}" != "<nil>" ]] && run_commands+=("git config user.signingKey ${d["git_signkey"]@Q}")
-    [[ "${d["git_ssh_id"]}" != "<nil>" ]] && run_commands+=("git config core.sshCommand ${ssh_command@Q}")
-
-    # `<latest>` only affects the lock command below, it must not end up as a revision in the flake
-    local flake_nixpkgs_pin="${d["nixpkgs_pin"]}"
-    [[ "$flake_nixpkgs_pin" == "<latest>" ]] && flake_nixpkgs_pin=""
-
-    printLog "creating root flake.nix"
-    if ! use_flakeparts='' nixpkgs_pin="$flake_nixpkgs_pin" flake_description="${d["project_description"]}" \
-        mo "$ssm_dir/flake.nix.mo" > "$ssm_root/flake.nix";
-    then
-        printErr "failed to create root flake.nix"
-    fi
-
-    printLog "creating root .gitignore"
-    if ! mo "$ssm_dir/.gitignore.mo" > "$ssm_root/.gitignore"; then
-        printErr "failed to create root .gitignore"
-    fi
-
-    printLog "creating sandbox config .nyx-sbx"
-    renderTree "$ssm_dir/.nyx-sbx" ".nyx-sbx"
-
-    local sub
-    for sub in "${subprojects[@]}"; do
-        renderSubproject "$sub" "${subproject_types["$sub"]}"
-    done
-
-    # flakes only see files tracked by git
-    local -a tracked=(".gitignore" "flake.nix" ".nyx-sbx" "${subprojects[@]}")
-    run_commands+=("git add -- ${tracked[*]@Q}")
-    if [[ "${d["nixpkgs_pin"]}" == "<latest>" ]]; then
-        run_commands+=("nix flake lock")
-    elif [[ "${d["nixpkgs_pin"]}" != "" ]]; then
-        run_commands+=("nix flake lock --override-input nixpkgs \"github:NixOS/nixpkgs/${d["nixpkgs_pin"]}\"")
-    fi
+    [[ "${d["git_user"]}" != "<nil>" ]] && addStep host_steps git-user "git config user.name ${d["git_user"]@Q}"
+    [[ "${d["git_mail"]}" != "<nil>" ]] && addStep host_steps git-mail "git config user.email ${d["git_mail"]@Q}"
+    [[ "${d["git_signkey"]}" != "<nil>" ]] && addStep host_steps git-signkey "git config user.signingKey ${d["git_signkey"]@Q}"
+    [[ "${d["git_ssh_id"]}" != "<nil>" ]] && addStep host_steps git-ssh "git config core.sshCommand ${ssh_command@Q}"
 
     local has_sbx=0
     if command -v sbx-shell &> /dev/null; then
@@ -817,24 +1085,91 @@ modeOf_init() {
         if [[ -L "$ssm_root/.nyx-sbx/ptr" ]]; then
             printWarn "sandbox context is already linked, skipping sbx-shell init"
         else
-            run_commands+=("sbx-shell init ${d["sandbox_id"]@Q}")
+            addStep host_steps sbx-init "sbx-shell init ${d["sandbox_id"]@Q}"
         fi
-        run_commands+=("sbx-shell madd . rw .")
+        addStep host_steps sbx-madd "sbx-shell madd . rw ."
+    fi
+    addSubprojectSteps "$has_sbx" "${subprojects[@]}"
+
+    # `<latest>` only affects the lock command below, it must not end up as a revision in the flake
+    local flake_nixpkgs_pin="${d["nixpkgs_pin"]}"
+    [[ "$flake_nixpkgs_pin" == "<latest>" ]] && flake_nixpkgs_pin=""
+
+    createStage
+    local render_root="$ssm_stage"
+
+    printLog "creating root flake.nix"
+    local flake_has_nixconfig=
+    # shellcheck disable=SC2034 # used by the mo template
+    (( ${#flake_substituters[@]} + ${#flake_trusted_keys[@]} )) && flake_has_nixconfig=1
+    if ! use_flakeparts='' nixpkgs_pin="$flake_nixpkgs_pin" flake_description="${d["project_description"]}" \
+        mo "$ssm_dir/flake.nix.mo" > "$ssm_stage/flake.nix";
+    then
+        die "failed to create root flake.nix"
     fi
 
-    if confirmRunCommands "${run_commands[@]}"; then
-        # shellcheck disable=SC2016
-        (( has_sbx )) && printLog 'enter the dev environment with `sbx-shell nix-develop`'
-    else
-        (( $? == 1 )) && exit 1
+    printLog "creating root .gitignore"
+    mo "$ssm_dir/.gitignore.mo" > "$ssm_stage/.gitignore" || die "failed to create root .gitignore"
+
+    # CLANKER ASSISTED: the agent instructions live in .ssm and are copied as is, an existing one is kept
+    if [[ -f "$ssm_dir/AGENTS.md" ]]; then
+        printLog "creating AGENTS.md"
+        { cp -- "$ssm_dir/AGENTS.md" "$ssm_stage/AGENTS.md" && chmod u+w -- "$ssm_stage/AGENTS.md"; } \
+            || die "failed to create AGENTS.md"
     fi
+
+    printLog "creating sandbox config .nyx-sbx"
+    renderTree "$ssm_dir/.nyx-sbx" ".nyx-sbx" || die "failed to create .nyx-sbx"
+
+    for sub in "${subprojects[@]}"; do
+        renderSubproject "$sub" "${subproject_types["$sub"]}" || die "failed to create subproject '$sub'"
+    done
+
+    # flakes only see files tracked by git
+    local -a tracked=(".gitignore" "flake.nix" ".nyx-sbx" "${subprojects[@]}")
+    # CLANKER ASSISTED: track the copied agent instructions
+    [[ -f "$ssm_stage/AGENTS.md" || -f "$ssm_root/AGENTS.md" ]] && tracked+=("AGENTS.md")
+    addStep host_steps git-add "git add -- ${tracked[*]@Q}"
+    if [[ "${d["nixpkgs_pin"]}" == "<latest>" ]]; then
+        addStep host_steps flake-lock "nix flake lock"
+    elif [[ "${d["nixpkgs_pin"]}" != "" ]]; then
+        addStep host_steps flake-lock "nix flake lock --override-input nixpkgs \"github:NixOS/nixpkgs/${d["nixpkgs_pin"]}\""
+    fi
+    addSandboxEntryStep "$has_sbx" "${flake_devshell_frags[0]}"
+    addStep host_steps git-add-final "git add -- ${subprojects[*]@Q} && { [[ ! -f flake.lock ]] || git add -- flake.lock; }"
+
+    # shellcheck disable=SC2016
+    local hint='enter the dev environment with `sbx-shell nix-develop`'
+    (( has_sbx )) && run_done_hints+=("${hint@Q}")
+
+    commitStage flake.nix .gitignore || die "failed to move the rendered project into place"
+    cleanupStage
+    writeRunScript init "$has_sbx" || exit 1
+    offerRunScript
 
     exit 0
 }
 
+# CLANKER START sandbox_entry: host step that runs the sandbox steps inside the sandbox
+# addSandboxEntryStep <has sbx> <devshell fragment>
+addSandboxEntryStep() {
+    (( ${#sandbox_steps[@]} )) || return 0
+    local inner="bash ./$ssm_run_name --sandbox"
+    if (( $1 )); then
+        # nix-develop hands the arguments to the sandboxed $SHELL
+        addStep host_steps sandbox "sbx-shell nix-develop $2 -- -c ${inner@Q}"
+    else
+        printWarn "no usable sbx-shell context, the sandbox steps will run in a plain \`nix develop\` on the host"
+        addStep host_steps sandbox "nix develop .#$2 --command $inner"
+    fi
+}
+# CLANKER END sandbox_entry
+
 modeOf_add() {
     # shellcheck disable=SC2016
     [[ -f "$ssm_root/flake.nix" ]] || die "no flake.nix in $ssm_root, run \`ssm init\` first"
+    # CLANKER ASSISTED: the run script replaces the commands, so a pending one must be done first
+    assertNoPendingRunScript
 
     local -a subproject_template_types=()
     loadSubprojectTemplateTypes || die "no subproject templates found in $ssm_dir/templates"
@@ -861,58 +1196,75 @@ modeOf_add() {
         exit 0
     fi
 
+    # CLANKER EDITED: rendered and registered in a stage that is only moved into place once it all
+    # succeeded, the template's flake inputs/overlays/nixConfig are added to the flake and the
+    # commands are written into the ./init run script instead of being run
+    local -a flake_inputs=() flake_overlays=() flake_substituters=() flake_trusted_keys=() run_functions=()
+    local -A tpl_loaded=() tpl_covers=() tpl_hooks=()
     local sub
     for sub in "${subprojects[@]}"; do
-        renderSubproject "$sub" "${subproject_types["$sub"]}"
+        loadTemplateHook "${subproject_types["$sub"]}" || exit 1
     done
-    registerSubprojects "${subprojects[@]}"
+
+    createStage
+    local render_root="$ssm_stage"
+    for sub in "${subprojects[@]}"; do
+        renderSubproject "$sub" "${subproject_types["$sub"]}" || die "failed to create subproject '$sub'"
+    done
+    cp -p -- "$ssm_root/flake.nix" "$ssm_stage/flake.nix" || die "failed to stage flake.nix"
+    local -a force_entries=(flake.nix)
+    if [[ -f "$ssm_root/.gitignore" ]]; then
+        cp -p -- "$ssm_root/.gitignore" "$ssm_stage/.gitignore" || die "failed to stage .gitignore"
+        force_entries+=(.gitignore)
+    fi
+    registerSubprojects "${subprojects[@]}" || die "failed to register the subprojects"
+
+    flakeListAdd "$ssm_stage/flake.nix" inputs "${flake_inputs[@]}" \
+        || die "couldn't add the template inputs to the \`inputs = { ... };\` of flake.nix"
+    flakeListAdd "$ssm_stage/flake.nix" overlays "${flake_overlays[@]}" \
+        || die "couldn't add the template overlays to the \`overlays = [ ... ];\` of flake.nix"
+    local -a quoted_substituters=() quoted_keys=()
+    local value
+    for value in "${flake_substituters[@]}"; do quoted_substituters+=("\"$value\""); done
+    for value in "${flake_trusted_keys[@]}"; do quoted_keys+=("\"$value\""); done
+    (( ${#quoted_substituters[@]} + ${#quoted_keys[@]} )) && flakeEnsureNixConfig "$ssm_stage/flake.nix"
+    if ! flakeListAdd "$ssm_stage/flake.nix" extra-substituters "${quoted_substituters[@]}" \
+        || ! flakeListAdd "$ssm_stage/flake.nix" extra-trusted-public-keys "${quoted_keys[@]}"; then
+        printWarn "couldn't find the nixConfig lists in flake.nix, add them yourself if you want the binary cache:"
+        printf '    extra-substituters: %s\n' "${flake_substituters[@]}" >&2
+        printf '    extra-trusted-public-keys: %s\n' "${flake_trusted_keys[@]}" >&2
+    fi
+
+    local -a host_steps=() sandbox_steps=() run_done_hints=()
+    local has_sbx=0
+    if command -v sbx-shell &> /dev/null && [[ -L "$ssm_root/.nyx-sbx/ptr" ]]; then
+        has_sbx=1
+    else
+        printWarn "no linked sbx-shell context, skipping the sandbox covers"
+    fi
+    addSubprojectSteps "$has_sbx" "${subprojects[@]}"
 
     # flakes only see files tracked by git
-    local -a run_commands=()
-    if [[ -d "$ssm_root/.git" ]]; then
+    local has_git=0
+    [[ -d "$ssm_root/.git" ]] && has_git=1
+    if (( has_git )); then
         local -a tracked=(".gitignore" "flake.nix" "${subprojects[@]}")
-        run_commands+=("git add -- ${tracked[*]@Q}")
+        addStep host_steps git-add "git add -- ${tracked[*]@Q}"
     fi
-    confirmRunCommands "${run_commands[@]}"
-    (( $? == 1 )) && exit 1
+    (( ${#flake_inputs[@]} )) && addStep host_steps flake-lock "nix flake lock"
+    addSandboxEntryStep "$has_sbx" default
+    (( has_git )) && addStep host_steps git-add-final "git add -- ${subprojects[*]@Q} && { [[ ! -f flake.lock ]] || git add -- flake.lock; }"
+
+    commitStage "${force_entries[@]}" || die "failed to move the rendered subproject(s) into place"
+    cleanupStage
+    if (( ${#host_steps[@]} == 0 )); then
+        printLog "nothing left to run"
+        exit 0
+    fi
+    writeRunScript add "$has_sbx" || exit 1
+    offerRunScript
 
     exit 0
-}
-
-# lists the commands and runs them once confirmed, returns 1 if a command failed
-# and 2 if they were skipped (or there were none)
-confirmRunCommands() {
-    (( $# )) || return 2
-    # shellcheck disable=SC2016
-    gum format -- "" "## auto config will execute the following command(s):" "$(printf -- '- `%s`\n' "$@")"
-    if gum confirm; then
-        runCommands "$@" || return 1
-    else
-        printWarn "skipped auto config, run the command(s) manually:"
-        printf '    %s\n' "$@" >&2
-        return 2
-    fi
-}
-
-# runs each command from "$ssm_root" in order and stops at the first failure
-# since the later commands depend on the earlier ones
-runCommands() {
-    local -a cmds=("$@")
-    local i rc
-    for (( i = 0; i < ${#cmds[@]}; i++ )); do
-        printLog "running: ${cmds[i]}"
-        ( cd -- "$ssm_root" && bash -c "${cmds[i]}" )
-        rc=$?
-        if (( rc != 0 )); then
-            printErr "command failed (exit $rc): ${cmds[i]}"
-            if (( i + 1 < ${#cmds[@]} )); then
-                printWarn "skipped the remaining command(s), run them manually after fixing the issue:"
-                printf '    %s\n' "${cmds[@]:i+1}" >&2
-            fi
-            return 1
-        fi
-    done
-    printLog "auto config done"
 }
 
 main "$@"

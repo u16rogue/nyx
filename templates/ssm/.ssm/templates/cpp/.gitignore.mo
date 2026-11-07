@@ -1,0 +1,14 @@
+**
+.*
+!.gitignore
+!.clangd
+!CMakeLists.txt
+!do
+!package.nix
+!shell.nix
+!cmake/
+!cmake/x86_64-w64-mingw32.cmake
+!src/
+!src/**/
+!src/**/*.cc
+!src/**/*.hh
