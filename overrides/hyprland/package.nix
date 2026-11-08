@@ -3,6 +3,7 @@
     hyprland,
     hyprpaper, waybar, fuzzel, ghostty,
     xwayland, grim, slurp, satty, wl-clipboard, procps, dbus, systemd, uwsm, xdg-utils,
+    bibata-cursors,
     overridesOpts ? {}, ...
 }: let
     snippets = import ./snippets.nix { inherit lib; };
@@ -28,6 +29,7 @@
         ];
         text = /*bash*/ ''
             export NIXOS_OZONE_WL=1
+            export XCURSOR_PATH="${bibata-cursors}/share/icons''${XCURSOR_PATH:+:$XCURSOR_PATH}"
             # Wait for $XDG_RUNTIME_DIR/doc before Nixpak apps bind it; failure aborts startup.
             ${systemd}/bin/busctl --user call \
                 org.freedesktop.portal.Documents /org/freedesktop/portal/documents \

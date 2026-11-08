@@ -4,6 +4,7 @@ local function resolvePathCommand(name)
     return '"$(PATH="${NYX_HYPR_PATH:+$NYX_HYPR_PATH:}$PATH" command -v ' .. name .. ')"'
 end
 
+hl.env("XCURSOR_THEME", "Bibata-Modern-Classic")
 hl.env("XCURSOR_SIZE", "24")
 hl.env("HYPRCURSOR_SIZE", "24")
 

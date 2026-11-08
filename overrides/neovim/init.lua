@@ -1,6 +1,3 @@
--- AI-assisted: ported from the nvf config + leftovers from the old lazy.nvim config.
--- Plugins are installed by package.nix into the packpath; this file only configures them.
-
 local function map(mode, lhs, rhs, desc, opts)
     vim.keymap.set(mode, lhs, rhs, vim.tbl_extend('force', { silent = true, desc = desc }, opts or {}))
 end
@@ -231,8 +228,7 @@ require('ibl').setup({
 require('treesj').setup({ use_default_keymaps = false })
 map('n', '<leader>as', '<Cmd>TSJToggle<CR>', 'Split/join scope')
 map('x', '<leader>aa', '<Plug>(EasyAlign)', 'Align')
--- visual `S(` wrap, `ys{motion}(` add, `cs"'` change, `ds(` delete
-require('nvim-surround').setup()
+require('nvim-surround').setup() -- visual `S(` wrap, `ys{motion}(` add, `cs"'` change, `ds(` delete
 
 -- [[ Completion + snippets ]]
 require('blink.cmp').setup({
