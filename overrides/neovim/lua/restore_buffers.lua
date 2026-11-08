@@ -1,5 +1,3 @@
--- AI-assisted: moved out of init.lua. Remembers closed file buffers once required;
--- restore() reopens the most recently closed one that still exists.
 local closed_buffers = {}
 
 vim.api.nvim_create_autocmd('BufDelete', {

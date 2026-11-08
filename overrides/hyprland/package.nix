@@ -37,7 +37,6 @@
             exec ${hyprland}/bin/start-hyprland --path ${hyprland}/bin/Hyprland -- --config ${hyprland_config} "$@"
         '';
     };
-
 in inputs.wrappers.lib.wrapPackage {
     inherit pkgs;
     package = hyprland;

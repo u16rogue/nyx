@@ -57,9 +57,6 @@ vim.api.nvim_create_autocmd('TextYankPost', {
     end,
 })
 
--- restore buffers
-map('n', '<A-S-c>', require('restore_buffers').restore, 'Restore last closed buffer')
-
 -- auto create .nvimsession
 vim.api.nvim_create_autocmd('VimLeavePre', {
     callback = function()
@@ -128,6 +125,9 @@ require('bufferline').setup({
 map('n', '<A-c>', function() require('bufdelete').bufdelete(0, false) end, 'Close buffer')
 map('n', '<A-x>', '<Cmd>BufferLineCycleNext<CR>', 'Next buffer')
 map('n', '<A-z>', '<Cmd>BufferLineCyclePrev<CR>', 'Previous buffer')
+map('n', '<A-S-x>', '<Cmd>BufferLineMoveNext<CR>', 'Move buffer right')
+map('n', '<A-S-z>', '<Cmd>BufferLineMovePrev<CR>', 'Move buffer left')
+map('n', '<A-S-c>', require('restore_buffers').restore, 'Restore last closed buffer') -- restore buffers
 
 -- [[ File tree ]]
 vim.g.loaded_netrw       = 1
