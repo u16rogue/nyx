@@ -4,7 +4,7 @@ $env.config.edit_mode = 'vi'
 $env.config.history.file_format = "sqlite"
 $env.config.history.isolation = true
 
-$env.config.completions.algorithm = "substring"
+$env.config.completions.algorithm = "fuzzy"
 $env.config.completions.quick = true
 
 let fish_completer = {|spans|
