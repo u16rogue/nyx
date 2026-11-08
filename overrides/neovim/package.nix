@@ -16,16 +16,15 @@
             bash diff gitcommit json make nix regex toml yaml
         ]))
     ]
-    # Plugins missing from nixpkgs: add `inputs.<name> = { url = "github:owner/repo"; flake = false; };`
-    # to flake.nix and list <name> here.
+    # Plugins missing from nixpkgs: add `inputs.<name> = { url = "github:owner/repo"; flake = false; };` to flake.nix and list <name> here.
     ++ map (name: vimUtils.buildVimPlugin {
         pname = name;
         version = inputs.${name}.shortRev or "dirty";
         src = inputs.${name};
     }) [];
-    # ./lua holds the modules init.lua requires
     luaRcContent = ''
         vim.opt.runtimepath:prepend("${lib.fileset.toSource { root = ./.; fileset = ./lua; }}")
+        vim.opt.runtimepath:append("${vimPlugins.nvim-treesitter}/runtime")
     '' + builtins.readFile ./init.lua;
     # Telescope's finders, appended to PATH so a devshell's copy wins. No language servers:
     # projects bring their own.

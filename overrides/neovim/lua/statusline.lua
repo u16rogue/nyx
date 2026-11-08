@@ -21,6 +21,7 @@ local function set_highlights()
     hl('NyxSlB',     { fg = color, bg = C.surface0 })
     hl('NyxSlC',     { fg = C.text, bg = C.mantle })
     hl('StatusLine', { fg = C.text, bg = C.mantle })
+    hl('NyxSlRec',   { fg = C.mantle, bg = C.red, bold = true })
     for name, fg in pairs({ Error = C.red, Warn = C.yellow, Info = C.sky, Hint = C.teal }) do
         hl('NyxSlDiag' .. name, { fg = fg, bg = C.mantle })
     end
@@ -43,6 +44,64 @@ local function icon(name, ft)
 end
 
 local function esc(s) return (s:gsub('%%', '%%%%')) end
+
+-- 'shortmess' q hides "recording @x"; shown here instead
+local recording = ''
+
+-- Messages that would draw over the status line ('cmdheight' 0) fill its free middle instead.
+-- ui2 (experimental) takes over the message area; its msg_show is wrapped below so short
+-- one-line messages land here and the rest (multi-line, prompts, pager) stays with ui2.
+local message, message_text, message_id = '', '', 0
+local message_groups = {} -- chunk highlights keep their fg on the C background
+local function message_group(hl_id)
+    local fg = (hl_id or 0) > 0 and vim.api.nvim_get_hl(0, { id = hl_id, link = false }).fg
+    if not fg then return 'NyxSlC' end
+    local group = string.format('NyxSlMsg%06x', fg)
+    if not message_groups[group] then
+        vim.api.nvim_set_hl(0, group, { fg = fg, bg = C.mantle })
+        message_groups[group] = true
+    end
+    return group
+end
+
+local function set_message(content, append)
+    local text, parts = append and message_text or '', { append and message or '' }
+    for _, chunk in ipairs(content or {}) do
+        text = text .. chunk[2]
+        table.insert(parts, '%#' .. message_group(chunk[3]) .. '#' .. esc(chunk[2]))
+    end
+    if text:find('\n') or vim.api.nvim_strwidth(text) > vim.o.columns / 2 then return false end
+    message, message_text, message_id = table.concat(parts), text, message_id + 1
+    local id = message_id
+    vim.cmd.redrawstatus()
+    if text ~= '' then
+        vim.defer_fn(function()
+            if id == message_id then set_message() end
+        end, 4000)
+    end
+    return true
+end
+
+local function hook_messages()
+    local ok, ui2 = pcall(require, 'vim._core.ui2')
+    if not ok then return end
+    ui2.enable({ msg = { targets = 'msg' } })
+    local msgs = ui2.msg -- nil without a UI (headless)
+    if not (msgs and type(msgs.msg_show) == 'function') then return end
+    local msg_show = msgs.msg_show
+    local keep = { confirm = true, return_prompt = true, wildlist = true, search_cmd = true, search_count = true }
+    msgs.msg_show = function(kind, content, replace_last, history, append, id, trigger)
+        local cmd = ui2.cmd or {}
+        local busy = cmd.prompt or (cmd.level or 0) > 0 or vim.api.nvim_get_current_win() == ui2.wins.pager
+        if kind == 'empty' then
+            pcall(set_message)
+        elseif not busy and not keep[kind] then
+            local handled, shown = pcall(set_message, content, append)
+            if handled and shown then return end
+        end
+        return msg_show(kind, content, replace_last, history, append, id, trigger)
+    end
+end
 
 local function render()
     local buf  = vim.api.nvim_win_get_buf(vim.g.statusline_winid or 0)
@@ -89,8 +148,10 @@ local function render()
 
     return table.concat({
         '%#NyxSlA# ', current_mode()[1], ' ',
+        recording ~= '' and ('%#NyxSlRec# @' .. esc(recording) .. ' ') or '',
         '%#NyxSlB# ', icon(name, bo.filetype), esc(path), flags, ' ',
         '%#NyxSlC# ', table.concat(diff, ' '),
+        message ~= '' and (' ' .. message .. '%#NyxSlC#') or '',
         '%=',
         esc(lsp), ' ', table.concat(diags, ' '), '%#NyxSlC# ',
         '%#NyxSlB# ', esc(search), esc(branch), ' ',
@@ -100,9 +161,14 @@ end
 
 vim.o.laststatus = 3
 vim.o.statusline = "%!v:lua.require'statusline'.render()"
+vim.opt.shortmess:append('q')
+hook_messages()
+
+vim.api.nvim_create_autocmd('RecordingEnter', { callback = function() recording = vim.fn.reg_recording(); vim.cmd.redrawstatus() end })
+vim.api.nvim_create_autocmd('RecordingLeave', { callback = function() recording = ''; vim.cmd.redrawstatus() end })
 
 set_highlights()
-vim.api.nvim_create_autocmd('ColorScheme', { callback = function() icon_groups = {}; set_highlights() end })
+vim.api.nvim_create_autocmd('ColorScheme', { callback = function() icon_groups = {}; message_groups = {}; set_highlights() end })
 vim.api.nvim_create_autocmd('ModeChanged', { callback = function() set_highlights(); vim.cmd.redrawstatus() end })
 vim.api.nvim_create_autocmd({ 'DiagnosticChanged', 'LspAttach', 'LspDetach' }, { command = 'redrawstatus' })
 vim.api.nvim_create_autocmd('User', { pattern = 'GitSignsUpdate', command = 'redrawstatus' })
