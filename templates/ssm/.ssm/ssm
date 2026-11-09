@@ -1128,13 +1128,17 @@ modeOf_init() {
     mo "$ssm_dir/.nvim.lua.mo" > "$ssm_stage/.nvim.lua" || die "failed to create .nvim.lua"
     renderTree "$ssm_dir/.nvim" ".nvim" || die "failed to create .nvim"
 
+    # CLANKER ASSISTED: rg/fd ignores for generated dirs, shipped as .mo so it doesn't apply to the template's own repo
+    printLog "creating .ignore"
+    mo "$ssm_dir/.ignore.mo" > "$ssm_stage/.ignore" || die "failed to create .ignore"
+
     for sub in "${subprojects[@]}"; do
         renderSubproject "$sub" "${subproject_types["$sub"]}" || die "failed to create subproject '$sub'"
     done
 
     # flakes only see files tracked by git
-    # CLANKER EDITED: also tracks the editor config
-    local -a tracked=(".gitignore" "flake.nix" ".nyx-sbx" ".nvim.lua" ".nvim" "${subprojects[@]}")
+    # CLANKER EDITED: also tracks the editor config and .ignore
+    local -a tracked=(".gitignore" ".ignore" "flake.nix" ".nyx-sbx" ".nvim.lua" ".nvim" "${subprojects[@]}")
     # CLANKER ASSISTED: track the copied agent instructions
     [[ -f "$ssm_stage/AGENTS.md" || -f "$ssm_root/AGENTS.md" ]] && tracked+=("AGENTS.md")
     addStep host_steps git-add "git add -- ${tracked[*]@Q}"

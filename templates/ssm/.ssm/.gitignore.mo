@@ -9,6 +9,7 @@
 !.nyx-sbx/dev-hook.sh
 !.nyx-sbx/share/
 
+!.ignore
 !.nvim.lua
 !.nvim/
 !.nvim/snippets/
