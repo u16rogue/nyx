@@ -1,0 +1,127 @@
+#!/usr/bin/env bash
+# THIS WAS WRITTEN BY A CLANKER
+# jj-push [jj git push args]: signs and pushes a jj repo that's worked on inside an sbx-shell sandbox,
+# run on the host where the signing keys are. the identity and signing key are read as plain values
+# from the sandbox's jj config (<context>/fs-root/$HOME/.config/jj, user and repo config) since the
+# host's jj can't see it. nothing else from the sandbox's or the project's jj config is loaded, both
+# are writable from inside the sandbox and jj config can run commands (aliases, editor, tools)
+#
+# it moves the nearest bookmark below @ up to the newest finished change and pushes. `!todo!` and empty
+# changes are unfinished, they and everything above them are held back, and @ is never pushed (unstaged).
+# the rules are a copy of the project's .jj.toml (todo(), unfinished(), finished()), keep them in sync
+
+set -euo pipefail
+
+printErr() {
+    printf '\033[37m[\033[91merr\033[37m]\033[0m %s\n' "$1" >&2
+}
+
+printLog() {
+    printf '\033[37m[log]\033[0m %s\n' "$1" >&2
+}
+
+die() {
+    printErr "$1"
+    exit 1
+}
+
+[[ -n "${NYX_SBX_ID:-}" ]] && die "jj-push runs on the host, the sandbox has no signing keys"
+for dep in jj git jq realpath mktemp; do
+    if ! command -v "$dep" &> /dev/null; then die "$dep is required"; fi
+done
+
+root="$PWD"
+while [[ ! -d "$root/.jj" ]]; do
+    [[ "$root" == / ]] && die "not inside a jj repo"
+    root="$(dirname -- "$root")"
+done
+
+[[ -L "$root/.nyx-sbx/ptr" ]] || die "no sandbox context at $root/.nyx-sbx/ptr, use plain jj for projects outside a sandbox"
+sbx_dir="$(realpath -e -- "${NYX_SBX_SHELL_DIR:-"$HOME/.nyx/sbx-shell"}")" || die "can't resolve the sbx-shell dir"
+context="$(realpath -e -- "$root/.nyx-sbx/ptr")" || die "can't resolve the sandbox context from $root/.nyx-sbx/ptr"
+[[ "${context%/*}" == "$sbx_dir" ]] || die "sandbox context $context isn't inside $sbx_dir"
+sbx_root="$context/fs-root"
+
+sbx_files=("$sbx_root/$HOME/.config/jj/config.toml")
+# jj only creates the config id once the repo config is first used
+if [[ -e "$root/.jj/repo/config-id" ]]; then
+    config_id="$(< "$root/.jj/repo/config-id")" || die "can't read $root/.jj/repo/config-id"
+    [[ "$config_id" =~ ^[0-9a-f]+$ ]] || die "unexpected repo config id: $config_id"
+    sbx_files+=("$sbx_root/$HOME/.config/jj/repos/$config_id/config.toml")
+fi
+
+# the sandbox can plant symlinks, only files that really are inside its root are read
+sbx_config=""
+for file in "${sbx_files[@]}"; do
+    [[ -e "$file" ]] || continue
+    resolved="$(realpath -e -- "$file")" || die "can't resolve $file"
+    [[ "$resolved" == "$sbx_root/"* && -f "$resolved" ]] || die "$file points outside the sandbox"
+    sbx_config="${sbx_config:+"$sbx_config:"}$resolved"
+done
+[[ -n "$sbx_config" ]] || die "the sandbox has no jj config, set the identity and signing key inside it first (jj config set --repo)"
+
+# read from / so no repo config joins in, the values are only printed
+sbxGet() {
+    (cd / && JJ_CONFIG="$sbx_config" jj --no-pager --color never config get "$1" 2> /dev/null) || true
+}
+
+user_name="$(sbxGet user.name)"
+user_email="$(sbxGet user.email)"
+signing_backend="$(sbxGet signing.backend)"
+signing_key="$(sbxGet signing.key)"
+[[ -n "$user_name" && -n "$user_email" ]] || die "the sandbox's jj config has no user.name/user.email"
+[[ -n "$signing_key" ]] || die "the sandbox's jj config has no signing.key, the commits must be signed"
+case "$signing_backend" in
+    gpg|gpgsm|ssh) ;;
+    *) die "unsupported signing.backend '$signing_backend' in the sandbox's jj config (gpg, gpgsm or ssh)" ;;
+esac
+
+# json strings are valid toml basic strings
+tomlStr() {
+    jq -Rn --arg v "$1" '$v'
+}
+
+trusted_config="$(mktemp --suffix=.toml)"
+trap 'rm -f -- "$trusted_config"' EXIT
+cat > "$trusted_config" << EOF
+[user]
+name = $(tomlStr "$user_name")
+email = $(tomlStr "$user_email")
+
+[signing]
+backend = $(tomlStr "$signing_backend")
+key = $(tomlStr "$signing_key")
+
+[revsets]
+git-sign-on-push = "~signed() & mine()"
+
+[revset-aliases]
+"todo()" = 'mutable() & description(glob:"!todo!*")'
+"unfinished()" = 'todo() | (mutable() & empty())'
+"finished()" = 'heads(::@- ~ unfinished()::)'
+
+[git]
+private-commits = "unfinished()"
+EOF
+
+# only the host's own jj user config, a devshell's JJ_CONFIG would bring the project's .jj.toml along
+export JJ_CONFIG="${XDG_CONFIG_HOME:-"$HOME/.config"}/jj/config.toml"
+# jj pushes through git, which would otherwise run the sandbox-writable .git/hooks and fsmonitor
+export GIT_CONFIG_COUNT=2
+export GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=/dev/null
+export GIT_CONFIG_KEY_1=core.fsmonitor GIT_CONFIG_VALUE_1=false
+
+cd -- "$root"
+jjTrusted() {
+    jj --no-pager --config-file "$trusted_config" "$@"
+}
+
+held_back="$(jjTrusted log --no-graph -r 'finished()..@-' -T 'change_id.short() ++ " " ++ description.first_line() ++ "\n"')"
+if [[ -n "$held_back" ]]; then
+    printLog "holding back the unfinished changes and everything above them:"
+    while IFS= read -r line; do printf '    %s\n' "$line" >&2; done <<< "$held_back"
+fi
+
+printLog "pushing as $user_name <$user_email>, signing with $signing_backend key $signing_key"
+jjTrusted bookmark move --from 'heads(::@- & bookmarks())' --to 'finished()'
+jjTrusted git push "$@"
