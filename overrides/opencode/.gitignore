@@ -2,3 +2,5 @@
 .*
 !.gitignore
 !package.nix
+!erm/
+!erm/*

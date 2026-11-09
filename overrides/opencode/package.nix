@@ -15,6 +15,7 @@ in inputs.wrappers.lib.wrapPackage {
         })
         (setDefault "OPENCODE_CLI_CONFIG_CONTENT" {
             theme.name = "catppuccin";
+            plugins = [ "${./erm}" ];
             keybinds = {
                 leader = "ctrl+space";
                 "input.delete.word.backward" = "ctrl+backspace,alt+backspace";
