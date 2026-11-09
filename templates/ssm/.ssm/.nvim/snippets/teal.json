@@ -1,0 +1,10 @@
+{
+    "record": {
+        "prefix": "record",
+        "body": "local record ${1:Name}\n\t$0\nend"
+    },
+    "module": {
+        "prefix": "module",
+        "body": "local record ${1:M}\nend\n\n$0\n\nreturn ${1:M}"
+    }
+}

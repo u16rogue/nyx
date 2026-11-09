@@ -1,0 +1,10 @@
+**
+.*
+!.gitignore
+!do
+!package.nix
+!shell.nix
+!tlconfig.lua
+!src/
+!src/**/
+!src/**/*.tl

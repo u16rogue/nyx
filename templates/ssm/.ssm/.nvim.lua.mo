@@ -10,4 +10,5 @@ vim.lsp.enable({
     'clangd', 'zls', 'roc_ls', 'rust_analyzer',
     'ts_ls', 'svelte', 'html', 'cssls', 'jsonls',
     'basedpyright',
+    'teal_ls',
 })
