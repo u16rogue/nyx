@@ -63,9 +63,13 @@
             {{#flake_devshell_frags}}
                 {{.}} = pkgs.mkShellNoCC {
                     inputsFrom = lib.attrValues shells;
-                    # editor: nix (flake.nix, shell.nix), bash (./do) and lua (.nvim.lua) servers
-                    packages = with pkgs; [ nil bash-language-server shellcheck lua-language-server ];
-                    shellHook = /*bash*/ ''export NIX_FRAGMENT="{{.}}"'';
+                    packages = with pkgs; [ nil bash-language-server shellcheck lua-language-server ]; # editor: nix (flake.nix, shell.nix), bash (./do) and lua (.nvim.lua) servers
+                    shellHook = /*bash*/ ''
+                        export NIX_FRAGMENT="{{.}}"
+                        if [ -f "$PWD/.jj.toml" ]; then
+                            export JJ_CONFIG="''${JJ_CONFIG:-''${XDG_CONFIG_HOME:-$HOME/.config}/jj/config.toml}:$PWD/.jj.toml"
+                        fi
+                    '';
                 };
             {{/flake_devshell_frags}}
             };
@@ -100,7 +104,12 @@
             {{.}} = pkgs.mkShellNoCC {
                 inputsFrom = lib.attrValues shells;
                 packages = with pkgs; [ nil bash-language-server shellcheck lua-language-server ];
-                shellHook = /*bash*/ ''export NIX_FRAGMENT="{{.}}"'';
+                shellHook = /*bash*/ ''
+                    export NIX_FRAGMENT="{{.}}"
+                    if [ -f "$PWD/.jj.toml" ]; then
+                        export JJ_CONFIG="''${JJ_CONFIG:-''${XDG_CONFIG_HOME:-$HOME/.config}/jj/config.toml}:$PWD/.jj.toml"
+                    fi
+                '';
             };
         {{/flake_devshell_frags}}
         });

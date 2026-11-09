@@ -4,6 +4,7 @@
 !flake.nix
 !flake.lock
 !AGENTS.md
+!.jj.toml
 
 !.nyx-sbx/
 !.nyx-sbx/dev-hook.sh

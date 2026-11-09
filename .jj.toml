@@ -1,0 +1,25 @@
+#:schema https://docs.jj-vcs.dev/latest/config-schema.json
+
+[revset-aliases]
+"todo()" = 'mutable() & description(glob:"!todo!*")' # todo entries, private until `jj done`
+"unfinished()" = 'todo() | (mutable() & empty())' # never pushed, empty changes included
+"finished()" = 'heads(::@- ~ unfinished()::)' # newest change below @ with nothing unfinished under it
+
+[git]
+private-commits = "unfinished()"
+
+[aliases]
+todo = ["util", "exec", "--", "bash", "-c", 'jj new -B @ --no-edit -m "!todo! $1"', ""] # insert an empty `!todo! msg` change below @, `jj todo "msg"`
+todos = ["log", "-r", "todo()"] # todo entries that aren't done
+# `jj done <change>...` drops the `!todo! ` prefix so the change can be pushed
+done = ["util", "exec", "--", "bash", "-c", '''
+set -e
+for rev; do
+    desc="$(jj log --no-graph -r "exactly($rev, 1)" -T description)"
+    [[ "$desc" == '!todo! '* ]] || { echo "not a todo: $rev" >&2; exit 1; }
+    jj describe -r "exactly($rev, 1)" -m "${desc#'!todo! '}"
+done
+''', ""]
+into = ["squash", "--into"] # `jj into <change> [paths]` moves changes from @ into <change>
+imbue = ["squash", "-i", "--into"] # `jj imbue <change> [paths]` like into but pick the hunks
+tug = ["bookmark", "move", "--from", "heads(::@- & bookmarks())", "--to", "finished()"] # move the nearest bookmark below @ (main) up to finished()

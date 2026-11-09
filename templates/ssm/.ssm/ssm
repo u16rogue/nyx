@@ -1078,6 +1078,8 @@ modeOf_init() {
     [[ "${d["git_mail"]}" != "<nil>" ]] && addStep host_steps git-mail "git config user.email ${d["git_mail"]@Q}"
     [[ "${d["git_signkey"]}" != "<nil>" ]] && addStep host_steps git-signkey "git config user.signingKey ${d["git_signkey"]@Q}"
     [[ "${d["git_ssh_id"]}" != "<nil>" ]] && addStep host_steps git-ssh "git config core.sshCommand ${ssh_command@Q}"
+    # CLANKER ASSISTED: jj's identity and signing key, set inside the sandbox where jj is used
+    addJjConfigStep
 
     local has_sbx=0
     if command -v sbx-shell &> /dev/null; then
@@ -1120,6 +1122,13 @@ modeOf_init() {
             || die "failed to create AGENTS.md"
     fi
 
+    # CLANKER ASSISTED: the project jj config is copied as is, the devshell loads it through JJ_CONFIG
+    if [[ -f "$ssm_dir/.jj.toml" ]]; then
+        printLog "creating jj config .jj.toml"
+        { cp -- "$ssm_dir/.jj.toml" "$ssm_stage/.jj.toml" && chmod u+w -- "$ssm_stage/.jj.toml"; } \
+            || die "failed to create .jj.toml"
+    fi
+
     printLog "creating sandbox config .nyx-sbx"
     renderTree "$ssm_dir/.nyx-sbx" ".nyx-sbx" || die "failed to create .nyx-sbx"
 
@@ -1141,6 +1150,8 @@ modeOf_init() {
     local -a tracked=(".gitignore" ".ignore" "flake.nix" ".nyx-sbx" ".nvim.lua" ".nvim" "${subprojects[@]}")
     # CLANKER ASSISTED: track the copied agent instructions
     [[ -f "$ssm_stage/AGENTS.md" || -f "$ssm_root/AGENTS.md" ]] && tracked+=("AGENTS.md")
+    # CLANKER ASSISTED: track the project jj config
+    [[ -f "$ssm_stage/.jj.toml" || -f "$ssm_root/.jj.toml" ]] && tracked+=(".jj.toml")
     addStep host_steps git-add "git add -- ${tracked[*]@Q}"
     if [[ "${d["nixpkgs_pin"]}" == "<latest>" ]]; then
         addStep host_steps flake-lock "nix flake lock"
@@ -1161,6 +1172,29 @@ modeOf_init() {
 
     exit 0
 }
+
+# CLANKER START jj_config: sandbox step that sets jj's identity and signing key from the git answers.
+# jj doesn't read git's config, they go into the sandbox's repo config (`jj config set --repo`, stored
+# in the sandbox home) so the tracked .jj.toml stays free of personal info. the working copy was
+# created before the identity existed so its author is updated. the key is a gpg fingerprint, nothing
+# is signed in the sandbox, `jj-push` on the host reads the identity and key from here and signs
+addJjConfigStep() {
+    [[ -d "$ssm_root/.jj" ]] || command -v jj &> /dev/null || return 0
+    local -a cmds=()
+    [[ "${d["git_user"]}" != "<nil>" ]] && cmds+=("jj config set --repo user.name ${d["git_user"]@Q}")
+    [[ "${d["git_mail"]}" != "<nil>" ]] && cmds+=("jj config set --repo user.email ${d["git_mail"]@Q}")
+    (( ${#cmds[@]} )) && cmds+=("jj metaedit --update-author")
+    if [[ "${d["git_signkey"]}" != "<nil>" ]]; then
+        cmds+=("jj config set --repo signing.backend gpg" "jj config set --repo signing.key ${d["git_signkey"]@Q}")
+    fi
+    (( ${#cmds[@]} )) || return 0
+
+    local joined
+    joined="$(printf '%s && ' "${cmds[@]}")"
+    addStep sandbox_steps "sandbox:jj:config" \
+        "if command -v jj &> /dev/null; then ${joined% && }; else printWarn 'jj is unavailable, set its identity and signing key yourself (jj config set --repo)'; fi"
+}
+# CLANKER END jj_config
 
 # CLANKER START nvim_trust: sandbox step that adds the project's .nvim.lua to neovim's trust list
 # ('exrc'), so it runs without the prompt. the trust list is per environment, so it's done inside

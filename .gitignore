@@ -11,6 +11,8 @@
 !templates/
 !_nyx/
 
+!.jj.toml
+
 !.github
 !.github/**
 

@@ -82,6 +82,9 @@
                         ln -sfn ${hyprland-luarc} "$PWD/overrides/hyprland/.luarc.json"
                         ln -sfn ${neovim-luarc} "$PWD/overrides/neovim/.luarc.json"
                     fi
+                    if [ -f "$PWD/.jj.toml" ]; then
+                        export JJ_CONFIG="''${JJ_CONFIG:-''${XDG_CONFIG_HOME:-$HOME/.config}/jj/config.toml}:$PWD/.jj.toml"
+                    fi
                 '';
             };
         };
