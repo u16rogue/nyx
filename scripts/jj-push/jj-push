@@ -116,11 +116,35 @@ jjTrusted() {
     jj --no-pager --config-file "$trusted_config" "$@"
 }
 
+if [[ -z "$(jjTrusted log --no-graph -r 'heads(::@- & bookmarks())' -T '"1"')" ]]; then
+    die "no bookmark below @ to move and push, create one first (\`jj bookmark create main -r <change>\`)"
+fi
+
 held_back="$(jjTrusted log --no-graph -r 'finished()..@-' -T 'change_id.short() ++ " " ++ description.first_line() ++ "\n"')"
 if [[ -n "$held_back" ]]; then
     printLog "holding back the unfinished changes and everything above them:"
     while IFS= read -r line; do printf '    %s\n' "$line" >&2; done <<< "$held_back"
 fi
+
+# `jj git push` skips bookmarks whose remote isn't tracked, which is how `jj git init --colocate`
+# imports them. tracked here when the remote is behind (a fast-forward), checked before anything moves
+push_remote="origin"
+for (( i = 1; i <= $#; i++ )); do
+    case "${!i}" in
+        --remote=*) push_remote="${!i#--remote=}" ;;
+        --remote) next=$(( i + 1 )); push_remote="${!next:-}" ;;
+    esac
+done
+mapfile -t pushed_bookmarks < <(jjTrusted log --no-graph -r 'heads(::@- & bookmarks())' -T 'local_bookmarks.map(|b| b.name() ++ "\n").join("")')
+for name in "${pushed_bookmarks[@]}"; do
+    [[ -n "$name" ]] || continue
+    untracked="$(jjTrusted bookmark list --remote "$push_remote" "exact:$name" -T 'if(remote && !tracked, "1")')"
+    [[ -n "$untracked" ]] || continue
+    behind="$(jjTrusted log --no-graph -r "\"$name\"@\"$push_remote\" & ::\"$name\"" -T '"1"')"
+    [[ -n "$behind" ]] || die "$name@$push_remote isn't tracked and has diverged from $name, sort it out with \`jj bookmark track $name@$push_remote\` first"
+    printLog "tracking $name@$push_remote, it was imported untracked"
+    jjTrusted bookmark track "$name@$push_remote"
+done
 
 printLog "pushing as $user_name <$user_email>, signing with $signing_backend key $signing_key"
 jjTrusted bookmark move --from 'heads(::@- & bookmarks())' --to 'finished()'
