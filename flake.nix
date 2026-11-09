@@ -47,7 +47,6 @@
 
             devShells.default = pkgs.mkShellNoCC {
                 packages = with pkgs; [
-                    jujutsu # git
                     rage    # secrets
                     gum     # used by ssm
                     # AI-assisted: editor, the servers are enabled in .nvim.lua
