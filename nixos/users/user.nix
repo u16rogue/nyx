@@ -67,6 +67,7 @@
                 nyx.pkgs.tmuxss
                 nyx.pkgs.sbx-shell
                 nyx.pkgs.git-log
+                nyx.pkgs.jj-push
                 nyx.pkgs.mkignore
                 nyx.pkgs.nix-develop
                 nyx.pkgs.nix-gc
@@ -89,6 +90,7 @@
                 nyx.pkgs.zellij
                 # direct nixpkgs
                 pkgs.git
+                pkgs.jujutsu
                 pkgs.jq
                 pkgs.bubblewrap
                 pkgs.btop
