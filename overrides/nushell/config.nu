@@ -7,8 +7,8 @@ $env.config.history.isolation = true
 $env.config.completions.algorithm = "fuzzy"
 $env.config.completions.quick = true
 
-let fish_completer = {|spans|
-    fish --no-config --command $"complete '--do-complete=($spans | str replace --all "'" "\\'" | str join ' ')'"
+let fish_completer = {|place|
+    fish --no-config --command $"complete '--do-complete=($place.command | str replace --all "'" "\\'" | str join ' ')'"
     | from tsv --flexible --noheaders --no-infer
     | rename value description
     | update value {|row|

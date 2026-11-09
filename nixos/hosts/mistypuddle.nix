@@ -18,7 +18,7 @@
                 subpath = "/transmission";
             };
             jellyfin = {
-                enable = true;
+                enable = false;
                 port = 8096;
                 subpath = "/jellyfin";
             };
