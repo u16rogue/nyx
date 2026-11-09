@@ -82,10 +82,36 @@ local function set_message(content, append)
     return true
 end
 
+-- ui2 opens the cmdline below the status line by raising 'cmdheight' while it is shown, which
+-- shifts the whole layout up a row. Undo that and float the cmdline above the status line instead.
+-- Prompts keep ui2's placement so their dialog stays above them. ui_cmdline_pos tells blink.cmp
+-- where the cmdline went, so its menu doesn't cover it.
+local function place_cmdline(ui2)
+    local cmd = ui2.cmd
+    if not (cmd and type(cmd.cmdline_show) == 'function') then return end
+    local cmdline_show = cmd.cmdline_show
+    cmd.cmdline_show = function(...)
+        cmdline_show(...)
+        vim.g.ui_cmdline_pos = nil
+        local win = ui2.wins.cmd
+        if ui2.cmdheight ~= 0 or cmd.prompt then
+            if vim.api.nvim_win_get_config(win).anchor == 'SW' then
+                vim.api.nvim_win_set_config(win, { relative = 'laststatus', row = 1, col = 0, anchor = 'NW' })
+            end
+            return
+        end
+        local height = vim.api.nvim_win_get_height(win)
+        vim._with({ noautocmd = true, o = { splitkeep = 'screen' } }, function() vim.o.cmdheight = 0 end)
+        vim.api.nvim_win_set_config(win, { relative = 'laststatus', row = 0, col = 0, anchor = 'SW', height = height, hide = false })
+        vim.g.ui_cmdline_pos = { vim.o.lines - height, 0 }
+    end
+end
+
 local function hook_messages()
     local ok, ui2 = pcall(require, 'vim._core.ui2')
     if not ok then return end
     ui2.enable({ msg = { targets = 'msg' } })
+    pcall(place_cmdline, ui2)
     local msgs = ui2.msg -- nil without a UI (headless)
     if not (msgs and type(msgs.msg_show) == 'function') then return end
     local msg_show = msgs.msg_show
