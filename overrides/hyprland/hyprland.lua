@@ -20,10 +20,14 @@ hl.bind(mainMod .. " + SHIFT + SPACE", hl.dsp.window.float({ action = "toggle" }
 hl.bind(mainMod .. " + SHIFT + GRAVE", hl.dsp.exec_cmd(resolvePathCommand("ghostty")))
 hl.bind(mainMod .. " + GRAVE", hl.dsp.exec_cmd(resolvePathCommand("fuzzel")))
 hl.bind(mainMod .. " + F1", hl.dsp.dpms({ action = "toggle" }))
-hl.bind("CTRL + PRINT", hl.dsp.exec_cmd(string.format(
-    [=[%s -g "$(%s -o -r -c '##ff0000ff')" -t png - | %s -f - -o - --fullscreen --actions-on-enter save-to-file --early-exit | %s]=],
-    resolvePathCommand("grim"), resolvePathCommand("slurp"), resolvePathCommand("satty"), resolvePathCommand("wl-copy")
-)))
+hl.bind("CTRL + PRINT", function()
+    local monitor = hl.get_monitor_at_cursor()
+    local output = monitor and string.format("-o '%s'", monitor.name) or ""
+    return hl.dispatch(hl.dsp.exec_cmd(string.format(
+        [=[%s %s -t ppm - | %s -f - -o - --initial-tool crop --actions-on-enter save-to-file --early-exit | %s]=],
+        resolvePathCommand("grim"), output, resolvePathCommand("satty"), resolvePathCommand("wl-copy")
+    )))
+end)
 
 hl.bind(mainMod .. " + D", hl.dsp.focus({ direction = "r" }))
 hl.bind(mainMod .. " + A", hl.dsp.focus({ direction = "l" }))
@@ -162,6 +166,17 @@ hl.window_rule({
     name = "suppress-maximize-events",
     match = { class = ".*" },
     suppress_event = "maximize",
+})
+
+hl.window_rule({
+    name = "satty-overlay",
+    match = { class = "^com\\.gabm\\.satty$" },
+    float = true,
+    move = "0 0",
+    size = "monitor_w monitor_h",
+    border_size = 0,
+    rounding = 0,
+    no_anim = true,
 })
 
 hl.window_rule({
