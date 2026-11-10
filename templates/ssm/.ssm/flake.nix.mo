@@ -63,7 +63,7 @@
             {{#flake_devshell_frags}}
                 {{.}} = pkgs.mkShellNoCC {
                     inputsFrom = lib.attrValues shells;
-                    packages = with pkgs; [ nil bash-language-server shellcheck lua-language-server ]; # editor: nix (flake.nix, shell.nix), bash (./do) and lua (.nvim.lua) servers
+                    packages = with pkgs; [ nil bash-language-server shellcheck lua-language-server ];
                     shellHook = /*bash*/ ''
                         export NIX_FRAGMENT="{{.}}"
                         if [ -f "$PWD/.jj.toml" ]; then

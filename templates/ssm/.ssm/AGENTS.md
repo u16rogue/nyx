@@ -101,8 +101,10 @@
     fi
     ```
 
-# Git
-* NEVER DO GIT OPERATIONS UNLESS YOU'RE **EXPLICITLY** TOLD SO.
+# Version Control
+* Prefer `jj` (jujutsu) over `git` if it's available.
+* With `jj`, treat the working copy (`@`) as staging: don't commit it wholesale, instead split specific changes out of it into focused commits below `@`, like `jj split` does (`jj into <change> [paths]`, `jj imbue <change> [paths]` to pick hunks). The target must be an ancestor of `@` so the change stays visible in the working copy; only `@`'s own diff shrinks. Never squash into a commit outside `@`'s ancestry unless told to. `jj todo "msg"` inserts a placeholder change directly below `@` for this, it stays private (unpushable) until `jj done <change>`.
+* NEVER DO VERSION CONTROL OPERATIONS (`git` OR `jj`) UNLESS YOU'RE **EXPLICITLY** TOLD SO. Read-only commands (`status`, `log`, `diff`, `show`) are fine.
 * NEVER GLOB THE UNIGNORE. These project(s) intentionally use explicit inverse ignore which means EVERYTHING is ignored by default and specific files are then unignored. The only exception is when it comes to obviously globbed directories such as source directories, if unsure always ask.
     * Remember that git can't re-include a file if its parent directory is ignored, so globbed directories also need their subdirectories unignored (`!src/**/`)
     * .gitignore
