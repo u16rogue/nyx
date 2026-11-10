@@ -41,7 +41,7 @@ in (mkNixPak {
             bind.rw = [
                 [ (sloth.mkdir (sloth.concat [ (sloth.env "HOME") "/.nyx/app-fake-root/obs-studio/" (sloth.env "HOME") ])) (sloth.env "HOME") ]
                 [ (sloth.mkdir (sloth.concat' sloth.runtimeDir "/nyx/obs-studio")) "/tmp" ]
-                (sloth.concat' sloth.runtimeDir "/doc") # Files selected through the document portal.
+                [ (sloth.concat' sloth.runtimeDir "/doc/by-app/com.obsproject.Studio") (sloth.concat' sloth.runtimeDir "/doc") ]
             ];
             env = {
                 HOME = sloth.env "HOME";

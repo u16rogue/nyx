@@ -62,7 +62,7 @@ in (mkNixPak {
             bind.rw = [
                 [ (sloth.mkdir (sloth.concat [ (sloth.env "HOME") "/.nyx/app-fake-root/vesktop/" (sloth.env "HOME") ])) (sloth.env "HOME") ]
                 [ (sloth.mkdir (sloth.concat' sloth.runtimeDir "/nyx/vesktop")) "/tmp" ]
-                (sloth.concat' sloth.runtimeDir "/doc") # for document portal
+                [ (sloth.concat' sloth.runtimeDir "/doc/by-app/dev.vencord.Vesktop") (sloth.concat' sloth.runtimeDir "/doc") ]
             ];
 
             env = {

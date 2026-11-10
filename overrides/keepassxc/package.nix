@@ -34,7 +34,7 @@ in (mkNixPak {
             bind.rw = [
                 [ (sloth.mkdir (sloth.concat [ (sloth.env "HOME") "/.nyx/app-fake-root/keepassxc/" (sloth.env "HOME") ])) (sloth.env "HOME") ]
                 [ (sloth.mkdir (sloth.concat' sloth.runtimeDir "/nyx/keepassxc")) "/tmp" ]
-                (sloth.concat' sloth.runtimeDir "/doc") # for document portal
+                [ (sloth.concat' sloth.runtimeDir "/doc/by-app/org.keepassxc.KeePassXC") (sloth.concat' sloth.runtimeDir "/doc") ]
             ];
 
             env = {

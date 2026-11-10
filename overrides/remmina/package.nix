@@ -29,7 +29,7 @@ in (mkNixPak {
                 [ (sloth.mkdir (sloth.concat [ (sloth.env "HOME") "/.nyx/app-fake-root/remmina/" (sloth.env "HOME") ])) (sloth.env "HOME") ]
                 [ (sloth.mkdir (sloth.concat' sloth.runtimeDir "/nyx/remmina")) "/tmp" ]
                 [ (sloth.mkdir (sloth.concat [ (sloth.env "HOME") "/.nyx/app-fake-root/remmina/tmp-share" ])) "/tmp/remmina-share" ]
-                (sloth.concat' sloth.runtimeDir "/doc")
+                [ (sloth.concat' sloth.runtimeDir "/doc/by-app/org.remmina.Remmina") (sloth.concat' sloth.runtimeDir "/doc") ]
             ];
             env = {
                 HOME = sloth.env "HOME";
