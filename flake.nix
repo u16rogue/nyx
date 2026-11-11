@@ -37,11 +37,14 @@
         ];
 
         systems = [ "x86_64-linux" ];
-        perSystem = { self', config, pkgs, system, ... }: {
+        perSystem = { self', config, pkgs, system, lib, ... }: {
             _module.args.pkgs = import nixpkgs {
                 inherit system;
-                overlays = [(final: prev: let from = _nix_input: _nix_input.legacyPackages.${prev.stdenv.hostPlatform.system}; in {
-                    # opencode = (from inputs.nixpkgs-opencode).opencode;
+                overlays = [(final: prev: let pins = lib.pipe inputs [
+                    (lib.filterAttrs (n: _: lib.hasPrefix "nixpkgs-" n))
+                    (lib.mapAttrs' (n: v: lib.nameValuePair (lib.removePrefix "nixpkgs-" n) v.legacyPackages.${prev.stdenv.hostPlatform.system}))
+                ]; in {
+                    # opencode = pins.opencode.opencode;
                 })];
             };
 
