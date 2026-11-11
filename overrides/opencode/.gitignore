@@ -2,5 +2,9 @@
 .*
 !.gitignore
 !package.nix
-!erm/
-!erm/*
+!nyx-erm/
+!nyx-erm/package.json
+!nyx-erm/tui.tsx
+!nyx-openrouter-tracker/
+!nyx-openrouter-tracker/package.json
+!nyx-openrouter-tracker/tui.tsx

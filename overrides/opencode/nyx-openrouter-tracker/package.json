@@ -1,0 +1,9 @@
+{
+  "name": "nyx-openrouter-tracker",
+  "displayName": "Nyx Openrouter Tracker",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    "./tui": "./tui.tsx"
+  }
+}

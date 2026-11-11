@@ -1,5 +1,6 @@
 {
-  "name": "opencode-erm",
+  "name": "nyx-erm",
+  "displayName": "Nyx Erm",
   "version": "0.1.0",
   "type": "module",
   "exports": {

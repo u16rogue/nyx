@@ -15,7 +15,8 @@ in inputs.wrappers.lib.wrapPackage {
         })
         (setDefault "OPENCODE_CLI_CONFIG_CONTENT" {
             theme.name = "catppuccin";
-            plugins = [ "${./erm}" ];
+            # CLANKER EDITED: erm moved to nyx-erm, added nyx-openrouter-tracker (openrouter spend/limit in the sidebar)
+            plugins = [ "${./nyx-erm}" "${./nyx-openrouter-tracker}" ];
             keybinds = {
                 leader = "ctrl+space";
                 "input.delete.word.backward" = "ctrl+backspace,alt+backspace";
