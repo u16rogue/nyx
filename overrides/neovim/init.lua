@@ -181,7 +181,7 @@ do
                 ['<C-f>'] = 'select_default',
             } },
         },
-        pickers = { find_files = { find_command = { 'fd', '--type=file' } } },
+        pickers = { find_files = { find_command = { 'fd', '--type=file', '--hidden', '--no-ignore-vcs', '--exclude=.git' } } },
     })
     telescope.load_extension('fzf')
     telescope.load_extension('ui-select')
