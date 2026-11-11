@@ -1,0 +1,232 @@
+#!/usr/bin/env bash
+# THIS WAS WRITTEN BY A CLANKER
+# serves one or more directories from the dev env so a windows machine can mount them as a drive
+# with rclone + winfsp and always see the latest build, no system service on linux needed.
+# every directory shows up as <drive>:\<name>, the credentials are generated once and persisted so
+# the printed `irm | iex` setup one-liner only has to be run once on windows.
+
+set -o pipefail
+
+printErr() {
+    printf '\033[37m[\033[91merr\033[37m]\033[0m %s\n' "$1" >&2
+}
+
+printWarn() {
+    printf '\033[37m[\033[93mwarn\033[37m]\033[0m %s\n' "$1" >&2
+}
+
+printLog() {
+    printf '\033[37m[log]\033[0m %s\n' "$1" >&2
+}
+
+die() {
+    printErr "$1"
+    exit 1
+}
+
+usage() {
+    echo \
+"--------------------------------------------------------------------------------
+rclone-serve [options] <dir|name=dir>...
+--------------------------------------------------------------------------------
+serves every <dir> for a windows machine to mount, each one shows up as
+<drive>:\\<name> where <name> is the directory's basename unless given with
+name=dir. prints the firewall commands for this machine and a powershell
+one-liner (irm | iex) that installs, configures and mounts everything on
+windows. the setup script it fetches is served under a random per-run url on
+the setup port while rclone-serve runs.
+
+options:
+    --proto <sftp|webdav>  protocol to serve (default: sftp)
+    --port <port>          port to listen on (default: 2022 sftp, 8080 webdav)
+    --setup-port <port>    port the setup script is served on (default: port+1)
+    --bind <ip>            address to bind to (default: all interfaces)
+    --host <host>          host/ip windows reaches this machine by, can be
+                           repeated (default: detected ips)
+    --user <name>          user for authentication (default: dev)
+    --remote <name>        rclone remote name on windows (default: linux-dev)
+    --drive <letter>       drive letter on windows (default: X)
+    --rw                   allow writes from windows (default: read only)
+    -h, --help
+
+env:
+    RCLONE_SERVE_PASS      password to use instead of the persisted one in
+                           \${XDG_STATE_HOME:-~/.local/state}/rclone-serve/pass
+
+example:
+    rclone-serve ./zig-out tools=../tools/zig-out
+--------------------------------------------------------------------------------"
+}
+
+# psQuote <string>: single quoted powershell literal
+psQuote() {
+    printf "'%s'" "${1//\'/\'\'}"
+}
+
+# psSnippet: the windows side setup, uses the globals resolved below
+psSnippet() {
+    local -a ps_hosts=()
+    local h
+    for h in "${hosts[@]}"; do ps_hosts+=("$(psQuote "$h")"); done
+    local hosts_list
+    hosts_list="$(IFS=,; printf '%s' "${ps_hosts[*]}")"
+
+    local config_args
+    case "$proto" in
+        sftp) config_args="sftp \"host=\$h\" 'port=$port' $(psQuote "user=$user") $(psQuote "pass=$pass") 'known_hosts_file=none'" ;;
+        webdav) config_args="webdav \"url=http://\${h}:$port/\" 'vendor=rclone' $(psQuote "user=$user") $(psQuote "pass=$pass")" ;;
+    esac
+
+    cat << EOF
+# rclone-serve setup: installs rclone + winfsp, points the '$remote' remote at the
+# first reachable host and mounts it on ${drive}: in the background. safe to rerun.
+# unmount: Get-CimInstance Win32_Process -Filter "Name='rclone.exe'" | ? CommandLine -like '*mount $remote:*' | % { Stop-Process -Id \$_.ProcessId }
+& {
+    \$remote = $(psQuote "$remote"); \$drive = '${drive}:'; \$port = $port
+    function Update-Path { \$env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User') }
+    if (-not (Get-Command rclone -ErrorAction SilentlyContinue)) {
+        winget install --exact --id Rclone.Rclone --accept-source-agreements --accept-package-agreements; Update-Path
+        if (-not (Get-Command rclone -ErrorAction SilentlyContinue)) { Write-Error 'rclone install failed'; return }
+    }
+    if (-not (Test-Path "\${env:ProgramFiles(x86)}\\WinFsp\\bin")) {
+        winget install --exact --id WinFsp.WinFsp --accept-source-agreements --accept-package-agreements
+        if (-not (Test-Path "\${env:ProgramFiles(x86)}\\WinFsp\\bin")) { Write-Error 'winfsp install failed'; return }
+    }
+    \$h = @($hosts_list) | Where-Object {
+        \$c = [Net.Sockets.TcpClient]::new()
+        try { \$c.ConnectAsync(\$_, \$port).Wait(1500) -and \$c.Connected } catch { \$false } finally { \$c.Dispose() }
+    } | Select-Object -First 1
+    if (-not \$h) { Write-Error "none of ${hosts[*]} is reachable on port \$port, is rclone-serve running and the firewall open?"; return }
+    rclone config delete \$remote *> \$null
+    rclone config create \$remote $config_args --obscure > \$null
+    if (\$LASTEXITCODE -ne 0) { Write-Error 'rclone config create failed'; return }
+    if (Test-Path "\$drive\\") { Write-Host "\$drive is already mounted"; return }
+    Start-Process rclone -WindowStyle Hidden -ArgumentList 'mount', "\${remote}:", \$drive, '--vfs-cache-mode', 'full', '--dir-cache-time', '2s', '--network-mode'
+    Write-Host "mounting \${remote}: (\$h) on \$drive"
+}
+EOF
+}
+
+proto="sftp"
+port=
+setup_port=
+bind=
+user="dev"
+remote="linux-dev"
+drive="X"
+read_only=1
+hosts=()
+inputs=()
+
+args=("$@")
+while (( $# )); do
+    case "$1" in
+        --proto) proto="${2:?--proto needs a value}"; shift 2 ;;
+        --port) port="${2:?--port needs a value}"; shift 2 ;;
+        --bind) bind="${2:?--bind needs a value}"; shift 2 ;;
+        --host) hosts+=("${2:?--host needs a value}"); shift 2 ;;
+        --user) user="${2:?--user needs a value}"; shift 2 ;;
+        --remote) remote="${2:?--remote needs a value}"; shift 2 ;;
+        --drive) drive="${2:?--drive needs a value}"; drive="${drive%:}"; shift 2 ;;
+        --setup-port) setup_port="${2:?--setup-port needs a value}"; shift 2 ;;
+        --rw) read_only=0; shift ;;
+        -h|--help) usage; exit 0 ;;
+        --) shift; inputs+=("$@"); break ;;
+        -*) usage >&2; die "unknown option $1" ;;
+        *) inputs+=("$1"); shift ;;
+    esac
+done
+
+(( ${#inputs[@]} )) || { usage >&2; die "no directory to serve given"; }
+
+case "$proto" in
+    sftp) port="${port:-2022}" ;;
+    webdav) port="${port:-8080}" ;;
+    *) die "unknown protocol $proto, expected sftp or webdav" ;;
+esac
+[[ "$port" =~ ^[0-9]+$ ]] || die "invalid port $port"
+setup_port="${setup_port:-$(( port + 1 ))}"
+[[ "$setup_port" =~ ^[0-9]+$ ]] || die "invalid setup port $setup_port"
+(( setup_port != port )) || die "the setup port has to differ from the port"
+[[ "$drive" =~ ^[A-Za-z]$ ]] || die "invalid drive letter $drive"
+
+# every input becomes a combine upstream `"<name>=<abs dir>"`
+declare -A seen=()
+upstreams=()
+for input in "${inputs[@]}"; do
+    name=
+    dir="$input"
+    if [[ ! -d "$input" && "$input" =~ ^([^/=]+)=(.+)$ ]]; then
+        name="${BASH_REMATCH[1]}"
+        dir="${BASH_REMATCH[2]}"
+    fi
+    [[ -d "$dir" ]] || die "$dir is not a directory"
+    dir="$(realpath -- "$dir")"
+    name="${name:-"$(basename -- "$dir")"}"
+    [[ "$name" == *[\\\"/:\*\?\<\>\|]* ]] && die "invalid name '$name', it has to be a valid windows folder name"
+    [[ -n "${seen["$name"]:-}" ]] && die "'$name' is served twice (${seen["$name"]} and $dir), name one with <name>=<dir>"
+    [[ "$dir" == *\"* ]] && die "$dir contains a double quote which can't be served"
+    seen["$name"]="$dir"
+    upstreams+=("\"$name=$dir\"")
+done
+
+if ! command -v "nix" &> /dev/null && ! command -v "rclone" &> /dev/null; then die "nix or rclone is required"; fi
+
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+missing=()
+if ! command -v "rclone" &> /dev/null; then missing+=("nixpkgs#rclone"); fi
+if (( ${#missing[@]} )); then
+    if [[ -n "${_SOFTDEPS_REEXEC:-}" ]]; then die "still missing after nix shell: ${missing[*]}"; fi
+    _SOFTDEPS_REEXEC=1 exec nix shell --inputs-from "$script_dir" "${missing[@]}" --command "${BASH_SOURCE[0]}" "${args[@]}"
+fi
+
+pass="${RCLONE_SERVE_PASS:-}"
+if [[ -z "$pass" ]]; then
+    pass_file="${XDG_STATE_HOME:-$HOME/.local/state}/rclone-serve/pass"
+    if [[ ! -s "$pass_file" ]]; then
+        mkdir -p -- "$(dirname -- "$pass_file")" || die "failed to create $(dirname -- "$pass_file")"
+        ( umask 077 && head -c 24 /dev/urandom | base64 | tr -d '/+=\n' > "$pass_file" ) || die "failed to create $pass_file"
+        printLog "generated a new password in $pass_file"
+    fi
+    pass="$(< "$pass_file")"
+    [[ -n "$pass" ]] || die "failed to read $pass_file"
+fi
+
+if (( ! ${#hosts[@]} )) && [[ -n "$bind" && "$bind" != 0.0.0.0 ]]; then hosts=("$bind"); fi
+if (( ! ${#hosts[@]} )) && command -v "ip" &> /dev/null; then
+    mapfile -t hosts < <(ip -4 -o addr show scope global 2> /dev/null | awk '{ split($4, a, "/"); print a[1] }')
+fi
+if (( ! ${#hosts[@]} )); then
+    hosts=("$(hostname 2> /dev/null || echo localhost)")
+    printWarn "couldn't detect any ip, using ${hosts[0]}, pass --host if windows can't resolve it"
+fi
+
+# the setup script holds the password so it lives in a private temp dir behind a random url,
+# `.txt` so it's served as text/plain which irm hands to iex as a string
+setup_dir="$(mktemp -d)" || die "failed to create a temp dir for the setup script"
+setup_pid=
+cleanup() {
+    [[ -n "$setup_pid" ]] && kill "$setup_pid" 2> /dev/null
+    rm -rf -- "$setup_dir"
+}
+trap cleanup EXIT
+psSnippet > "$setup_dir/setup.txt" || die "failed to write the setup script"
+token="$(head -c 18 /dev/urandom | base64 | tr -d '/+=\n')"
+rclone serve http "$setup_dir" --addr "${bind}:$setup_port" --baseurl "/$token" --read-only --log-level ERROR &
+setup_pid=$!
+
+printf '\n\033[1mnixos firewall\033[0m (temporary, gone on the next firewall reload)\n' >&2
+printf '    sudo nixos-firewall-tool open tcp %s && sudo nixos-firewall-tool open tcp %s\n' "$port" "$setup_port" >&2
+printf '    sudo nixos-firewall-tool reset    # to close them again\n' >&2
+printf '\n\033[1mwindows\033[0m (paste into powershell)\n' >&2
+for h in "${hosts[@]}"; do printf '    irm http://%s:%s/%s/setup.txt | iex\n' "$h" "$setup_port" "$token"; done
+(( ${#hosts[@]} > 1 )) && printf '    (one per detected ip, pick the one windows can reach)\n' >&2
+printf '\n' >&2
+
+for name in "${!seen[@]}"; do printLog "${drive}:\\$name -> ${seen["$name"]}"; done
+printLog "serving over $proto on ${bind:-0.0.0.0}:$port$( (( read_only )) && printf ' (read only)'), setup on :$setup_port"
+
+serve_args=("$proto" ":combine:" --combine-upstreams "${upstreams[*]}" --addr "${bind}:$port" --user "$user" --pass "$pass")
+(( read_only )) && serve_args+=(--read-only)
+# not exec'd so the trap can stop the setup server and remove the script once this exits
+rclone serve "${serve_args[@]}"
