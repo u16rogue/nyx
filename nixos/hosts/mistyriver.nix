@@ -4,9 +4,10 @@
 
         monitors = [
             {
-                id = "eDP-1";
+                edid = { make = "Samsung Display Corp."; model = "ATNA40CU05-0"; };
                 resolution = { x = 1920; y = 1200; };
                 refreshrate = 60;
+                scale = 1;
             }
         ];
 

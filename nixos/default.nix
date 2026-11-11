@@ -91,6 +91,10 @@
                         assertion = let nyxhost_workspaces = lib.concatMap (monitor: builtins.attrNames monitor.workspaces) nyxhost.monitors; in builtins.length nyxhost_workspaces == builtins.length (lib.unique nyxhost_workspaces);
                         message = "nyx host '${hostname}' must not pin a workspace to more than one monitor.";
                     }
+                    {
+                        assertion = builtins.all (monitor: (monitor.id == null) != (monitor.edid == null)) nyxhost.monitors;
+                        message = "nyx host '${hostname}' monitors must set exactly one of `id` or `edid`.";
+                    }
                 ];
             })
             # Host users host configuration
@@ -139,8 +143,30 @@
                     type = lib.types.listOf (lib.types.submodule {
                         options = {
                             id = lib.mkOption {
-                                description = "Connector or monitor identifier.";
-                                type = lib.types.str;
+                                description = "Connector name (e.g. `eDP-1`).";
+                                type = lib.types.nullOr lib.types.str;
+                                default = null;
+                            };
+                            edid = lib.mkOption {
+                                description = "Monitor identity as reported by its EDID. Stable across connectors and GPUs.";
+                                type = lib.types.nullOr (lib.types.submodule {
+                                    options = {
+                                        make = lib.mkOption {
+                                            description = "Manufacturer name (PNP name, e.g. `BOE`).";
+                                            type = lib.types.str;
+                                        };
+                                        model = lib.mkOption {
+                                            description = "Product name, or the hex product code (e.g. `0x06A9`) if the EDID has none.";
+                                            type = lib.types.str;
+                                        };
+                                        serial = lib.mkOption {
+                                            description = "Serial string, or null if the EDID has none.";
+                                            type = lib.types.nullOr lib.types.str;
+                                            default = null;
+                                        };
+                                    };
+                                });
+                                default = null;
                             };
                             resolution = lib.mkOption {
                                 description = "Preferred display resolution in pixels.";

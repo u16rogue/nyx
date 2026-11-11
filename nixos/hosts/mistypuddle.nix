@@ -36,7 +36,7 @@
 
         monitors = [
             {
-                id = "eDP-1";
+                edid = { make = "BOE"; model = "0x06A9"; };
                 resolution = { x = 1920; y = 1080; };
                 refreshrate = 60;
             }

@@ -4,7 +4,7 @@
 
         monitors = let
             left = {
-                id = "HDMI-A-5";
+                edid = { make = "Stores Automated Systems Inc"; model = "HDMI"; serial = "V9U170100001"; };
                 resolution = { x = 1440; y = 900; };
                 refreshrate = 75.11;
                 position = { x = 0; y = 0; };
@@ -14,7 +14,7 @@
                 };
             };
             right = {
-                id = "DP-3";
+                edid = { make = "ASUSTek COMPUTER INC"; model = "VG249Q3A"; serial = "R7LMTF074236"; };
                 resolution = { x = 1920; y = 1080; };
                 refreshrate = 165;
                 position = { x = left.resolution.x; y = 0; };
