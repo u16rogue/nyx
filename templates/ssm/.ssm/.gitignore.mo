@@ -10,6 +10,8 @@
 !.nyx-sbx/dev-hook.sh
 !.nyx-sbx/share/
 
+!scripts/
+
 !.ignore
 !.nvim.lua
 !.nvim/

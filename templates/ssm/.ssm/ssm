@@ -1137,6 +1137,12 @@ modeOf_init() {
     mo "$ssm_dir/.nvim.lua.mo" > "$ssm_stage/.nvim.lua" || die "failed to create .nvim.lua"
     renderTree "$ssm_dir/.nvim" ".nvim" || die "failed to create .nvim"
 
+    # CLANKER ASSISTED: helper scripts (eg. rclone-serve) go into the project's scripts/, the ignores come from scripts/.gitignore.mo
+    if [[ -d "$ssm_dir/scripts" ]]; then
+        printLog "creating helper scripts scripts/"
+        renderTree "$ssm_dir/scripts" "scripts" || die "failed to create scripts"
+    fi
+
     # CLANKER ASSISTED: rg/fd ignores for generated dirs, shipped as .mo so it doesn't apply to the template's own repo
     printLog "creating .ignore"
     mo "$ssm_dir/.ignore.mo" > "$ssm_stage/.ignore" || die "failed to create .ignore"
@@ -1152,6 +1158,8 @@ modeOf_init() {
     [[ -f "$ssm_stage/AGENTS.md" || -f "$ssm_root/AGENTS.md" ]] && tracked+=("AGENTS.md")
     # CLANKER ASSISTED: track the project jj config
     [[ -f "$ssm_stage/.jj.toml" || -f "$ssm_root/.jj.toml" ]] && tracked+=(".jj.toml")
+    # CLANKER ASSISTED: track the helper scripts
+    [[ -d "$ssm_stage/scripts" || -d "$ssm_root/scripts" ]] && tracked+=("scripts")
     addStep host_steps git-add "git add -- ${tracked[*]@Q}"
     if [[ "${d["nixpkgs_pin"]}" == "<latest>" ]]; then
         addStep host_steps flake-lock "nix flake lock"
