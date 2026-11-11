@@ -50,10 +50,10 @@
 
             devShells.default = pkgs.mkShellNoCC {
                 packages = with pkgs; [
-                    rage    # secrets
-                    gum     # used by ssm
-                    # AI-assisted: editor, the servers are enabled in .nvim.lua
-                    nil lua-language-server bash-language-server shellcheck
+                    jujutsu git # version control
+                    rage        # secrets
+                    gum         # used by ssm
+                    nil lua-language-server bash-language-server shellcheck # AI-assisted: editor, the servers are enabled in .nvim.lua
                     # tree-sitter grammars, <pkg>/share/nvim/site/parser reaches neovim's runtimepath through XDG_DATA_DIRS
                     (pkgs.linkFarm "nvim-grammars" (map (lang: {
                         name = "share/nvim/site/parser/${lang}.so";
@@ -73,7 +73,7 @@
                         };
                         workspace = {
                             checkThirdParty = false;
-                            useGitIgnore = false; # the allowlist .gitignore (`**` + `!...`) would hide lua/ from it
+                            useGitIgnore = false;
                             library = [ "${pkgs.neovim-unwrapped}/share/nvim/runtime/lua" "\${3rd}/luv/library" ] ++ map (p: "${p.plugin or p}/lua") self'.packages.neovim.plugins;
                         };
                     });
