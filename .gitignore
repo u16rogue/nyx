@@ -1,6 +1,7 @@
 **
 .*
 !.gitignore
+!.ignore
 !flake.lock
 !flake.nix
 !README.md
