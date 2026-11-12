@@ -88,16 +88,22 @@
         exit 1
     }
     ```
-* Always check hard dependencies are available such as `if ! command -v "nix" &> /dev/null; then die "nix is required"; fi`
+* Always check hard dependencies are available such as `if ! command -v "git" &> /dev/null; then die "git is required"; fi`
+* Scripts must stay usable without nix. Nix is only a hard dependency when the script is explicitly about nix, otherwise it's just a convenience for acquiring missing dependencies.
 * Always check soft dependencies and aggregate them. If any are unavailable rerun the script itself once in a nix shell with all of them. Guard against looping and forward the arguments.
+    * Never assume experimental features are enabled, always pass `--extra-experimental-features 'nix-command flakes'` since `nix shell` and `--inputs-from` are not available by default.
+    * If nix isn't available, die with the list of missing commands so non nix users know what to install.
     ```bash
     script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-    missing=()
-    if ! command -v "hello" &> /dev/null; then missing+=("nixpkgs#hello"); fi
-    if ! command -v "jq" &> /dev/null; then missing+=("nixpkgs#jq"); fi
-    if (( ${#missing[@]} )); then
-        if [[ -n "${_SOFTDEPS_REEXEC:-}" ]]; then die "still missing after nix shell: ${missing[*]}"; fi
-        _SOFTDEPS_REEXEC=1 exec nix shell --inputs-from "$script_dir" "${missing[@]}" --command "${BASH_SOURCE[0]}" "$@"
+    missing_cmds=()
+    missing_pkgs=()
+    if ! command -v "hello" &> /dev/null; then missing_cmds+=("hello"); missing_pkgs+=("nixpkgs#hello"); fi
+    if ! command -v "jq" &> /dev/null; then missing_cmds+=("jq"); missing_pkgs+=("nixpkgs#jq"); fi
+    if (( ${#missing_cmds[@]} )); then
+        if [[ -n "${_SOFTDEPS_REEXEC:-}" ]]; then die "still missing after nix shell: ${missing_cmds[*]}"; fi
+        if ! command -v "nix" &> /dev/null; then die "missing dependencies, please install: ${missing_cmds[*]}"; fi
+        printWarn "missing ${missing_cmds[*]}, rerunning in a nix shell"
+        _SOFTDEPS_REEXEC=1 exec nix --extra-experimental-features 'nix-command flakes' shell --inputs-from "$script_dir" "${missing_pkgs[@]}" --command "${BASH_SOURCE[0]}" "$@"
     fi
     ```
 

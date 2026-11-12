@@ -170,14 +170,15 @@ for input in "${inputs[@]}"; do
     upstreams+=("\"$name=$dir\"")
 done
 
-if ! command -v "nix" &> /dev/null && ! command -v "rclone" &> /dev/null; then die "nix or rclone is required"; fi
-
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-missing=()
-if ! command -v "rclone" &> /dev/null; then missing+=("nixpkgs#rclone"); fi
-if (( ${#missing[@]} )); then
-    if [[ -n "${_SOFTDEPS_REEXEC:-}" ]]; then die "still missing after nix shell: ${missing[*]}"; fi
-    _SOFTDEPS_REEXEC=1 exec nix shell --inputs-from "$script_dir" "${missing[@]}" --command "${BASH_SOURCE[0]}" "${args[@]}"
+missing_cmds=()
+missing_pkgs=()
+if ! command -v "rclone" &> /dev/null; then missing_cmds+=("rclone"); missing_pkgs+=("nixpkgs#rclone"); fi
+if (( ${#missing_cmds[@]} )); then
+    if [[ -n "${_SOFTDEPS_REEXEC:-}" ]]; then die "still missing after nix shell: ${missing_cmds[*]}"; fi
+    if ! command -v "nix" &> /dev/null; then die "missing dependencies, please install: ${missing_cmds[*]}"; fi
+    printWarn "missing ${missing_cmds[*]}, rerunning in a nix shell"
+    _SOFTDEPS_REEXEC=1 exec nix --extra-experimental-features 'nix-command flakes' shell --inputs-from "$script_dir" "${missing_pkgs[@]}" --command "${BASH_SOURCE[0]}" "${args[@]}"
 fi
 
 pass="${RCLONE_SERVE_PASS:-}"
