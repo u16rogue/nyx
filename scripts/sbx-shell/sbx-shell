@@ -42,6 +42,12 @@ $prog_name [...args] <mode> [...mode args]
         covers are shared across all ctxlinks to that context and do not add refs.
         root, runtime-critical paths and context metadata cannot be covered.
         ex: \`$prog_name mcover . node_modules\`
+    scan-coverables [id|ctxlink]
+        list the topmost directories under the working directory that hold
+        nothing belonging to the repo (tracked or unignored files, via git or
+        jj) and whether the context's covers hide them: covered, partial
+        (only inner covers) or uncovered. defaults to the working-directory
+        ctxlink. also warns about covers that hide repo paths.
     nix-develop|nd [fragment] [-- shell args...]
         enter the current ctxlink's sandbox with the local flake's devshell
         (fragment defaults to 'default'). requires flake.nix and the same
@@ -646,6 +652,123 @@ modeOf_mcover() {
     exit 0
 };
 # END CLANKER: mcover mode
+
+# CLANKER START scan_coverables: report directories outside the repo and their cover state
+# Fill the supplied set with the paths that belong to the repo, relative to the
+# working directory: tracked files and untracked files that aren't ignored are
+# marked 'file', their ancestors 'parent'. Git lists nested repos as 'dir/'.
+repoPathsRead() {
+    local -n listed_repo_paths="$1"
+    local -a listed=()
+    if command -v git &> /dev/null && git rev-parse --is-inside-work-tree &> /dev/null; then
+        mapfile -d '' -t listed < <(git ls-files -z --cached --others --exclude-standard)
+        if ! wait "$!"; then
+            printErr "couldn't list repo files with git"
+            return 1
+        fi
+    elif command -v jj &> /dev/null && jj root &> /dev/null; then
+        mapfile -t listed < <(jj file list -- .)
+        if ! wait "$!"; then
+            printErr "couldn't list repo files with jj"
+            return 1
+        fi
+    else
+        printErr "scan-coverables requires the working directory to be inside a git or jj repo"
+        return 1
+    fi
+
+    local path
+    for path in "${listed[@]}"; do
+        path="${path%/}"
+        [[ -z "$path" ]] && continue
+        listed_repo_paths["$path"]='file'
+        while [[ "$path" == */* ]]; do
+            path="${path%/*}"
+            [[ "${listed_repo_paths[$path]:-}" == parent ]] && break
+            listed_repo_paths["$path"]=parent
+        done
+    done
+}
+
+# Only descend into directories holding repo paths, so the first directory
+# found without any is the topmost one that a single cover fully handles.
+modeOf_scanCoverables() {
+    if (( $# > 2 )); then
+        printErr "usage: $prog_name scan-coverables [id|ctxlink]"
+        exit 1
+    fi
+
+    local PWD
+    if ! PWD="$(pwd -P)"; then
+        printErr "couldn't resolve working directory"
+        exit 1
+    fi
+    local context_id
+    context_id="$(resolveContextSelector "${2:-.}")" || exit 1
+    local -A covers=()
+    readCoverRegistrations "$NYX_SBX_SHELL_DIR/$context_id/cover" covers || exit 1
+    local -A repo_paths=()
+    repoPathsRead repo_paths || exit 1
+
+    local scan_status=0
+    local -a candidates=() pending=("$PWD")
+    while (( ${#pending[@]} > 0 )); do
+        local directory="${pending[-1]}"
+        unset 'pending[-1]'
+        local -a entries=()
+        dirEntriesRead "$directory" entries || { scan_status=1; continue; }
+        local entry
+        for entry in "${entries[@]}"; do
+            [[ -L "$entry" || ! -d "$entry" ]] && continue
+            case "${entry##*/}" in
+                .git|.jj|"$ctxlink_marker_name") continue ;;
+            esac
+            case "${repo_paths[${entry#"$PWD/"}]:-}" in
+                parent) pending+=("$entry") ;;
+                file) ;;
+                *) candidates+=("$entry") ;;
+            esac
+        done
+    done
+
+    local cover_target
+    for cover_target in "${!covers[@]}"; do
+        if [[ "$cover_target" == "$PWD/"* && -n "${repo_paths[${cover_target#"$PWD/"}]:-}" ]]; then
+            printWarn "cover hides repo paths: ${cover_target#"$PWD/"}"
+        fi
+    done
+
+    (( ${#candidates[@]} == 0 )) && { printLog "no directories outside the repo"; exit "$scan_status"; }
+    mapfile -d '' -t candidates < <(printf '%s\0' "${candidates[@]}" | LC_ALL=C sort -z)
+    local candidate uncovered_count=0
+    for candidate in "${candidates[@]}"; do
+        local covered_by=''
+        local -a inner_covers=()
+        for cover_target in "${!covers[@]}"; do
+            if [[ "$candidate" == "$cover_target" || "$candidate" == "$cover_target/"* ]]; then
+                covered_by="$cover_target"
+            elif [[ "$cover_target" == "$candidate/"* ]]; then
+                inner_covers+=("${cover_target#"$PWD/"}")
+            fi
+        done
+
+        local relative="${candidate#"$PWD/"}"
+        if [[ "$covered_by" == "$candidate" ]]; then
+            printf 'covered    %s\n' "$relative"
+        elif [[ -n "$covered_by" ]]; then
+            printf 'covered    %s (by %s)\n' "$relative" "${covered_by#"$PWD/"}"
+        elif (( ${#inner_covers[@]} > 0 )); then
+            printf 'partial    %s (inner: %s)\n' "$relative" "${inner_covers[*]}"
+            ((uncovered_count += 1))
+        else
+            printf 'uncovered  %s\n' "$relative"
+            ((uncovered_count += 1))
+        fi
+    done
+    (( uncovered_count > 0 )) && printLog "$uncovered_count not fully covered; cover one with \`$prog_name mcover --move . <path>\`"
+    exit "$scan_status"
+};
+# CLANKER END scan_coverables
 
 # Print the context id resolved from the supplied ctxlink directory's ptr.
 resolveCtxlink() {
@@ -1390,6 +1513,8 @@ case "${1:-enter}" in
     madd) modeOf_madd "$@" ;;
     # Clanker implemented: mcover dispatch
     mcover) modeOf_mcover "$@" ;;
+    # CLANKER ASSISTED: scan-coverables dispatch
+    scan-coverables) modeOf_scanCoverables "$@" ;;
     gc) modeOf_gc "$@" ;;
     *) printErr "unknown command: $1. see \`$prog_name help\`."; exit 1 ;;
 esac
