@@ -1,6 +1,6 @@
 **
 .*
-!.gitignore
-!package.nix
-!hyprland.lua
-!snippets.nix
+!/.gitignore
+!/package.nix
+!/hyprland.lua
+!/snippets.nix

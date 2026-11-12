@@ -1,22 +1,22 @@
 **
 .*
-!.gitignore
-!.ignore
-!flake.lock
-!flake.nix
-!README.md
-!.nvim.lua
-!nixos/
-!overrides/
-!scripts/
-!templates/
-!_nyx/
+!/.gitignore
+!/.ignore
+!/flake.lock
+!/flake.nix
+!/README.md
+!/.nvim.lua
+!/nixos/
+!/overrides/
+!/scripts/
+!/templates/
+!/_nyx/
 
-!.jj.toml
+!/.jj.toml
 
-!.github
-!.github/**
+!/.github
+!/.github/**
 
-!.nyx-sbx/
-!.nyx-sbx/dev-hook.sh
-!.nyx-sbx/share/
+!/.nyx-sbx/
+!/.nyx-sbx/dev-hook.sh
+!/.nyx-sbx/share/

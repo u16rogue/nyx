@@ -1,5 +1,5 @@
 **
 .*
-!.gitignore
-!config.jsonc
-!package.nix
+!/.gitignore
+!/config.jsonc
+!/package.nix

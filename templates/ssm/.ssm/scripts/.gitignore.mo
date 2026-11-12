@@ -1,4 +1,4 @@
 **
 .*
-!.gitignore
-!rclone-serve
+!/.gitignore
+!/rclone-serve

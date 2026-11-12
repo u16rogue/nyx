@@ -3,7 +3,7 @@ my nix slop
 
 ## General
 
-* This repo is ***explicit*** inverse ignore. Everything is ignored by default and must be explicitly included by excluding it from the glob within the `.gitignore`. A utility script [mkignore](./scripts/mkignore/mkignore) is available to auto generate these ignore files.
+* This repo is ***explicit*** inverse ignore. Everything is ignored by default and must be explicitly included by excluding it from the glob within the `.gitignore`. Every unignore is anchored with a leading `/` (`!/flake.nix`) so it only applies to its own directory and doesn't leak into subdirectories. A utility script [mkignore](./scripts/mkignore/mkignore) is available to auto generate these ignore files.
 
 * Any code or wall of text written by a clanker must be disclosed for sanity.
 

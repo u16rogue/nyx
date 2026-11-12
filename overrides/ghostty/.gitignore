@@ -1,5 +1,5 @@
 **
 .*
-!.gitignore
-!config.ghostty
-!package.nix
+!/.gitignore
+!/config.ghostty
+!/package.nix

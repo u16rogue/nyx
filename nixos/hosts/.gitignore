@@ -1,6 +1,6 @@
 **
 .*
-!.gitignore
-!mistylake.nix
-!mistyriver.nix
-!mistypuddle.nix
+!/.gitignore
+!/mistylake.nix
+!/mistyriver.nix
+!/mistypuddle.nix

@@ -1,13 +1,13 @@
 **
 .*
-!.gitignore
-!default.nix
-!try-ssm
+!/.gitignore
+!/default.nix
+!/try-ssm
 
-!dev/
-!dev/**
+!/dev/
+!/dev/**
 
-!ssm/
-!ssm/init
-!ssm/.ssm/
-!ssm/.ssm/**
+!/ssm/
+!/ssm/init
+!/ssm/.ssm/
+!/ssm/.ssm/**

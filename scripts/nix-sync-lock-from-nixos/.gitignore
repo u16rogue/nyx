@@ -1,5 +1,5 @@
 **
 .*
-!.gitignore
-!nix-sync-lock-from-nixos
-!package.nix
+!/.gitignore
+!/nix-sync-lock-from-nixos
+!/package.nix

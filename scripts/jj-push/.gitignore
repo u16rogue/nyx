@@ -1,5 +1,5 @@
 **
 .*
-!.gitignore
-!jj-push
-!package.nix
+!/.gitignore
+!/jj-push
+!/package.nix

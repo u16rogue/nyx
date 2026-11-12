@@ -1,5 +1,5 @@
 **
 .*
-!.gitignore
-!user.nix
-!sysadmin.nix
+!/.gitignore
+!/user.nix
+!/sysadmin.nix

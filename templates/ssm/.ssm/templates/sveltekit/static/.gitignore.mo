@@ -1,4 +1,4 @@
 **
 .*
-!.gitignore
-!robots.txt
+!/.gitignore
+!/robots.txt

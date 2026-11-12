@@ -1,4 +1,4 @@
 **
 .*
-!.gitignore
-!zellij.kdl
+!/.gitignore
+!/zellij.kdl

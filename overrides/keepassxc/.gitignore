@@ -1,5 +1,5 @@
 **
 .*
-!.gitignore
-!keepassxc.ini
-!package.nix
+!/.gitignore
+!/keepassxc.ini
+!/package.nix

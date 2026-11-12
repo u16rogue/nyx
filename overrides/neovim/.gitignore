@@ -1,8 +1,8 @@
 **
 .*
-!.gitignore
-!package.nix
-!init.lua
-!lua/
-!lua/statusline.lua
-!lua/restore_buffers.lua
+!/.gitignore
+!/package.nix
+!/init.lua
+!/lua/
+!/lua/statusline.lua
+!/lua/restore_buffers.lua

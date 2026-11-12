@@ -1,8 +1,8 @@
 **
 .*
-!.gitignore
-!default.nix
-!hosts/
-!modules/
-!users/
-!nyxos-install/
+!/.gitignore
+!/default.nix
+!/hosts/
+!/modules/
+!/users/
+!/nyxos-install/

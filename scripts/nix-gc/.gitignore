@@ -1,5 +1,5 @@
 **
 .*
-!.gitignore
-!nix-gc
-!package.nix
+!/.gitignore
+!/nix-gc
+!/package.nix

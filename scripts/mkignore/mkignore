@@ -17,7 +17,7 @@ TARGET_DIR="$(dirname "$OUT_FILE")"
 cat > "$OUT_FILE" <<EOF
 **
 .*
-!$FILE_NAME
+!/$FILE_NAME
 EOF
 
 entries=()
@@ -29,14 +29,14 @@ done < <(find "$TARGET_DIR" -mindepth 1 -maxdepth 1 \( ! -path "$OUT_FILE" ! -na
     for path in "${entries[@]}"; do
         rel=$(realpath --relative-to="$TARGET_DIR" "$path")
         if [ ! -d "$path" ]; then
-            echo "!$rel"
+            echo "!/$rel"
         fi
     done | sort
 
     for path in "${entries[@]}"; do
         rel=$(realpath --relative-to="$TARGET_DIR" "$path")
         if [ -d "$path" ]; then
-            echo "!$rel/"
+            echo "!/$rel/"
         fi
     done | sort
 } >> "$OUT_FILE"

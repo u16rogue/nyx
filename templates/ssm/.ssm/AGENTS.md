@@ -112,29 +112,30 @@
 * With `jj`, treat the working copy (`@`) as staging: don't commit it wholesale, instead split specific changes out of it into focused commits below `@`, like `jj split` does (`jj into <change> [paths]`, `jj imbue <change> [paths]` to pick hunks). The target must be an ancestor of `@` so the change stays visible in the working copy; only `@`'s own diff shrinks. Never squash into a commit outside `@`'s ancestry unless told to. `jj todo "msg"` inserts a placeholder change directly below `@` for this, it stays private (unpushable) until `jj done <change>`.
 * NEVER DO VERSION CONTROL OPERATIONS (`git` OR `jj`) UNLESS YOU'RE **EXPLICITLY** TOLD SO. Read-only commands (`status`, `log`, `diff`, `show`) are fine.
 * NEVER GLOB THE UNIGNORE. These project(s) intentionally use explicit inverse ignore which means EVERYTHING is ignored by default and specific files are then unignored. The only exception is when it comes to obviously globbed directories such as source directories, if unsure always ask.
-    * Remember that git can't re-include a file if its parent directory is ignored, so globbed directories also need their subdirectories unignored (`!src/**/`)
+    * Remember that git can't re-include a file if its parent directory is ignored, so globbed directories also need their subdirectories unignored (`!/src/**/`)
+    * Always anchor every unignore to the directory of its `.gitignore` with a leading `/` (`!/flake.nix`, not `!flake.nix`). An unanchored pattern matches at any depth, so a subdirectory without its own `.gitignore` inherits it and silently re-includes every same named file below it
     * .gitignore
     ```
     **
     .*
-    !.gitignore
-    !build.zig
-    !src/
+    !/.gitignore
+    !/build.zig
+    !/src/
     # This makes sense because in this context `src` is expected to only contain zig source code
-    !src/**/
-    !src/**/*.zig
+    !/src/**/
+    !/src/**/*.zig
     # This folder despite having a similar role is not "predictable" and hence should NOT be globbed, it gets its own .gitignore listing every file
-    !assets/
+    !/assets/
     # Same kind of content as `src`, but it's a small fixed set of files, so list them explicitly instead of globbing
-    !scripts/
-    !scripts/setup.sh
-    !scripts/deploy.sh
+    !/scripts/
+    !/scripts/setup.sh
+    !/scripts/deploy.sh
     ```
     * assets/.gitignore
     ```
     **
     .*
-    !.gitignore
-    !foo.svg
-    !bar.svg
+    !/.gitignore
+    !/foo.svg
+    !/bar.svg
     ```

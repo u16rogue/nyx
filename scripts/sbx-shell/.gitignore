@@ -1,5 +1,5 @@
 **
 .*
-!.gitignore
-!sbx-shell
-!package.nix
+!/.gitignore
+!/sbx-shell
+!/package.nix

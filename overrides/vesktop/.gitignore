@@ -1,6 +1,6 @@
 **
 .*
-!.gitignore
-!package.nix
-!seed-config/
-!seed-config/**
+!/.gitignore
+!/package.nix
+!/seed-config/
+!/seed-config/**

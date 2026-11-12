@@ -1,6 +1,6 @@
 **
 .*
-!.gitignore
-!config/
-!config/config.kdl
-!package.nix
+!/.gitignore
+!/config/
+!/config/config.kdl
+!/package.nix

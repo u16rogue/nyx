@@ -1,5 +1,5 @@
 **
 .*
-!.gitignore
-!config.fish
-!package.nix
+!/.gitignore
+!/config.fish
+!/package.nix

@@ -1,6 +1,6 @@
 **
 .*
-!.gitignore
-!config/
-!config/yazi.toml
-!package.nix
+!/.gitignore
+!/config/
+!/config/yazi.toml
+!/package.nix

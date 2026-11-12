@@ -1,5 +1,5 @@
 **
 .*
-!.gitignore
-!config.conf
-!package.nix
+!/.gitignore
+!/config.conf
+!/package.nix

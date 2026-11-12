@@ -1,7 +1,7 @@
 **
 .*
-!.gitignore
-!do
-!main.roc
-!package.nix
-!shell.nix
+!/.gitignore
+!/do
+!/main.roc
+!/package.nix
+!/shell.nix

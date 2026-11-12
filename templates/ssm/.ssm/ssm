@@ -840,8 +840,8 @@ registerSubprojects() {
     [[ -s "$ignore" && -n "$(tail -c 1 -- "$ignore")" ]] && printf '\n' >> "$ignore"
     local name
     for name in "$@"; do
-        grep -qxF -- "!$name/" "$ignore" && continue
-        printf '!%s/\n' "$name" >> "$ignore" || { printErr "failed to update .gitignore"; rc=1; }
+        grep -qxF -e "!/$name/" -e "!$name/" -- "$ignore" && continue
+        printf '!/%s/\n' "$name" >> "$ignore" || { printErr "failed to update .gitignore"; rc=1; }
     done
     return "$rc"
 }
@@ -868,14 +868,14 @@ writeInverseIgnore() {
         # CLANKER ASSISTED: the template hooks aren't rendered
         [[ "$entry" == _ssm.sh && "$(dirname -- "$tpl_dir")" == "$ssm_dir/templates" ]] && continue
         if [[ -d "$path" ]]; then
-            dirs+=("!$entry/")
+            dirs+=("!/$entry/")
         else
-            files+=("!${entry%.mo}")
+            files+=("!/${entry%.mo}")
         fi
     done
 
     if ! {
-        printf '%s\n' '**' '.*' '!.gitignore'
+        printf '%s\n' '**' '.*' '!/.gitignore'
         (( ${#files[@]} )) && printf '%s\n' "${files[@]}" | sort
         (( ${#dirs[@]} )) && printf '%s\n' "${dirs[@]}" | sort
         true
