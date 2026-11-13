@@ -2,7 +2,7 @@
 // THIS WAS WRITTEN BY A CLANKER
 import { Plugin } from "@opencode/plugin/tui"
 import type { Context } from "@opencode/plugin/tui/context"
-import { Show, createEffect, createMemo, createSignal, on, onCleanup } from "solid-js"
+import { For, Show, createEffect, createMemo, createSignal, on, onCleanup, untrack } from "solid-js"
 
 const OPENROUTER_API = "https://openrouter.ai/api/v1"
 const OPENROUTER_PACKAGE = "@opencode/ai/providers/openrouter"
@@ -13,6 +13,8 @@ const MIN_AGE_MS = 10_000
 
 type Usage = { total: number; limit?: number; window?: string }
 type UsageState = { usage?: Usage; error?: string; time: number }
+// Provider total and session cost at the moment the session was first seen, used to attribute later spend.
+type Baseline = { provider: number; session: number }
 
 const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" })
 
@@ -70,6 +72,7 @@ export default Plugin.define({
   id: "openrouter-tracker",
   setup(context) {
     const [states, setStates] = createSignal<Record<string, UsageState>>({})
+    const [baselines, setBaselines] = createSignal<Record<string, Baseline>>({})
     const inflight = new Set<string>()
     const timers = new Map<string, ReturnType<typeof setTimeout>>()
 
@@ -106,7 +109,8 @@ export default Plugin.define({
     function Limits(props: { sessionID: string }) {
       const theme = () => context.theme
       const target = createMemo(() => openrouterTarget(context, props.sessionID))
-      const session_cost = createMemo(() => context.data.session.cost(context.data.session.root(props.sessionID)))
+      const root_id = createMemo(() => context.data.session.root(props.sessionID))
+      const session_cost = createMemo(() => context.data.session.cost(root_id()))
 
       createEffect(
         on(target, (integration_id) => {
@@ -143,14 +147,37 @@ export default Plugin.define({
         return theme().text.muted
       }
 
-      const label = () => {
+      // Snapshot on first sight, and again if the provider total drops (budget window reset).
+      createEffect(() => {
         const usage = state()?.usage
         if (!usage) return
+        const id = root_id()
+        const baseline = baselines()[id]
+        if (baseline && usage.total >= baseline.provider) return
+        const session = untrack(session_cost)
+        setBaselines((all) => ({ ...all, [id]: { provider: usage.total, session } }))
+      })
+
+      // Provider spend since the baseline that the session counter did not account for.
+      const hidden = () => {
+        const usage = state()?.usage
+        const baseline = baselines()[root_id()]
+        if (!usage || !baseline) return 0
+        return Math.max(0, usage.total - baseline.provider - (session_cost() - baseline.session))
+      }
+
+      const rows = () => {
+        const usage = state()?.usage
+        if (!usage) return []
         const session = session_cost()
-        const other = Math.max(0, usage.total - session)
         const limit = usage.limit != null ? money.format(usage.limit) : "∞"
         const suffix = (usage.window && WINDOW_SUFFIX[usage.window]) ?? ""
-        return `(${money.format(session)} + ${money.format(other)}) ${money.format(usage.total)} / ${limit}${suffix}`
+        return [
+          { key: "Session", value: money.format(session) },
+          { key: "Hidden", value: money.format(hidden()) },
+          { key: "Session Total", value: money.format(session + hidden()) },
+          { key: "Provider Total", value: `${money.format(usage.total)} / ${limit}${suffix}`, colored: true },
+        ]
       }
 
       const percent = () => {
@@ -166,13 +193,14 @@ export default Plugin.define({
             <text fg={theme().text.base}>
               <b>OpenRouter</b>
             </text>
-            <Show when={label()}>
-              {(text) => (
-                <text fg={color()} wrapMode="word">
-                  {text()}
-                </text>
+            <For each={rows()}>
+              {(row) => (
+                <box flexDirection="row" justifyContent="space-between">
+                  <text fg={theme().text.muted}>{row.key}</text>
+                  <text fg={row.colored ? color() : theme().text.muted}>{row.value}</text>
+                </box>
               )}
-            </Show>
+            </For>
             <Show when={percent() !== undefined}>
               <text fg={color()}>{`${percent()}% used`}</text>
             </Show>
