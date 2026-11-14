@@ -15,7 +15,6 @@ in inputs.wrappers.lib.wrapPackage {
         })
         (setDefault "OPENCODE_CLI_CONFIG_CONTENT" {
             theme.name = "catppuccin";
-            # CLANKER EDITED: erm moved to nyx-erm, added nyx-openrouter-tracker (openrouter spend/limit in the sidebar)
             plugins = [ "${./nyx-erm}" "${./nyx-openrouter-tracker}" ];
             keybinds = {
                 leader = "ctrl+space";
