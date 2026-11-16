@@ -2,6 +2,8 @@
 .*
 !/.gitignore
 !/package.nix
+!/lock.nix
+!/lock-update.sh
 !/nyx-erm/
 !/nyx-erm/package.json
 !/nyx-erm/tui.tsx
