@@ -1,8 +1,4 @@
-# CLANKER: what the clanker did in this file
-#   opencode-release: built the prebuilt GitHub release pinned by ./lock.nix (bump with ./lock-update.sh)
-#   source, base: overridesOpts.source picks "release" (default) or "nixpkgs", `package` now wraps `base` instead of `opencode`
-#   claude-code, claude, claude-login, patchHook, OPENCODE_CLAUDE_PATH in preHook: bundled claude-code for the Claude Agent provider, kept off PATH.
-#     claude-code is unfree, pass it in from an unfree-allowed pkgs (see nixos/users/user.nix)
+# CLANKER EDITED FILE: added opencode-release (GitHub release pinned by ./lock.nix), overridesOpts.source to pick "release" or "nixpkgs", and a bundled claude-code kept off PATH, signed in with /connect-claude (./nyx-connect-claude)
 
 { inputs, lib, pkgs, opencode, claude-code, overridesOpts ? {}, ... }: let
     setDefault = name: value: /*bash*/ ''
@@ -63,15 +59,9 @@
     }.${source} or (throw "opencode: unknown overridesOpts.source '${source}', expected \"release\" or \"nixpkgs\"");
 
     claude = lib.getExe claude-code;
-    claude-login = pkgs.writeShellScriptBin "opencode-claude-login" ''
-        exec ${claude} auth login "$@"
-    '';
 in inputs.wrappers.lib.wrapPackage {
     inherit pkgs;
     package = base;
-    patchHook = ''
-        ln -s ${claude-login}/bin/opencode-claude-login $out/bin/opencode-claude-login
-    '';
     preHook = lib.concatStrings [
         ''
             if [ -z "''${OPENCODE_CLAUDE_PATH+x}" ]; then export OPENCODE_CLAUDE_PATH=${lib.escapeShellArg claude}; fi
@@ -85,7 +75,7 @@ in inputs.wrappers.lib.wrapPackage {
         })
         (setDefault "OPENCODE_CLI_CONFIG_CONTENT" {
             theme.name = "catppuccin";
-            plugins = [ "${./nyx-erm}" "${./nyx-openrouter-tracker}" ];
+            plugins = [ "${./nyx-connect-claude}" "${./nyx-erm}" "${./nyx-openrouter-tracker}" ];
             keybinds = {
                 leader = "ctrl+space";
                 "input.delete.word.backward" = "ctrl+backspace,alt+backspace";

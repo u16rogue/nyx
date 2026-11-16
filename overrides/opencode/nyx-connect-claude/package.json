@@ -1,0 +1,9 @@
+{
+  "name": "nyx-connect-claude",
+  "displayName": "Nyx Connect Claude",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    "./tui": "./tui.tsx"
+  }
+}

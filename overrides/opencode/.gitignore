@@ -4,6 +4,9 @@
 !/package.nix
 !/lock.nix
 !/lock-update.sh
+!/nyx-connect-claude/
+!/nyx-connect-claude/package.json
+!/nyx-connect-claude/tui.tsx
 !/nyx-erm/
 !/nyx-erm/package.json
 !/nyx-erm/tui.tsx
