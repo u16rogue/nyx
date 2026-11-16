@@ -40,6 +40,7 @@
         perSystem = { self', config, pkgs, system, lib, ... }: {
             _module.args.pkgs = import nixpkgs {
                 inherit system;
+                config.allowUnfree = true;
                 overlays = [(final: prev: let pins = lib.pipe inputs [
                     (lib.filterAttrs (n: _: lib.hasPrefix "nixpkgs-" n))
                     (lib.mapAttrs' (n: v: lib.nameValuePair (lib.removePrefix "nixpkgs-" n) v.legacyPackages.${prev.stdenv.hostPlatform.system}))
