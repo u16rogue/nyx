@@ -1,9 +1,14 @@
-{ inputs, lib, pkgs, opencode, overridesOpts ? {}, ... }: let
+# CLANKER: what the clanker did in this file
+#   opencode-release: built the prebuilt GitHub release pinned by ./lock.nix (bump with ./lock-update.sh)
+#   source, base: overridesOpts.source picks "release" (default) or "nixpkgs", `package` now wraps `base` instead of `opencode`
+#   claude-code, claude, claude-login, patchHook, OPENCODE_CLAUDE_PATH in preHook: bundled claude-code for the Claude Agent provider, kept off PATH.
+#     claude-code is unfree, pass it in from an unfree-allowed pkgs (see nixos/users/user.nix)
+
+{ inputs, lib, pkgs, opencode, claude-code, overridesOpts ? {}, ... }: let
     setDefault = name: value: /*bash*/ ''
         if [ -z "''${${name}+x}" ]; then export ${name}=${lib.escapeShellArg (builtins.toJSON value)}; fi
     '';
 
-    # CLANKER START opencode_release: prebuilt GitHub release pinned by ./lock.nix, run ./lock-update.sh to bump it
     opencode-release = let
         lock = import ./lock.nix;
         asset = lock.assets.${pkgs.stdenv.hostPlatform.system}
@@ -50,19 +55,27 @@
             mainProgram = "opencode";
         };
     };
-    # CLANKER END opencode_release
 
-    # CLANKER ASSISTED: pick the base package, "release" (./lock.nix, default) or "nixpkgs"
     source = overridesOpts.source or "release";
     base = {
         release = opencode-release;
         nixpkgs = opencode;
     }.${source} or (throw "opencode: unknown overridesOpts.source '${source}', expected \"release\" or \"nixpkgs\"");
+
+    claude = lib.getExe claude-code;
+    claude-login = pkgs.writeShellScriptBin "opencode-claude-login" ''
+        exec ${claude} auth login "$@"
+    '';
 in inputs.wrappers.lib.wrapPackage {
     inherit pkgs;
-    # CLANKER EDITED: wrap the selected base instead of always nixpkgs' opencode
     package = base;
+    patchHook = ''
+        ln -s ${claude-login}/bin/opencode-claude-login $out/bin/opencode-claude-login
+    '';
     preHook = lib.concatStrings [
+        ''
+            if [ -z "''${OPENCODE_CLAUDE_PATH+x}" ]; then export OPENCODE_CLAUDE_PATH=${lib.escapeShellArg claude}; fi
+        ''
         (setDefault "OPENCODE_CONFIG_CONTENT" {
             permissions = [
                 { action = "external_directory"; resource = "/nix/store/*"; effect = "allow"; }
