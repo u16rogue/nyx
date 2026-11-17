@@ -2,15 +2,22 @@
 
 [revset-aliases]
 "todo()" = 'mutable() & description(glob:"!todo!*")' # todo entries, private until `jj done`
-"unfinished()" = 'todo() | (mutable() & empty())' # never pushed, empty changes included
 "finished()" = 'heads(::@- ~ unfinished()::)' # newest change below @ with nothing unfinished under it
+"clanker()" = 'mutable() & description(glob:"!clanker!*")' # clanker written changes, private until `jj reviewed`
+"assisted()" = 'description(substring:"Assisted-by:")' # every clanker written change, reviewed or not
+"unfinished()" = 'todo() | clanker() | (mutable() & empty())' # never pushed, empty changes included
 
 [git]
 private-commits = "unfinished()"
 
 [aliases]
-todo = ["util", "exec", "--", "bash", "-c", 'jj new -B @ --no-edit -m "!todo! $1"', ""] # insert an empty `!todo! msg` change below @, `jj todo "msg"`
-todos = ["log", "-r", "todo()"] # todo entries that aren't done
+
+# insert an empty `!todo! msg` change below @, `jj todo "msg"`
+todo = ["util", "exec", "--", "bash", "-c", 'jj new -B @ --no-edit -m "!todo! $1"', ""]
+
+# list commit entries that are still marked with todo
+todos = ["log", "-r", "todo()"]
+
 # `jj done <change>...` drops the `!todo! ` prefix so the change can be pushed
 done = ["util", "exec", "--", "bash", "-c", '''
 set -e
@@ -20,6 +27,104 @@ for rev; do
     jj describe -r "exactly($rev, 1)" -m "${desc#'!todo! '}"
 done
 ''', ""]
-into = ["squash", "--into"] # `jj into <change> [paths]` moves changes from @ into <change>
-imbue = ["squash", "-i", "--into"] # `jj imbue <change> [paths]` like into but pick the hunks
+
+# `jj into <change> [paths]` moves changes from @ into <change>
+into = ["squash", "--into"]
+
+# `jj imbue <change> [paths]` like into but pick the hunks
+imbue = ["squash", "-i", "--into"]
+
+# clanker changes that aren't reviewed
+unreviewed = ["log", "-r", "clanker()"]
+
+# `jj reviewed <change>...` is run by the user only. drops the `!clanker! ` prefix so the change can
+# be pushed, the `Assisted-by` trailer stays
+reviewed = ["util", "exec", "--", "bash", "-c", '''
+set -e
+for rev; do
+    desc="$(jj log --no-graph -r "exactly($rev, 1)" -T description)"
+    [[ "$desc" == '!clanker! '* ]] || { echo "not a clanker change: $rev" >&2; exit 1; }
+    jj describe -r "exactly($rev, 1)" -m "${desc#'!clanker! '}"
+done
+''', ""]
+
+# `jj who <file>` is annotate that says per line if it came from a change with an `Assisted-by` trailer
+who = ["file", "annotate", "-T", '''
+if(commit.trailers().any(|t| t.key() == "Assisted-by"), "clanker", "human  ") ++ " " ++ commit.change_id().shortest(8) ++ " " ++ pad_start(4, line_number) ++ ": " ++ content
+''']
+
+# `jj spot` lists every line in the working copy that still comes from a clanker change as
+# `file:line:content`. only files a clanker change touched are annotated
+spot = ["util", "exec", "--", "bash", "-c", '''
+set -e
+cd "$(jj root)"
+jj log --no-graph -r '::@ & assisted()' -T 'diff.files().map(|f| f.path() ++ "\n").join("")' \
+    | sort -u \
+    | while IFS= read -r file; do
+        [[ -f "$file" && ! -L "$file" ]] || continue
+        jj file annotate "$file" -T 'if(commit.trailers().any(|t| t.key() == "Assisted-by"), line_number ++ ":" ++ content)' \
+            | while IFS= read -r line; do printf '%s:%s\n' "$file" "$line"; done
+    done
+''', ""]
+
 tug = ["bookmark", "move", "--from", "heads(::@- & bookmarks())", "--to", "finished()"] # move the nearest bookmark below @ (main) up to finished()
+
+# the `clank-*` aliases below are for the clanker to run, not the user. what a clanker writes ends up
+# in its own `!clanker! msg` change below @ with an `Assisted-by` trailer, never in @'s own diff.
+# the clanker makes the change, the user reviews and releases it with the aliases above
+
+# `jj clank-start "msg" ["clanker name"]` before the clanker edits anything. it puts a `!clanker! msg`
+# change on top of @ so everything edited from here on lands in it and nothing else does
+clank-start = ["util", "exec", "--", "bash", "-c", '''
+set -e
+[[ -n "$1" ]] || { echo 'usage: jj clank-start "msg" ["clanker name"]' >&2; exit 1; }
+desc="$(jj log --no-graph -r @ -T description)"
+[[ "$desc" != '!clanker! '* ]] || { echo "@ is already a clanker change, run jj clank-finish first" >&2; exit 1; }
+jj new -m "!clanker! $1
+
+Assisted-by: ${2:-clanker}"
+''', ""]
+
+# `jj clank-finish` when the clanker is done editing. it moves the clanker change below the change
+# it was started on and makes that one @ again, the working copy files stay as they are.
+# if the clanker change can't go below it without conflicts it is left on top instead
+clank-finish = ["util", "exec", "--", "bash", "-c", '''
+set -e
+desc="$(jj log --no-graph -r @ -T description)"
+[[ "$desc" == '!clanker! '* ]] || { echo "@ is not a clanker change" >&2; exit 1; }
+op="$(jj op log --no-graph -n 1 -T 'id.short(16)')"
+clanker="$(jj log --no-graph -r @ -T change_id)"
+below="$(jj log --no-graph -r 'exactly(@-, 1)' -T change_id)"
+if [[ -n "$(jj log --no-graph -r '@ & empty()' -T change_id)" ]]; then
+    jj edit "$below"
+    jj abandon "$clanker"
+    echo "nothing was edited, dropped the clanker change" >&2
+    exit 0
+fi
+jj rebase -r @ -B @-
+jj edit "$below"
+if [[ -n "$(jj log --no-graph -r "$clanker & conflicts()" -T change_id)" ]]; then
+    jj op restore "$op"
+    echo "the clanker change depends on the change below it, left it on top as @" >&2
+    exit 1
+fi
+''', ""]
+
+# `jj clank-split "msg" "clanker name" <paths>...` when the clanker already edited in @.
+# it puts a `!clanker! msg` change below @ and moves what @ changed in the paths into it
+clank-split = ["util", "exec", "--", "bash", "-c", '''
+set -e
+(( $# >= 3 )) || { echo 'usage: jj clank-split "msg" "clanker name" <paths>...' >&2; exit 1; }
+msg="$1"; name="$2"; shift 2
+desc="$(jj log --no-graph -r @ -T description)"
+[[ "$desc" != '!clanker! '* ]] || { echo "@ is already a clanker change, run jj clank-finish instead" >&2; exit 1; }
+jj new -B @ --no-edit -m "!clanker! $msg
+
+Assisted-by: $name"
+jj squash --from @ --into @- --use-destination-message --keep-emptied -- "$@"
+if [[ -n "$(jj log --no-graph -r '@- & empty()' -T change_id)" ]]; then
+    jj abandon @-
+    echo "@ has no changes in the given paths, dropped the clanker change" >&2
+    exit 1
+fi
+''', ""]
