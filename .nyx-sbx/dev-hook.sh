@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 
+if command -v nvim &> /dev/null; then
+    export EDITOR=nvim
+fi
+
 if (( $# == 0 )) && command -v zellij &>/dev/null; then
     zellij_args=()
     if [[ -f "$PWD/.nyx-sbx/share/zellij.kdl" ]]; then
