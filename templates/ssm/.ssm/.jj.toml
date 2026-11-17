@@ -10,6 +10,9 @@
 [git]
 private-commits = "unfinished()"
 
+[colors]
+who_clanker = "yellow" # the name column of `jj who` on lines a clanker wrote
+
 [aliases]
 
 # insert an empty `!todo! msg` change below @, `jj todo "msg"`
@@ -34,11 +37,10 @@ into = ["squash", "--into"]
 # `jj imbue <change> [paths]` like into but pick the hunks
 imbue = ["squash", "-i", "--into"]
 
-# clanker changes that aren't reviewed
+# list clanker changes that aren't reviewed yet
 unreviewed = ["log", "-r", "clanker()"]
 
-# `jj reviewed <change>...` is run by the user only. drops the `!clanker! ` prefix so the change can
-# be pushed, the `Assisted-by` trailer stays
+# `jj reviewed <change>...` drops the `!clanker! ` prefix so the change can be pushed, the `Assisted-by` trailer stays
 reviewed = ["util", "exec", "--", "bash", "-c", '''
 set -e
 for rev; do
@@ -48,13 +50,19 @@ for rev; do
 done
 ''', ""]
 
-# `jj who <file>` is annotate that says per line if it came from a change with an `Assisted-by` trailer
+# `jj who <file>` like annotate but with who wrote each line, the author for yours and the
+# colored `Assisted-by` name for a clanker's
 who = ["file", "annotate", "-T", '''
-if(commit.trailers().any(|t| t.key() == "Assisted-by"), "clanker", "human  ") ++ " " ++ commit.change_id().shortest(8) ++ " " ++ pad_start(4, line_number) ++ ": " ++ content
+separate(" ",
+    commit.change_id().shortest(8),
+    if(commit.trailers().any(|t| t.key() == "Assisted-by"),
+        label("who_clanker", pad_end(16, truncate_end(16, commit.trailers().filter(|t| t.key() == "Assisted-by").map(|t| t.value()).join(", ")))),
+        pad_end(16, truncate_end(16, stringify(commit.author().name())))),
+    pad_start(4, line_number) ++ ":",
+    content)
 ''']
 
-# `jj spot` lists every line in the working copy that still comes from a clanker change as
-# `file:line:content`. only files a clanker change touched are annotated
+# `jj spot` lists every line in the working copy that still comes from a clanker change as `file:line:content`
 spot = ["util", "exec", "--", "bash", "-c", '''
 set -e
 cd "$(jj root)"
@@ -69,12 +77,11 @@ jj log --no-graph -r '::@ & assisted()' -T 'diff.files().map(|f| f.path() ++ "\n
 
 tug = ["bookmark", "move", "--from", "heads(::@- & bookmarks())", "--to", "finished()"] # move the nearest bookmark below @ (main) up to finished()
 
-# the `clank-*` aliases below are for the clanker to run, not the user. what a clanker writes ends up
-# in its own `!clanker! msg` change below @ with an `Assisted-by` trailer, never in @'s own diff.
-# the clanker makes the change, the user reviews and releases it with the aliases above
+# the `clank-*` aliases below are what the clanker runs to put what it wrote into its own `!clanker! msg`
+# change below @ with an `Assisted-by` trailer, so none of it stays in @'s own diff
 
-# `jj clank-start "msg" ["clanker name"]` before the clanker edits anything. it puts a `!clanker! msg`
-# change on top of @ so everything edited from here on lands in it and nothing else does
+# `jj clank-start "msg" ["clanker name"]` puts a `!clanker! msg` change on top of @, everything edited
+# from here on lands in it
 clank-start = ["util", "exec", "--", "bash", "-c", '''
 set -e
 [[ -n "$1" ]] || { echo 'usage: jj clank-start "msg" ["clanker name"]' >&2; exit 1; }
@@ -85,9 +92,8 @@ jj new -m "!clanker! $1
 Assisted-by: ${2:-clanker}"
 ''', ""]
 
-# `jj clank-finish` when the clanker is done editing. it moves the clanker change below the change
-# it was started on and makes that one @ again, the working copy files stay as they are.
-# if the clanker change can't go below it without conflicts it is left on top instead
+# `jj clank-finish` moves the clanker change below the change it was started on and makes that one @
+# again, the working copy files stay as they are. if it can't go below without conflicts it's left on top
 clank-finish = ["util", "exec", "--", "bash", "-c", '''
 set -e
 desc="$(jj log --no-graph -r @ -T description)"
@@ -110,8 +116,8 @@ if [[ -n "$(jj log --no-graph -r "$clanker & conflicts()" -T change_id)" ]]; the
 fi
 ''', ""]
 
-# `jj clank-split "msg" "clanker name" <paths>...` when the clanker already edited in @.
-# it puts a `!clanker! msg` change below @ and moves what @ changed in the paths into it
+# `jj clank-split "msg" "clanker name" <paths>...` for when the edits are already in @, puts a
+# `!clanker! msg` change below @ and moves what @ changed in the paths into it
 clank-split = ["util", "exec", "--", "bash", "-c", '''
 set -e
 (( $# >= 3 )) || { echo 'usage: jj clank-split "msg" "clanker name" <paths>...' >&2; exit 1; }
