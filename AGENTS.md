@@ -1,0 +1,1 @@
+templates/ssm/.ssm/AGENTS.md
