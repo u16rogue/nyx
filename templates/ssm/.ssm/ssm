@@ -14,6 +14,10 @@ ssm_run_name="init"
 ssm_subproject_version="0.1.0"
 ssm_stage_dir="$ssm_root/.ssm-stage"
 ssm_stage=
+# where `update` gets the template from, NYX_SSM_FLAKE or its argument override it
+ssm_default_flake="github:u16rogue/nyx"
+# the files `init` copies as is, `sync` keeps the project's copies up to date with .ssm
+ssm_sync_files=("AGENTS.md" ".jj.toml")
 
 printErr() {
     printf '\033[37m[\033[91merr\033[37m]\033[0m %s\n' "$1" >&2
@@ -47,16 +51,20 @@ ssm <mode>
         subprojects are picked in the tui, otherwise <name> is created from
         the <type> template (default: base). the remaining setup is
         written into ./init like \`init\` does.
-    sync
+    sync [-y]
+        bring the files that are copied as is (AGENTS.md, .jj.toml) up to
+        date with the ones in .ssm. a file that differs is shown as a diff
+        and replaced once confirmed, -y replaces without asking.
         ! todo !
         re-render missing _meta files, re-pick the zellij panes and re-apply
         the sandbox mounts/covers.
     pin
         ! todo !
         pin the flake's nixpkgs to the host's nixpkgs revision.
-    update
-        ! todo !
-        check for the latest template from the nyx repo
+    update [<flake ref>] [-y]
+        replace .ssm with the latest template from the nyx repo, then
+        \`sync\`. the template is taken from <flake ref>, NYX_SSM_FLAKE or
+        github:u16rogue/nyx (a local checkout works too).
     help
         show this message.
 --------------------------------------------------------------------------------"
@@ -177,7 +185,8 @@ main() {
     case "${1:-help}" in
         init) modeOf_init ;;
         add) modeOf_add "${@:2}" ;;
-        #sync) modeOf_sync ;;
+        sync) modeOf_sync "${@:2}" ;;
+        update) modeOf_update "${@:2}" ;;
         #pin) modeOf_pin ;;
         help|-h|--help) modeOf_help ;;
         *) printErr "unknown mode: $1"; modeOf_help; exit 1 ;;
@@ -1228,6 +1237,93 @@ addSandboxEntryStep() {
     fi
 }
 # CLANKER END sandbox_entry
+
+# replaces .ssm with the template of <flake ref> and hands over to its `sync`.
+# everything after the options is passed on to `sync`
+# modeOf_update [<flake ref>] [-y]
+modeOf_update() {
+    local ref="${NYX_SSM_FLAKE:-"$ssm_default_flake"}"
+    if (( $# )) && [[ "$1" != -* ]]; then
+        ref="$1"
+        shift
+    fi
+    [[ -w "$ssm_dir" && -w "$ssm_root" ]] || die ".ssm can't be replaced, it or the project root is read only"
+
+    printLog "fetching the ssm template from $ref"
+    local template
+    template="$(nix --extra-experimental-features 'nix-command flakes' eval --raw --refresh "$ref#templates.ssm.path")" \
+        || die "couldn't fetch the ssm template from $ref"
+    [[ -f "$template/.ssm/ssm" ]] || die "$ref has no ssm template ($template/.ssm/ssm is missing)"
+
+    if diff -rq -- "$template/.ssm" "$ssm_dir" > /dev/null 2>&1; then
+        printLog ".ssm is already up to date"
+    else
+        createStage
+        # the store is read only, the copy has to stay replaceable
+        { cp -r -- "$template/.ssm" "$ssm_stage/new" && chmod -R u+w -- "$ssm_stage/new"; } \
+            || die "failed to copy the ssm template"
+        gum format -- "## .ssm changes:" \
+            "$(diff -rq -- "$ssm_dir" "$ssm_stage/new" | sed -e "s|$ssm_stage/new|new .ssm|g" -e "s|$ssm_dir|.ssm|g" -e 's/^/- /')"
+        mv -T -- "$ssm_dir" "$ssm_stage/old" || die "failed to move the old .ssm away"
+        if ! mv -T -- "$ssm_stage/new" "$ssm_dir"; then
+            mv -T -- "$ssm_stage/old" "$ssm_dir"
+            die "failed to move the new .ssm into place"
+        fi
+        cleanupStage
+        printLog "updated .ssm"
+    fi
+
+    exec bash "$ssm_dir/ssm" sync "$@"
+}
+
+# brings the project's copies of the files that `init` copies as is (`ssm_sync_files`) up to date
+# with the ones in .ssm. rendered files aren't touched, the answers they were rendered with aren't kept
+# modeOf_sync [-y]
+modeOf_sync() {
+    local yes=0
+    case "${1:-}" in
+        -y|--yes) yes=1 ;;
+        "") ;;
+        *) die "unknown option: $1" ;;
+    esac
+    # shellcheck disable=SC2016
+    [[ -f "$ssm_root/flake.nix" ]] || die "no flake.nix in $ssm_root, run \`ssm init\` first"
+
+    local file src dst
+    local -a changed=()
+    for file in "${ssm_sync_files[@]}"; do
+        src="$ssm_dir/$file"
+        dst="$ssm_root/$file"
+        [[ -f "$src" ]] || { printWarn ".ssm has no $file, skipping"; continue; }
+        if [[ -L "$dst" ]]; then
+            printWarn "$file is a symlink, skipping"
+            continue
+        fi
+        if [[ -e "$dst" ]]; then
+            if cmp -s -- "$src" "$dst"; then
+                printLog "$file is up to date"
+                continue
+            fi
+            # from the project's file to the template's, `-` lines are what gets lost
+            diff -u --color=auto --label "$file" --label "$file (template)" -- "$dst" "$src"
+            if (( ! yes )) && ! gum confirm "replace $file with the template's?"; then
+                printLog "kept $file"
+                continue
+            fi
+        fi
+        { cp -- "$src" "$dst.ssm-sync" && chmod u+w -- "$dst.ssm-sync" && mv -f -- "$dst.ssm-sync" "$dst"; } \
+            || { rm -f -- "$dst.ssm-sync"; die "failed to update $file"; }
+        printLog "updated $file"
+        changed+=("$file")
+    done
+
+    if (( ${#changed[@]} )); then
+        printLog "review and commit: ${changed[*]}"
+    else
+        printLog "nothing to sync"
+    fi
+    exit 0
+}
 
 modeOf_add() {
     # shellcheck disable=SC2016
