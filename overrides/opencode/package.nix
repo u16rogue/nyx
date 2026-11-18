@@ -1,6 +1,6 @@
 # CLANKER EDITED FILE: added opencode-release (GitHub release pinned by ./lock.nix), overridesOpts.source to pick "release" or "nixpkgs", and a bundled claude-code kept off PATH, signed in with /connect-claude (./nyx-connect-claude)
 
-{ inputs, lib, pkgs, opencode, claude-code, overridesOpts ? {}, ... }: let
+{ inputs, lib, pkgs, opencode, claude-code, libnotify, overridesOpts ? {}, ... }: let
     setDefault = name: value: /*bash*/ ''
         if [ -z "''${${name}+x}" ]; then export ${name}=${lib.escapeShellArg (builtins.toJSON value)}; fi
     '';
@@ -75,8 +75,13 @@ in inputs.wrappers.lib.wrapPackage {
         })
         (setDefault "OPENCODE_CLI_CONFIG_CONTENT" {
             theme.name = "catppuccin";
-            attention.notifications = true;
-            plugins = [ "${./nyx-connect-claude}" "${./nyx-erm}" "${./nyx-openrouter-tracker}" ];
+            attention.notifications = false;
+            plugins = [
+                "${./nyx-connect-claude}"
+                "${./nyx-erm}"
+                { package = "${./nyx-notify}"; options.notify_send = "${libnotify}/bin/notify-send"; }
+                "${./nyx-openrouter-tracker}"
+            ];
             keybinds = {
                 leader = "ctrl+space";
                 "input.delete.word.backward" = "ctrl+backspace,alt+backspace";

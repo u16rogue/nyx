@@ -13,3 +13,6 @@
 !/nyx-openrouter-tracker/
 !/nyx-openrouter-tracker/package.json
 !/nyx-openrouter-tracker/tui.tsx
+!/nyx-notify/
+!/nyx-notify/package.json
+!/nyx-notify/tui.tsx

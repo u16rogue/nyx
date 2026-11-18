@@ -168,7 +168,7 @@ if [[ "$NYX_SBX_SHELL_DIR" == / ]]; then
     exit 1
 fi
 
-# BEGIN CLANKER: prune superseded nix-develop generations
+# Prune superseded nix-develop generations
 # Remove a live ref's devshell generations numbered below the one its profile
 # points to. Nix numbers a new generation above every existing one and does
 # not lock the profile before switching to it, so higher generations may
@@ -220,7 +220,6 @@ pruneDevshellGenerations() {
     done
     return "$prune_status"
 }
-# END CLANKER: prune superseded nix-develop generations
 
 # gc mode
 modeOf_gc() {
@@ -342,7 +341,7 @@ modeOf_gc() {
 
             printLog "live backlink: $backlink_path"
             ((live_ctxlink_count += 1))
-            # Clanker implemented: release devshells superseded by a newer generation
+            # Release devshells superseded by a newer generation
             pruneDevshellGenerations "$backlink_path" || gc_status=1
         done
 
@@ -362,7 +361,6 @@ modeOf_gc() {
     exit "$gc_status"
 };
 
-# Clanker implemented
 # Fill the supplied array with account homes as well as HOME. Changing HOME
 # must not make the account's real home mountable.
 readHomePaths() {
@@ -386,7 +384,6 @@ readHomePaths() {
     done
 }
 
-# Clanker implemented
 # The first argument is an absolute, normalized path; the rest are protected
 # homes. A home may contain projects, but must not be mounted whole.
 validateMountPath() {
@@ -421,7 +418,6 @@ validateMountPath() {
     done
 }
 
-# Clanker implemented
 # Check both the requested host path and its symlink target. The remaining
 # arguments are protected homes, just like validateMountPath.
 resolveMountPath() {
@@ -434,7 +430,6 @@ resolveMountPath() {
     printf '%s\n' "$path"
 }
 
-# Clanker implemented
 # Cover destinations are sandbox paths, not host sources. Keep metadata and
 # the runtime needed to enter the sandbox out of their reach.
 validateCoverTarget() {
@@ -460,7 +455,6 @@ validateCoverTarget() {
     done
 }
 
-# Clanker implemented
 # Normalize the destination without resolving symlinks in the host filesystem:
 # only paths actually mounted in the sandbox affect its destination lookup.
 resolveCoverTarget() {
@@ -470,7 +464,6 @@ resolveCoverTarget() {
     printf '%s\n' "$path"
 }
 
-# Clanker implemented
 # Allow missing components, but require every existing component to be a
 # searchable, non-symlink directory. The input must be absolute and normalized.
 dirPathAssert() {
@@ -485,7 +478,6 @@ dirPathAssert() {
     done
 }
 
-# Clanker implemented
 dirPathCreate() {
     dirPathAssert "$1" || return 1
     if ! mkdir -p -- "$1"; then
@@ -496,12 +488,11 @@ dirPathCreate() {
 
 # madd mode
 modeOf_madd() {
-    # BEGIN CLANKER EDIT: require an explicit madd directory
+    # Require an explicit madd directory
     if (( $# != 4 )) || [[ -z "$4" ]]; then
         printErr "usage: $prog_name madd <id|.> <r,rw,o> <dir> (use '.' for the working directory)"
         exit 1
     fi
-    # END CLANKER EDIT: require an explicit madd directory
     [[ -z "${2:-}" ]] && { printErr "no id provided"; exit 1; }
 
     local PWD
@@ -522,12 +513,11 @@ modeOf_madd() {
         *) printErr "invalid mount mode provided; expected one of: r, rw, o"; exit 1 ;;
     esac
 
-    # BEGIN CLANKER EDIT: validate madd source
+    # Validate madd source
     local -a home_paths=()
     readHomePaths home_paths || exit 1
     local mount_path
     mount_path="$(resolveMountPath "$4" "${home_paths[@]}")" || exit 1
-    # END CLANKER EDIT: validate madd source
     if [[ ! -d "$mount_path" ]]; then
         printErr "mount path is not a directory: $mount_path"
         exit 1
@@ -540,13 +530,12 @@ modeOf_madd() {
     fi
 
     local ctx_mount_final_store_path="$context_path/mount/$mount_mode"
-    # BEGIN CLANKER EDIT: validate mount registration directories
+    # Validate mount registration directories
     local mode
     for mode in ro rw o; do
         dirPathAssert "$context_path/mount/$mode" || exit 1
     done
     dirPathCreate "$ctx_mount_final_store_path" || exit 1
-    # END CLANKER EDIT: validate mount registration directories
 
     local mount_path_id
     if ! mount_path_id="$(mkHash "$mount_path")"; then
@@ -554,7 +543,7 @@ modeOf_madd() {
         exit 1
     fi
 
-    # BEGIN CLANKER EDIT: register and replace mount mode
+    # Register and replace mount mode
     if ! ln -sfnT -- "$mount_path" "$ctx_mount_final_store_path/$mount_path_id"; then
         printErr "failed to register mount path '$mount_path' for sandbox context '$context_id'"
         exit 1
@@ -567,15 +556,13 @@ modeOf_madd() {
             exit 1
         fi
     done
-    # END CLANKER EDIT: register and replace mount mode
 
     printLog "registered $mount_mode mount '$mount_path' in context '$context_id'"
     exit 0
 };
 
-# BEGIN CLANKER: mcover mode
+# Mcover mode
 # mcover mode
-# Clanker implemented
 modeOf_mcover() {
     local usage="usage: $prog_name mcover [--force|--move] <id|ctxlink> <path>"
     local existing_policy='' arg
@@ -651,9 +638,8 @@ modeOf_mcover() {
     printLog "registered cover '$cover_target' in context '$context_id'"
     exit 0
 };
-# END CLANKER: mcover mode
 
-# CLANKER START scan_coverables: report directories outside the repo and their cover state
+# Report directories outside the repo and their cover state
 # Fill the supplied set with the paths that belong to the repo, relative to the
 # working directory: tracked files and untracked files that aren't ignored are
 # marked 'file', their ancestors 'parent'. Git lists nested repos as 'dir/'.
@@ -768,7 +754,6 @@ modeOf_scanCoverables() {
     (( uncovered_count > 0 )) && printLog "$uncovered_count not fully covered; cover one with \`$prog_name mcover --move . <path>\`"
     exit "$scan_status"
 };
-# CLANKER END scan_coverables
 
 # Print the context id resolved from the supplied ctxlink directory's ptr.
 resolveCtxlink() {
@@ -803,7 +788,6 @@ resolveCtxlink() {
     printf '%s\n' "$context_id"
 }
 
-# Clanker implemented
 # Resolve an existing context without creating or repairing any references.
 # Bare selectors matching the id charset are ids; use './name' to select a directory.
 resolveContextSelector() {
@@ -938,8 +922,7 @@ modeOf_init() {
     exit 0
 };
 
-# BEGIN CLANKER: mount loading and entry validation helpers
-# Clanker implemented
+# Mount loading and entry validation helpers
 # List immediate directory entries into the supplied array, including hidden
 # entries. Missing directories produce an empty array; inspection errors fail.
 dirEntriesRead() {
@@ -966,7 +949,6 @@ dirEntriesRead() {
     )
 }
 
-# Clanker implemented
 # Read a registration's absolute, normalized target and verify its path id.
 # Mount and cover readers apply their respective source/destination policies.
 readRegistrationTarget() {
@@ -990,7 +972,6 @@ readRegistrationTarget() {
     printf '%s\n' "$path"
 }
 
-# Clanker implemented
 # Read madd registrations into the mode and state arrays supplied by name.
 # The home-policy array is also passed by name.
 readMountRegistrations() {
@@ -1022,7 +1003,6 @@ readMountRegistrations() {
     done
 }
 
-# Clanker implemented
 # Covers belong to the whole context. Map each absolute target to its own upper
 # directory; neither the entering ctxlink nor a madd mode determines activation.
 readCoverRegistrations() {
@@ -1045,7 +1025,6 @@ readCoverRegistrations() {
     done
 }
 
-# Clanker implemented
 # Covers bind their persistent contents directly, without reading host files
 # or creating OverlayFS work directories. The output array is passed by name.
 appendCoverBwrapArgs() {
@@ -1059,7 +1038,6 @@ appendCoverBwrapArgs() {
     cover_args+=(--bind "$backing_path" "$target_path")
 }
 
-# Clanker implemented
 # Bubblewrap cannot create a missing cover mountpoint inside a read-only bind.
 # When needed, create those directories in a temporary overlay, then make the
 # parent read-only before binding the covers. No host directories are created.
@@ -1085,7 +1063,6 @@ appendReadonlyMountBwrapArgs() {
     readonly_args+=(--remount-ro "$mount_path")
 }
 
-# Clanker implemented
 # A previous sandbox can leave symlinks in its persistent home. Check the
 # backing path before placing another mount beneath that home.
 validateHomeMountDestination() {
@@ -1096,7 +1073,6 @@ validateHomeMountDestination() {
     fi
 }
 
-# Clanker implemented
 # Check the nearest mounted parent, whose source determines how the sandbox
 # resolves this destination. An overlay also has a host lower layer to check.
 validateMountDestination() {
@@ -1122,7 +1098,6 @@ validateMountDestination() {
     fi
 }
 
-# Clanker implemented
 # Reject paths that contain, are within, or equal the sandbox store.
 assertNoStoreOverlap() {
     local path resolved_path
@@ -1135,7 +1110,7 @@ assertNoStoreOverlap() {
     done
 }
 
-# BEGIN CLANKER: devshell project mount preflight
+# Devshell project mount preflight
 assertDevProjectMount() {
     local project_path="$1" flake_path="$1/flake.nix" target nearest_target=
     local -n project_mount_modes="$2" project_covers="$3"
@@ -1153,9 +1128,7 @@ assertDevProjectMount() {
         return 1
     fi
 }
-# END CLANKER: devshell project mount preflight
 
-# Clanker implemented
 # Append to the caller's array by name. Keep the policy and temporary mount
 # tables local, passing them explicitly to the helpers that need them.
 appendContextBwrapArgs() {
@@ -1178,11 +1151,10 @@ appendContextBwrapArgs() {
     done
     readCoverRegistrations "$context_path/cover" covers || return 1
 
-    # BEGIN CLANKER: require a registered project mount for devshell entry
+    # Require a registered project mount for devshell entry
     if [[ -n "${3:-}" ]]; then
         assertDevProjectMount "$3" mount_modes covers || return 1
     fi
-    # END CLANKER: require a registered project mount for devshell entry
 
     # Order mounts and covers together so a parent cannot hide a child.
     # NUL separators preserve spaces and newlines in directory names.
@@ -1226,9 +1198,8 @@ appendContextBwrapArgs() {
     # while the backing-directory table is still in scope.
     validateMountDestination "$context_path" "$PWD/$ctxlink_marker_name" mounted_backings mounted_lowers || return 1
 }
-# END CLANKER: mount loading and entry validation helpers
 
-# BEGIN CLANKER: devshell environment preparation and GC roots
+# Devshell environment preparation and GC roots
 # Resolve on the host side, where Nix can build and register GC roots. Only
 # the generated environment crosses into the sandbox; shellHook runs there.
 # Roots live in the project's ref, so removing a stale backlink drops its pins.
@@ -1253,11 +1224,10 @@ prepareDevEnvironment() {
         return 1
     fi
 }
-# END CLANKER: devshell environment preparation and GC roots
 
 # enter mode (default)
 modeOf_enter() {
-    # BEGIN CLANKER: nix-develop mode and fragment selection
+    # Nix-develop mode and fragment selection
     local develop_fragment=
     if [[ "${1:-}" == nix-develop || "${1:-}" == nd ]]; then
         shift
@@ -1273,7 +1243,6 @@ modeOf_enter() {
     elif [[ "${1:-}" == enter ]]; then
         shift
     fi
-    # END CLANKER: nix-develop mode and fragment selection
     local -a shell_args=()
     if (( $# > 0 )); then
         if [[ "$1" != -- ]]; then
@@ -1362,9 +1331,8 @@ $id_gn:x:$id_g:"
         --setenv NYX_SBX_ID "$context_id" \
     );
 
-    # BEGIN CLANKER: validate fixed runtime mount sources
+    # Validate fixed runtime mount sources
     assertNoStoreOverlap /nix /etc/resolv.conf /etc/ssl /etc/static/ssl || exit 1
-    # END CLANKER: validate fixed runtime mount sources
 
     # Setup root and fs
     args_for_bwrap+=(                             \
@@ -1422,9 +1390,38 @@ $id_gn:x:$id_g:"
     done
     args_for_bwrap+=(--setenv PATH "$sandboxed_path")
 
-    # BEGIN CLANKER: registered context mounts and covers
+    # Filtered session bus
+    # The sandbox gets its own xdg-dbus-proxy in front of the host session bus, limited to the rules
+    # below (showing a desktop notification). The proxy lives for as long as something holds the read
+    # end of its sync pipe, which the sandbox inherits, so it exits and removes its socket on its own
+    # once the sandbox is gone. Without a session bus or the proxy the sandbox simply has no bus.
+    if [[ "${DBUS_SESSION_BUS_ADDRESS:-}" == unix:* && -d "${XDG_RUNTIME_DIR:-}" ]] && command -v xdg-dbus-proxy &> /dev/null; then
+        local notifications="org.freedesktop.Notifications"
+        local -a bus_rules=(                                                                     \
+            "--call=$notifications=$notifications.Notify@/org/freedesktop/Notifications"               \
+            "--call=$notifications=$notifications.GetServerInformation@/org/freedesktop/Notifications" \
+            "--call=$notifications=$notifications.GetCapabilities@/org/freedesktop/Notifications"      \
+        );
+        local bus_dir bus_fd
+        if bus_dir="$(mktemp -d -- "$XDG_RUNTIME_DIR/nyx-sbx-bus.XXXXXX")"; then
+            exec {bus_fd}< <(xdg-dbus-proxy --fd=1 "$DBUS_SESSION_BUS_ADDRESS" "$bus_dir/bus" --filter "${bus_rules[@]}"; rm -rf -- "$bus_dir")
+            # The proxy writes one byte once its socket exists.
+            if read -r -N 1 -t 5 -u "$bus_fd" _ && [[ -S "$bus_dir/bus" ]]; then
+                args_for_bwrap+=(                                                  \
+                    --bind "$bus_dir/bus" /run/nyx-sbx-bus                         \
+                    --setenv DBUS_SESSION_BUS_ADDRESS "unix:path=/run/nyx-sbx-bus" \
+                );
+            else
+                printWarn "session bus proxy did not start, continuing without a session bus"
+                exec {bus_fd}<&-
+            fi
+        else
+            printWarn "failed to create the session bus proxy directory, continuing without a session bus"
+        fi
+    fi
+
+    # Registered context mounts and covers
     appendContextBwrapArgs "$context_path" args_for_bwrap "${develop_fragment:+$PWD}" || exit 1
-    # END CLANKER: registered context mounts and covers
 
     # Hide the context link within the sandbox
     # Q: why `tmpfs` instead of `ro-bind` ?
@@ -1433,7 +1430,7 @@ $id_gn:x:$id_g:"
     # the nix store. this just outright prevents it.
     [[ -e "$PWD/$ctxlink_marker_name" ]] && args_for_bwrap+=(--tmpfs "$PWD/$ctxlink_marker_name");
 
-    # BEGIN CLANKER: expose the project's shared config directory
+    # Expose the project's shared config directory
     local share_path="$PWD/$ctxlink_marker_name/share"
     if [[ -e "$share_path" || -L "$share_path" ]]; then
         if [[ -L "$share_path" || ! -d "$share_path" || ! -r "$share_path" || ! -x "$share_path" ]]; then
@@ -1442,9 +1439,8 @@ $id_gn:x:$id_g:"
         fi
         args_for_bwrap+=(--bind "$share_path" "$share_path")
     fi
-    # END CLANKER: expose the project's shared config directory
 
-    # BEGIN CLANKER: expose the project's dev hook
+    # Expose the project's dev hook
     # A tracked project file: hiding it makes git inside the sandbox report it
     # as deleted, so bind it read-only in every mode. nix-develop sources it.
     local dev_hook="$PWD/$ctxlink_marker_name/dev-hook.sh"
@@ -1455,12 +1451,11 @@ $id_gn:x:$id_g:"
         fi
         args_for_bwrap+=(--ro-bind "$dev_hook" "$dev_hook")
     fi
-    # END CLANKER: expose the project's dev hook
 
-    # BEGIN CLANKER: shell or devshell entry command
+    # Shell or devshell entry command
     local -a entry_command=("$SHELL" "${shell_args[@]}")
     if [[ -n "$develop_fragment" ]]; then
-        # BEGIN CLANKER: build and expose the devshell startup script
+        # Build and expose the devshell startup script
         # One script, sourced inside the sandbox: the Nix environment (which
         # runs the flake shellHook and sets SHELL to bash), then the host's
         # SHELL, fragment and shell args as quoted literals, then it sources
@@ -1478,9 +1473,8 @@ $id_gn:x:$id_g:"
         # simultaneous entries and keeps context metadata outside the sandbox.
         exec {startup_fd}<<< "$startup"
         args_for_bwrap+=(--ro-bind-data "$startup_fd" /run/nyx-dev-environment)
-        # END CLANKER: build and expose the devshell startup script
 
-        # BEGIN CLANKER: in-sandbox devshell startup stub
+        # In-sandbox devshell startup stub
         # The startup fragment expands only after entering the sandbox.
         # shellcheck disable=SC2016
         entry_command=("$BASH" --noprofile --norc -c '
@@ -1492,9 +1486,7 @@ $id_gn:x:$id_g:"
             source /run/nyx-dev-environment || exit $?
             exec "$SHELL" "${sbx_shell_args[@]}"
         ' "$prog_name nix-develop" "${shell_args[@]}")
-        # END CLANKER: in-sandbox devshell startup stub
     fi
-    # END CLANKER: shell or devshell entry command
 
     # Start bwrap
     if ! printf '%q ' exec bwrap "${args_for_bwrap[@]}" -- "${entry_command[@]}" > "$context_path/enter"; then
@@ -1511,9 +1503,9 @@ case "${1:-enter}" in
     init) modeOf_init "$@" ;;
     enter|--|nix-develop|nd) modeOf_enter "$@" ;;
     madd) modeOf_madd "$@" ;;
-    # Clanker implemented: mcover dispatch
+    # Mcover dispatch
     mcover) modeOf_mcover "$@" ;;
-    # CLANKER ASSISTED: scan-coverables dispatch
+    # Scan-coverables dispatch
     scan-coverables) modeOf_scanCoverables "$@" ;;
     gc) modeOf_gc "$@" ;;
     *) printErr "unknown command: $1. see \`$prog_name help\`."; exit 1 ;;

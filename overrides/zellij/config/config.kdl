@@ -1,3 +1,2 @@
 theme "catppuccin-macchiato"
 show_startup_tips false
-host_notification_protocol "osc9" // Clanker: "auto" detects the host terminal from the environment, which sbx-shell clears. Ghostty understands osc9.
