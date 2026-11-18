@@ -61,8 +61,8 @@
                 (nyx.pkgs.hyprland.override {
                     overridesOpts.monitors = nyx.host.monitors;
                     hyprpaper = nyx.pkgs.hyprpaper.override { overridesOpts.wallpaper = "/home/user/media/wallpaper"; };
-                    # Clanker: notifications stay on the host's first enabled monitor.
-                    mako = nyx.pkgs.mako.override { overridesOpts.monitor = pkgs.lib.findFirst (monitor: monitor.enabled) null nyx.host.monitors; };
+                    # Clanker: notifications stay on the monitor a host names `left`, otherwise they follow focus.
+                    mako = nyx.pkgs.mako.override { overridesOpts.monitor = nyx.host.monitors.left or null; };
                     inherit (nyx.pkgs) waybar fuzzel ghostty;
                 })
                 # Scripts

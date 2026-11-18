@@ -88,11 +88,11 @@
                         message = "nyx host '${hostname}' must not assign a user more than once.";
                     }
                     {
-                        assertion = let nyxhost_workspaces = lib.concatMap (monitor: builtins.attrNames monitor.workspaces) nyxhost.monitors; in builtins.length nyxhost_workspaces == builtins.length (lib.unique nyxhost_workspaces);
+                        assertion = let nyxhost_workspaces = lib.concatMap (monitor: builtins.attrNames monitor.workspaces) (builtins.attrValues nyxhost.monitors); in builtins.length nyxhost_workspaces == builtins.length (lib.unique nyxhost_workspaces);
                         message = "nyx host '${hostname}' must not pin a workspace to more than one monitor.";
                     }
                     {
-                        assertion = builtins.all (monitor: (monitor.id == null) != (monitor.edid == null)) nyxhost.monitors;
+                        assertion = builtins.all (monitor: (monitor.id == null) != (monitor.edid == null)) (builtins.attrValues nyxhost.monitors);
                         message = "nyx host '${hostname}' monitors must set exactly one of `id` or `edid`.";
                     }
                 ];
@@ -139,8 +139,8 @@
                 };
                 options.platform = lib.mkOption { type = lib.types.str; };
                 options.monitors = lib.mkOption {
-                    description = "Physical monitor layout for this host.";
-                    type = lib.types.listOf (lib.types.submodule {
+                    description = "Physical monitor layout for this host, keyed by a name of your choosing (e.g. `left`).";
+                    type = lib.types.attrsOf (lib.types.submodule {
                         options = {
                             id = lib.mkOption {
                                 description = "Connector name (e.g. `eDP-1`).";
@@ -211,7 +211,7 @@
                             };
                         };
                     });
-                    default = [];
+                    default = {};
                 };
                 options.configuration = lib.mkOption {
                     description = "NixOs system for this host";

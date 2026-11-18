@@ -34,13 +34,11 @@
     }; in {
         platform = "x86_64-linux";
 
-        monitors = [
-            {
-                edid = { make = "BOE"; model = "0x06A9"; };
-                resolution = { x = 1920; y = 1080; };
-                refreshrate = 60;
-            }
-        ];
+        monitors.builtin = {
+            edid = { make = "BOE"; model = "0x06A9"; };
+            resolution = { x = 1920; y = 1080; };
+            refreshrate = 60;
+        };
 
         keys = {
             pub = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOzCtcCXDjyFOuFrmBruCoyLVWsqUI9W2ixmflH2zDLg ";

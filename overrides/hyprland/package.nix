@@ -7,7 +7,7 @@
     overridesOpts ? {}, ...
 }: let
     snippets = import ./snippets.nix { inherit lib; };
-    monitors = overridesOpts.monitors or [];
+    monitors = builtins.attrValues (overridesOpts.monitors or {});
     hyprland_config =
         if (monitors != []) then # if need to write something extra to the config
             writeText "hyprland.lua" (

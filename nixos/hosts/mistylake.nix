@@ -24,7 +24,7 @@
                     "5" = {};
                 };
             };
-        in [ left right ];
+        in { inherit left right; };
 
         keys = {
             pub = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIE0ZgVVQZfW3BYIUT3fa9T1ncUnpIF+X8ZZysapPU5nQ root@mistylake";

@@ -2,14 +2,12 @@
     nyx.nixos.hosts.mistyriver = {
         platform = "x86_64-linux";
 
-        monitors = [
-            {
-                edid = { make = "Samsung Display Corp."; model = "ATNA40CU05-0"; };
-                resolution = { x = 1920; y = 1200; };
-                refreshrate = 60;
-                scale = 1;
-            }
-        ];
+        monitors.builtin = {
+            edid = { make = "Samsung Display Corp."; model = "ATNA40CU05-0"; };
+            resolution = { x = 1920; y = 1200; };
+            refreshrate = 60;
+            scale = 1;
+        };
 
         keys = {
             pub = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPYWxa99sHJ94Cb69bbD+dBknEJNcVRDerPmsgrEdwFW root@mistyriver";
