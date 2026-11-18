@@ -99,7 +99,7 @@ in (mkNixPak {
                         "browser.urlbar.suggest.topsites".Value = false;
                         "browser.urlbar.trending.featureGate".Value = false;
                         "dom.push.enabled".Value = false;
-                        "dom.webnotifications.enabled".Value = false;
+                        "dom.webnotifications.enabled".Value = true;
                         "extensions.htmlaboutaddons.recommendations.enabled".Value = false;
                         "general.smoothScroll".Value = false;
                         "network.http.speculative-parallel-limit".Value = 0;
@@ -150,7 +150,10 @@ in (mkNixPak {
                 noto-fonts-color-emoji
             ];
         };
-        dbus.policies."org.freedesktop.portal.Desktop" = "talk";
+        dbus.policies = {
+            "org.freedesktop.Notifications" = "talk";
+            "org.freedesktop.portal.Desktop" = "talk";
+        };
         etc.sslCertificates.enable = true;
         gpu.enable = true;
         bubblewrap = {

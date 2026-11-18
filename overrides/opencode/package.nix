@@ -75,6 +75,7 @@ in inputs.wrappers.lib.wrapPackage {
         })
         (setDefault "OPENCODE_CLI_CONFIG_CONTENT" {
             theme.name = "catppuccin";
+            attention.notifications = true;
             plugins = [ "${./nyx-connect-claude}" "${./nyx-erm}" "${./nyx-openrouter-tracker}" ];
             keybinds = {
                 leader = "ctrl+space";
