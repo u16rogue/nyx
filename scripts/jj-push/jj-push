@@ -6,9 +6,10 @@
 # host's jj can't see it. nothing else from the sandbox's or the project's jj config is loaded, both
 # are writable from inside the sandbox and jj config can run commands (aliases, editor, tools)
 #
-# it moves the nearest bookmark below @ up to the newest finished change and pushes. `!todo!` and empty
-# changes are unfinished, they and everything above them are held back, and @ is never pushed (unstaged).
-# the rules are a copy of the project's .jj.toml (todo(), unfinished(), finished()), keep them in sync
+# it moves the nearest bookmark below @ up to the newest finished change and pushes. changes whose message starts
+# with `!` (`!todo!`, `!clanker!`) and empty changes are unfinished, they and everything above them are held back,
+# and @ is never pushed (unstaged).
+# the rules are a copy of the project's .jj.toml (unfinished(), finished()), keep them in sync
 
 set -euo pipefail
 
@@ -96,8 +97,7 @@ key = $(tomlStr "$signing_key")
 git-sign-on-push = "~signed() & mine()"
 
 [revset-aliases]
-"todo()" = 'mutable() & description(glob:"!todo!*")'
-"unfinished()" = 'todo() | (mutable() & empty())'
+"unfinished()" = 'mutable() & (description(glob:"!*") | empty())'
 "finished()" = 'heads(::@- ~ unfinished()::)'
 
 [git]

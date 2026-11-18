@@ -1,11 +1,12 @@
 #:schema https://docs.jj-vcs.dev/latest/config-schema.json
 
 [revset-aliases]
+# scripts/jj-push (nyx) pushes with its own copy of unfinished() and finished(), keep it in sync
 "todo()" = 'mutable() & description(glob:"!todo!*")' # todo entries, private until `jj done`
 "finished()" = 'heads(::@- ~ unfinished()::)' # newest change below @ with nothing unfinished under it
 "clanker()" = 'mutable() & description(glob:"!clanker!*")' # unreviewed clanker changes, private until `jj reviewed`
 "assisted()" = 'description(substring:"Assisted-by:")' # every clanker written change, reviewed or not
-"unfinished()" = 'todo() | clanker() | (mutable() & empty())' # never pushed, empty changes included
+"unfinished()" = 'mutable() & (description(glob:"!*") | empty())' # never pushed: any message starting with `!` (`!todo!`, `!clanker!`) and empty changes
 
 [git]
 private-commits = "unfinished()"
