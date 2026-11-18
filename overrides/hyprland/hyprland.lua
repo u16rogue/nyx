@@ -11,6 +11,7 @@ hl.env("HYPRCURSOR_SIZE", "24")
 hl.on("hyprland.start", function()
     hl.exec_cmd(resolvePathCommand("hyprpaper"))
     hl.exec_cmd(resolvePathCommand("waybar"))
+    hl.exec_cmd(resolvePathCommand("mako"))
 end)
 
 hl.bind(mainMod .. " + X", hl.dsp.exec_cmd(resolvePathCommand("uwsm") .. " stop"))

@@ -1,7 +1,7 @@
 {
     inputs, pkgs, lib, writeText,
     hyprland,
-    hyprpaper, waybar, fuzzel, ghostty,
+    hyprpaper, waybar, mako, fuzzel, ghostty,
     xwayland, grim, slurp, satty, wl-clipboard, procps, dbus, systemd, uwsm, xdg-utils,
     bibata-cursors,
     overridesOpts ? {}, ...
@@ -24,7 +24,7 @@
         name = "start-hyprland";
         # Config commands use this for lookup without exporting it as PATH to apps.
         runtimeEnv.NYX_HYPR_PATH = lib.makeBinPath [
-            hyprland hyprpaper waybar fuzzel ghostty
+            hyprland hyprpaper waybar mako fuzzel ghostty
             xwayland grim slurp satty wl-clipboard procps dbus systemd uwsm xdg-utils
         ];
         text = /*bash*/ ''
