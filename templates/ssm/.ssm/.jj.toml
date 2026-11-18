@@ -94,7 +94,9 @@ Assisted-by: ${2:-clanker}"
 ''', ""]
 
 # `jj clank-finish` moves the clanker change below the change it was started on and makes that one @
-# again, the working copy files stay as they are. if it can't go below without conflicts it's left on top
+# again, the working copy files stay as they are. if it can't go below without conflicts it's left on top.
+# `jj clank-finish <change> ["msg"]` folds it into an unreviewed clanker change instead, for a revision
+# of what that change did. the message of <change> is kept unless a new one is given
 clank-finish = ["util", "exec", "--", "bash", "-c", '''
 set -e
 desc="$(jj log --no-graph -r @ -T description)"
@@ -102,19 +104,47 @@ desc="$(jj log --no-graph -r @ -T description)"
 op="$(jj op log --no-graph -n 1 -T 'id.short(16)')"
 clanker="$(jj log --no-graph -r @ -T change_id)"
 below="$(jj log --no-graph -r 'exactly(@-, 1)' -T change_id)"
+if [[ -n "$1" ]]; then
+    target="$(jj log --no-graph -r "exactly($1, 1) & clanker() & ::@-" -T change_id)"
+    [[ -n "$target" ]] || { echo "not an unreviewed clanker change below @: $1" >&2; exit 1; }
+fi
 if [[ -n "$(jj log --no-graph -r '@ & empty()' -T change_id)" ]]; then
     jj edit "$below"
     jj abandon "$clanker"
     echo "nothing was edited, dropped the clanker change" >&2
     exit 0
 fi
-jj rebase -r @ -B @-
+if [[ -z "$1" ]]; then
+    jj rebase -r @ -B @-
+    jj edit "$below"
+    if [[ -n "$(jj log --no-graph -r "$clanker & conflicts()" -T change_id)" ]]; then
+        jj op restore "$op"
+        echo "the clanker change depends on the change below it, left it on top as @" >&2
+        exit 1
+    fi
+    exit 0
+fi
+old="$(jj log --no-graph -r "$target" -T description)"
+new="$old"
+if [[ -n "$2" ]]; then
+    body=""
+    [[ "$old" != *$'\n'* ]] || body="${old#*$'\n'}"
+    new="!clanker! $2
+$body"
+fi
+# a revision by another clanker adds its name
+while IFS= read -r trailer; do
+    [[ "$trailer" != 'Assisted-by: '* || "$new" == *"$trailer"* ]] || new="$new
+$trailer"
+done <<< "$desc"
 jj edit "$below"
-if [[ -n "$(jj log --no-graph -r "$clanker & conflicts()" -T change_id)" ]]; then
+jj squash --from "$clanker" --into "$target" --use-destination-message
+if [[ -n "$(jj log --no-graph -r "$target:: & conflicts()" -T change_id)" ]]; then
     jj op restore "$op"
-    echo "the clanker change depends on the change below it, left it on top as @" >&2
+    echo "can't fold into $1 without conflicts, left the clanker change on top as @" >&2
     exit 1
 fi
+[[ "$new" == "$old" ]] || jj describe -r "$target" -m "$new"
 ''', ""]
 
 # `jj clank-split "msg" "clanker name" <paths>...` for when the edits are already in @, puts a

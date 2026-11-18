@@ -41,9 +41,9 @@
     * `jj clank-start "<msg>" "<your model name>"` before your first edit so everything you edit lands in the change, then `jj clank-finish` when you're done to move it below the user's `@`. If it says the change was left on top, leave it there and tell the user.
     * Edit in `@`, then `jj clank-split "<msg>" "<your model name>" <paths>...`. It moves everything `@` changed in those paths, so only pass paths where all of `@`'s changes are yours. If a path also has uncommitted edits of the user don't guess, tell them which files are mixed.
     * Check `jj status` before you edit. If `@` already has changes in files you're about to touch, use `clank-start`.
-* A new task gets a new clanker change, don't add to an earlier one.
+* A new task gets a new clanker change. A revision (the user has you change or fix what an unreviewed clanker change did) goes into that same change: `jj clank-start` as usual, then `jj clank-finish <change>` to fold it in. Give it a new message (`jj clank-finish <change> "<msg>"`) if and only if the old one no longer describes the change.
 * Tell the user the change id when you're done.
-* Releasing it is the user's review. Never run `jj reviewed`, remove the `!clanker! ` prefix or the trailer, squash a clanker change into another change, or push.
+* Releasing it is the user's review. Never run `jj reviewed`, remove the `!clanker! ` prefix or the trailer, squash a clanker change into another change any other way, or push.
 * The `jj clank-*` aliases are the only version control you run on your own. If they don't exist or it isn't a `jj` repo, run nothing and tell the user that what you wrote is sitting undisclosed in the working copy.
 * Example of what the user is left with after asking for a stub that does `<thing>` instead of exiting, while they had uncommitted work in `@`:
     ```
