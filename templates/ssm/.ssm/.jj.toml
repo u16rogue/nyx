@@ -3,7 +3,7 @@
 [revset-aliases]
 "todo()" = 'mutable() & description(glob:"!todo!*")' # todo entries, private until `jj done`
 "finished()" = 'heads(::@- ~ unfinished()::)' # newest change below @ with nothing unfinished under it
-"clanker()" = 'mutable() & description(glob:"!clanker!*")' # clanker written changes, private until `jj reviewed`
+"clanker()" = 'mutable() & description(glob:"!clanker!*")' # unreviewed clanker changes, private until `jj reviewed`
 "assisted()" = 'description(substring:"Assisted-by:")' # every clanker written change, reviewed or not
 "unfinished()" = 'todo() | clanker() | (mutable() & empty())' # never pushed, empty changes included
 
@@ -40,13 +40,13 @@ imbue = ["squash", "-i", "--into"]
 # list clanker changes that aren't reviewed yet
 unreviewed = ["log", "-r", "clanker()"]
 
-# `jj reviewed <change>...` drops the `!clanker! ` prefix so the change can be pushed, the `Assisted-by` trailer stays
+# `jj reviewed <change>...` turns the `!clanker! ` prefix into `[clanker] ` so the change can be pushed and still shows in the log
 reviewed = ["util", "exec", "--", "bash", "-c", '''
 set -e
 for rev; do
     desc="$(jj log --no-graph -r "exactly($rev, 1)" -T description)"
     [[ "$desc" == '!clanker! '* ]] || { echo "not a clanker change: $rev" >&2; exit 1; }
-    jj describe -r "exactly($rev, 1)" -m "${desc#'!clanker! '}"
+    jj describe -r "exactly($rev, 1)" -m "[clanker] ${desc#'!clanker! '}"
 done
 ''', ""]
 
