@@ -43,9 +43,9 @@
     };
     ublock-origin = {
         extid = "uBlock0@raymondhill.net";
-        version = "1.75.0";
-        url = "https://addons.mozilla.org/firefox/downloads/file/5034826/ublock_origin-1.75.0.xpi";
-        sha256 = "5b74415860456370644bd80f16125e865b0e6c356bb5dfcfb84069967eaa5287";
+        version = "1.76.4";
+        url = "https://addons.mozilla.org/firefox/downloads/file/5257481/ublock_origin-1.76.4.xpi";
+        sha256 = "66d0e3f21ce3b32b1bc0a9399b93cb2c9aa598ef18805d92118c76f66e266c1e";
     };
     violentmonkey = {
         extid = "{aecec67f-0d10-4fa7-b7c7-609a2db280cf}";

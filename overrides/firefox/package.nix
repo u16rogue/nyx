@@ -195,6 +195,7 @@ in (mkNixPak {
                 PULSE_RUNTIME_PATH = sloth.envOr "PULSE_RUNTIME_PATH" sloth.runtimeDir;
                 WAYLAND_DISPLAY = sloth.envOr "WAYLAND_DISPLAY" "wayland-0";
                 MOZ_ENABLE_WAYLAND = "1";
+                NOTIFY_IGNORE_PORTAL = "1";
                 LD_LIBRARY_PATH = "/run/host-nss"; # where glibc finds libnss_mdns4_minimal
             };
         };
