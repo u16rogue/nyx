@@ -1,6 +1,6 @@
-{ inputs, pkgs, fuzzel, ... }: inputs.wrappers.lib.wrapPackage {
+{ inputs, pkgs, fuzzel, comfortaa, makeFontsConf, ... }: inputs.wrappers.lib.wrapPackage {
     inherit pkgs;
     package = fuzzel;
-    env.FONTCONFIG_FILE = pkgs.makeFontsConf { fontDirectories = [ pkgs.comfortaa ]; };
+    env.FONTCONFIG_FILE = makeFontsConf { fontDirectories = [ comfortaa ]; };
     flags."--config" = "${./config.ini}";
 }

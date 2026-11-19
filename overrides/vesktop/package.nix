@@ -1,4 +1,4 @@
-{ inputs, pkgs, ... }: let
+{ inputs, pkgs, vesktop, coreutils, dejavu_fonts, liberation_ttf, noto-fonts, noto-fonts-cjk-sans, noto-fonts-cjk-serif, noto-fonts-color-emoji, ... }: let
     mkNixPak = inputs.nixpak.lib.nixpak {
         inherit (pkgs) lib;
         inherit pkgs;
@@ -8,19 +8,19 @@ in (mkNixPak {
     config = { sloth, ... }: {
         app.package = inputs.wrappers.lib.wrapPackage {
             inherit pkgs;
-            package = pkgs.vesktop;
+            package = vesktop;
             wrapper = { exePath, ... }: /*bash*/ ''
                 config_dir="$HOME/.config/vesktop"
-                ${pkgs.coreutils}/bin/mkdir -p "$config_dir/settings"
-                ${pkgs.coreutils}/bin/ln -sfnT "${config_seed}/settings.json" "$config_dir/settings.json"
-                ${pkgs.coreutils}/bin/ln -sfnT "${config_seed}/settings/quickCss.css" "$config_dir/settings/quickCss.css"
+                ${coreutils}/bin/mkdir -p "$config_dir/settings"
+                ${coreutils}/bin/ln -sfnT "${config_seed}/settings.json" "$config_dir/settings.json"
+                ${coreutils}/bin/ln -sfnT "${config_seed}/settings/quickCss.css" "$config_dir/settings/quickCss.css"
                 if [[ ! -e "$config_dir/state.json" ]]; then
-                    ${pkgs.coreutils}/bin/cp "${config_seed}/state.json" "$config_dir/state.json"
-                    ${pkgs.coreutils}/bin/chmod u+w "$config_dir/state.json"
+                    ${coreutils}/bin/cp "${config_seed}/state.json" "$config_dir/state.json"
+                    ${coreutils}/bin/chmod u+w "$config_dir/state.json"
                 fi
                 if [[ ! -e "$config_dir/settings/settings.json" ]]; then
-                    ${pkgs.coreutils}/bin/cp "${config_seed}/settings/settings.json" "$config_dir/settings/settings.json"
-                    ${pkgs.coreutils}/bin/chmod u+w "$config_dir/settings/settings.json"
+                    ${coreutils}/bin/cp "${config_seed}/settings/settings.json" "$config_dir/settings/settings.json"
+                    ${coreutils}/bin/chmod u+w "$config_dir/settings/settings.json"
                 fi
                 exec ${exePath} --enable-features=WebRTCPipeWireCapturer --ozone-platform=wayland "$@"
             '';
@@ -34,7 +34,7 @@ in (mkNixPak {
         };
         fonts = {
             enable = true;
-            fonts = with pkgs; [
+            fonts = [
                 dejavu_fonts
                 liberation_ttf
                 noto-fonts

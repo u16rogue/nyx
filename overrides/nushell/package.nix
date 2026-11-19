@@ -1,6 +1,6 @@
-{ inputs, pkgs, nushell, ... }: inputs.wrappers.lib.wrapPackage {
+{ inputs, pkgs, nushell, writeText, ... }: inputs.wrappers.lib.wrapPackage {
     inherit pkgs;
     package = nushell;
     flags."--config" = "${./config.nu}";
-    flags."--env-config" = pkgs.writeText "env.nu" "";
+    flags."--env-config" = writeText "env.nu" "";
 }

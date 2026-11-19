@@ -1,21 +1,24 @@
-# CLANKER EDITED FILE: added opencode-release (GitHub release pinned by ./lock.nix), overridesOpts.source to pick "release" or "nixpkgs", and a bundled claude-code kept off PATH, signed in with /connect-claude (./nyx-connect-claude)
-
-{ inputs, lib, pkgs, opencode, claude-code, libnotify, overridesOpts ? {}, ... }: let
+{
+    inputs, lib, pkgs, stdenv, fetchurl,
+    opencode, claude-code, ripgrep, wayland, libnotify,
+    patchelf, makeBinaryWrapper, installShellFiles,
+    overridesOpts ? {}, ...
+}: let
     setDefault = name: value: /*bash*/ ''
         if [ -z "''${${name}+x}" ]; then export ${name}=${lib.escapeShellArg (builtins.toJSON value)}; fi
     '';
 
     opencode-release = let
         lock = import ./lock.nix;
-        asset = lock.assets.${pkgs.stdenv.hostPlatform.system}
-            or (throw "opencode: lock.nix has no release asset for ${pkgs.stdenv.hostPlatform.system}");
-    in pkgs.stdenv.mkDerivation {
+        asset = lock.assets.${stdenv.hostPlatform.system}
+            or (throw "opencode: lock.nix has no release asset for ${stdenv.hostPlatform.system}");
+    in stdenv.mkDerivation {
         pname = "opencode";
         inherit (lock) version;
-        src = pkgs.fetchurl { inherit (asset) url hash; };
+        src = fetchurl { inherit (asset) url hash; };
         sourceRoot = ".";
 
-        nativeBuildInputs = with pkgs; [ patchelf makeBinaryWrapper installShellFiles ];
+        nativeBuildInputs = [ patchelf makeBinaryWrapper installShellFiles ];
         dontConfigure = true;
         dontBuild = true;
         # bun single-file executables keep their bundle appended to the ELF, stripping destroys it
@@ -29,12 +32,12 @@
             patchelf --set-interpreter "$(cat $NIX_CC/nix-support/dynamic-linker)" $out/bin/opencode
             wrapProgram $out/bin/opencode \
                 --set OPENCODE_DISABLE_AUTOUPDATE true \
-                --suffix PATH : ${lib.makeBinPath [ pkgs.ripgrep ]} \
-                --prefix LD_LIBRARY_PATH : ${lib.makeLibraryPath [ pkgs.stdenv.cc.cc pkgs.wayland ]}
+                --suffix PATH : ${lib.makeBinPath [ ripgrep ]} \
+                --prefix LD_LIBRARY_PATH : ${lib.makeLibraryPath [ stdenv.cc.cc wayland ]}
             runHook postInstall
         '';
 
-        postInstall = lib.optionalString (pkgs.stdenv.buildPlatform.canExecute pkgs.stdenv.hostPlatform) ''
+        postInstall = lib.optionalString (stdenv.buildPlatform.canExecute stdenv.hostPlatform) ''
             # opencode creates $TMPDIR/opencode, which collides with the unpacked binary in the build dir
             export HOME="$(mktemp -d)" TMPDIR="$(mktemp -d)"
             installShellCompletion --cmd opencode \

@@ -1,9 +1,9 @@
-{ inputs, pkgs, ghostty, ... }: let
+{ inputs, pkgs, ghostty, nerd-fonts, makeFontsConf, ... }: let
     config_file = ./config.ghostty;
 in inputs.wrappers.lib.wrapPackage {
     inherit pkgs;
     package = ghostty;
-    env.FONTCONFIG_FILE = pkgs.makeFontsConf { fontDirectories = [ pkgs.nerd-fonts.comic-shanns-mono ]; };
+    env.FONTCONFIG_FILE = makeFontsConf { fontDirectories = [ nerd-fonts.comic-shanns-mono ]; };
     wrapper = { exePath, envString, ... }: /*bash*/ ''
         # ghostty actions workaround since +action are required to be second parameter
         ${envString}

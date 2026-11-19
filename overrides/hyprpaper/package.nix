@@ -1,5 +1,5 @@
-{ inputs, pkgs, hyprpaper, overridesOpts ? {}, ... }: let
-    config = pkgs.replaceVars ./hyprpaper.conf {
+{ inputs, pkgs, hyprpaper, replaceVars, overridesOpts ? {}, ... }: let
+    config = replaceVars ./hyprpaper.conf {
         wallpaper = overridesOpts.wallpaper or "/etc/wallpaper";
     };
 in inputs.wrappers.lib.wrapPackage {

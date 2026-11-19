@@ -1,5 +1,5 @@
 {
-    inputs, pkgs, lib, writeText,
+    inputs, pkgs, lib, writeText, writeShellApplication,
     hyprland,
     hyprpaper, waybar, mako, fuzzel, ghostty,
     xwayland, grim, slurp, satty, wl-clipboard, procps, dbus, systemd, uwsm, xdg-utils,
@@ -20,7 +20,7 @@
     ;
     # AI-assisted: private session payload; the public launcher always enters UWSM.
     # Keep this basename so UWSM loads its start-hyprland environment plugin.
-    session = pkgs.writeShellApplication {
+    session = writeShellApplication {
         name = "start-hyprland";
         # Config commands use this for lookup without exporting it as PATH to apps.
         runtimeEnv.NYX_HYPR_PATH = lib.makeBinPath [

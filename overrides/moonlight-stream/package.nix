@@ -1,11 +1,11 @@
-{ inputs, pkgs, overridesOpts ? {}, ... }: let
+{ inputs, pkgs, moonlight-qt, runCommand, overridesOpts ? {}, ... }: let
     mkNixPak = inputs.nixpak.lib.nixpak {
         inherit (pkgs) lib;
         inherit pkgs;
     };
     jailedMoonlight = let
         jail = inputs.jail-nix.lib.init pkgs;
-        moonlight-qt' = jail "moonlight-jail-nix-tmpfix" pkgs.moonlight-qt (with jail.combinators; [
+        moonlight-qt' = jail "moonlight-jail-nix-tmpfix" moonlight-qt (with jail.combinators; [
                 network
                 gui
                 gpu
@@ -17,11 +17,11 @@
                     done
                 '')
             ]);
-        in pkgs.runCommand "moonlight-jailed" { meta.mainProgram = "moonlight-jail-nix-tmpfix"; } ''
+        in runCommand "moonlight-jailed" { meta.mainProgram = "moonlight-jail-nix-tmpfix"; } ''
             mkdir -p $out/share/applications
             ln -s ${moonlight-qt'}/bin $out/bin
-            ln -s ${pkgs.moonlight-qt}/share/icons $out/share/icons
-            cp ${pkgs.moonlight-qt}/share/applications/com.moonlight_stream.Moonlight.desktop \
+            ln -s ${moonlight-qt}/share/icons $out/share/icons
+            cp ${moonlight-qt}/share/applications/com.moonlight_stream.Moonlight.desktop \
                 $out/share/applications/com.moonlight_stream.Moonlight-jail-nix-tmpfix.desktop
             substituteInPlace $out/share/applications/com.moonlight_stream.Moonlight-jail-nix-tmpfix.desktop \
                 --replace-fail 'Name=Moonlight' 'Name=Moonlight (jail.nix tmpfix)' \
@@ -34,7 +34,7 @@ else
     (mkNixPak {
         config = { sloth, ... }: {
             app = {
-                package = pkgs.moonlight-qt;
+                package = moonlight-qt;
                 binPath = "bin/moonlight";
             };
             flatpak.appId = "com.moonlight_stream.Moonlight";

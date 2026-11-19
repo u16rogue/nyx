@@ -1,4 +1,4 @@
-{ inputs, pkgs, qt5, dejavu_fonts, keepassxc, ... }: let
+{ inputs, pkgs, qt5, dejavu_fonts, keepassxc, writeText, ... }: let
     mkNixPak = inputs.nixpak.lib.nixpak {
         inherit (pkgs) lib;
         inherit pkgs;
@@ -9,7 +9,7 @@ in (mkNixPak {
             package = inputs.wrappers.lib.wrapPackage {
                 inherit pkgs;
                 package = keepassxc;
-                flags."--config" = pkgs.writeText "keepassxc.ini" (builtins.readFile ./keepassxc.ini);
+                flags."--config" = writeText "keepassxc.ini" (builtins.readFile ./keepassxc.ini);
             };
             binPath = "bin/keepassxc";
         };

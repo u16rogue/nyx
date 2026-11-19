@@ -1,6 +1,6 @@
-{ inputs, pkgs, lib, ... }: let
+{ inputs, pkgs, lib, fetchurl, wrapFirefox, firefox-unwrapped, coreutils, dejavu_fonts, liberation_ttf, noto-fonts, noto-fonts-cjk-sans, noto-fonts-cjk-serif, noto-fonts-color-emoji, ... }: let
     addons = import ./addons/addons.nix;
-    addon_xpis = lib.flip pkgs.lib.mapAttrs addons (name: addon: pkgs.fetchurl {
+    addon_xpis = lib.flip lib.mapAttrs addons (name: addon: fetchurl {
         name = "${name}-${addon.version}.xpi";
         inherit (addon) url sha256;
     });
@@ -13,7 +13,7 @@ in (mkNixPak {
     config = { sloth, ... }: {
         app.package = inputs.wrappers.lib.wrapPackage {
             inherit pkgs;
-            package = pkgs.wrapFirefox pkgs.firefox-unwrapped {
+            package = wrapFirefox firefox-unwrapped {
                 extraPolicies = {
                     DisableTelemetry = true;
                     DisableFirefoxStudies = true;
@@ -116,20 +116,20 @@ in (mkNixPak {
             };
             wrapper = { exePath, ... }: /*bash*/ ''
                 profile="$HOME/.mozilla/firefox/default"
-                ${pkgs.coreutils}/bin/mkdir -p "$profile/chrome"
-                ${pkgs.coreutils}/bin/ln -sfnT "${profile_seed}/profiles.ini" "$HOME/.mozilla/firefox/profiles.ini"
-                ${pkgs.coreutils}/bin/ln -sfnT "${profile_seed}/default/user.js" "$profile/user.js"
-                ${pkgs.coreutils}/bin/ln -sfnT "${profile_seed}/default/chrome/userChrome.css" "$profile/chrome/userChrome.css"
-                [[ ! -e "$profile/containers.json" ]] && ${pkgs.coreutils}/bin/ln -sfnT "${profile_seed}/default/containers.json" "$profile/containers.json";
+                ${coreutils}/bin/mkdir -p "$profile/chrome"
+                ${coreutils}/bin/ln -sfnT "${profile_seed}/profiles.ini" "$HOME/.mozilla/firefox/profiles.ini"
+                ${coreutils}/bin/ln -sfnT "${profile_seed}/default/user.js" "$profile/user.js"
+                ${coreutils}/bin/ln -sfnT "${profile_seed}/default/chrome/userChrome.css" "$profile/chrome/userChrome.css"
+                [[ ! -e "$profile/containers.json" ]] && ${coreutils}/bin/ln -sfnT "${profile_seed}/default/containers.json" "$profile/containers.json";
 
                 extension_dir="$profile/extensions"
-                ${pkgs.coreutils}/bin/mkdir -p "$extension_dir"
+                ${coreutils}/bin/mkdir -p "$extension_dir"
                 ${lib.concatStringsSep "\n" (lib.flip lib.mapAttrsToList addons (name: addon: /*bash*/ ''
                     extension_path="$extension_dir/${addon.extid}.xpi"
                     if [[ -L "$extension_path" ]]; then
-                        ${pkgs.coreutils}/bin/ln -sfnT "${addon_xpis.${name}}" "$extension_path"
+                        ${coreutils}/bin/ln -sfnT "${addon_xpis.${name}}" "$extension_path"
                     elif [[ ! -e "$extension_path" ]]; then
-                        ${pkgs.coreutils}/bin/ln -s "${addon_xpis.${name}}" "$extension_path"
+                        ${coreutils}/bin/ln -s "${addon_xpis.${name}}" "$extension_path"
                     fi
                 ''))}
 
@@ -141,7 +141,7 @@ in (mkNixPak {
         timeZone.enable = true;
         fonts = {
             enable = true;
-            fonts = with pkgs; [
+            fonts = [
                 dejavu_fonts
                 liberation_ttf
                 noto-fonts

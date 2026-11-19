@@ -1,5 +1,5 @@
 # CLANKER EDITED FILE: whole file
-{ inputs, pkgs, lib, mako, wlr-randr, jq, overridesOpts ? {}, ... }: let
+{ inputs, pkgs, lib, mako, wlr-randr, jq, comfortaa, makeFontsConf, overridesOpts ? {}, ... }: let
     # A host monitor entry (`{ id }` or `{ edid }`, see `nyx.nixos.hosts.<name>.monitors`) to pin notifications to.
     # null leaves it to mako, which shows them on the focused output.
     monitor = overridesOpts.monitor or null;
@@ -8,7 +8,7 @@
 in inputs.wrappers.lib.wrapPackage {
     inherit pkgs;
     package = mako;
-    env.FONTCONFIG_FILE = pkgs.makeFontsConf { fontDirectories = [ pkgs.comfortaa ]; };
+    env.FONTCONFIG_FILE = makeFontsConf { fontDirectories = [ comfortaa ]; };
     flags = { "--config" = "${./config}"; } // lib.optionalAttrs (id != null) { "--output" = id; };
     # mako only matches `output` against the connector name, so an EDID is resolved to it at startup.
     # If the monitor isn't connected nothing is pinned.
