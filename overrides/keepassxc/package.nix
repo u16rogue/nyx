@@ -1,9 +1,4 @@
-{ inputs, pkgs, ... }: let
-    keepassxc = inputs.wrappers.lib.wrapPackage {
-        inherit pkgs;
-        package = pkgs.keepassxc;
-        flags."--config" = pkgs.writeText "keepassxc.ini" (builtins.readFile ./keepassxc.ini);
-    };
+{ inputs, pkgs, qt5, dejavu_fonts, keepassxc, ... }: let
     mkNixPak = inputs.nixpak.lib.nixpak {
         inherit (pkgs) lib;
         inherit pkgs;
@@ -11,7 +6,11 @@
 in (mkNixPak {
     config = { sloth, ... }: {
         app = {
-            package = keepassxc;
+            package = inputs.wrappers.lib.wrapPackage {
+                inherit pkgs;
+                package = keepassxc;
+                flags."--config" = pkgs.writeText "keepassxc.ini" (builtins.readFile ./keepassxc.ini);
+            };
             binPath = "bin/keepassxc";
         };
 
@@ -20,7 +19,7 @@ in (mkNixPak {
         dbus.policies."org.freedesktop.portal.Desktop" = "talk";
         fonts = {
             enable = true;
-            fonts = [ pkgs.dejavu_fonts ];
+            fonts = [ dejavu_fonts ];
         };
         bubblewrap = {
             network = false;
@@ -28,7 +27,7 @@ in (mkNixPak {
             clearEnv = true;
             newSession = true;
             dieWithParent = true;
-            extraStorePaths = [ pkgs.qt5.qtwayland.bin ];
+            extraStorePaths = [ qt5.qtwayland.bin ];
             sockets.wayland = true;
 
             bind.rw = [
@@ -44,7 +43,7 @@ in (mkNixPak {
                 WAYLAND_DISPLAY = sloth.envOr "WAYLAND_DISPLAY" "wayland-0";
                 QT_QPA_PLATFORM = "wayland";
                 QT_QPA_PLATFORMTHEME = "xdgdesktopportal";
-                QT_PLUGIN_PATH  = "${pkgs.qt5.qtwayland.bin}/lib/qt-${pkgs.qt5.qtbase.version}/plugins:${pkgs.qt5.qtbase.bin}/lib/qt-${pkgs.qt5.qtbase.version}/plugins";
+                QT_PLUGIN_PATH  = "${qt5.qtwayland.bin}/lib/qt-${qt5.qtbase.version}/plugins:${qt5.qtbase.bin}/lib/qt-${qt5.qtbase.version}/plugins";
                 TMPDIR = "/tmp";
             };
         };
