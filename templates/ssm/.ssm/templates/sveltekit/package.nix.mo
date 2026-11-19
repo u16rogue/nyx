@@ -1,4 +1,4 @@
-{{! CLANKER EDITED: the `build` config picks the ./do command and its adapter options, $out is laid out here, meta set through overrideAttrs }}
+{{! the `build` config picks the ./do command and its adapter options, $out is laid out here, meta set through overrideAttrs }}
 { lib, bun2nix, bun, makeWrapper, ... }: let
     build = {
         mode = "bundle";

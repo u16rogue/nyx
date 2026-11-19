@@ -1,4 +1,3 @@
--- THIS WAS WRITTEN BY A CLANKER
 -- read by cyan (./do) and teal-language-server
 return {
     source_dir = "src",

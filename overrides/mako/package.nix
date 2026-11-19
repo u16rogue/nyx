@@ -1,4 +1,3 @@
-# CLANKER EDITED FILE: whole file
 { inputs, pkgs, lib, mako, wlr-randr, jq, comfortaa, makeFontsConf, overridesOpts ? {}, ... }: let
     # A host monitor entry (`{ id }` or `{ edid }`, see `nyx.nixos.hosts.<name>.monitors`) to pin notifications to.
     # null leaves it to mako, which shows them on the focused output.

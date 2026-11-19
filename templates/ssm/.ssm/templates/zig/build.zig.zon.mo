@@ -1,4 +1,4 @@
-{{! CLANKER EDITED: versioned by ssm, the stage hook in _ssm.sh fills in the name and fingerprint }}
+{{! versioned by ssm, the stage hook in _ssm.sh fills in the name and fingerprint }}
 .{
     .name = .{{subproject_name}},
     .version = "{{subproject_version}}",

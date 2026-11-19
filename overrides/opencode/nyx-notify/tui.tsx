@@ -1,5 +1,3 @@
-// THIS WAS WRITTEN BY A CLANKER
-//
 // Desktop notifications over the session bus, for when opencode's own can't arrive.
 // opencode's notification is a terminal escape and gets lost on the way out of zellij inside tmux (the sbx-shell
 // setup). notify-send doesn't depend on the terminal: sbx-shell gives the sandbox a session bus that only allows

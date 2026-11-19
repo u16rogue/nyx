@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# THIS WAS WRITTEN BY A CLANKER
 # Pins the opencode GitHub release into lock.nix beside this script.
 # usage: lock-update.sh [version]   (defaults to the highest stable vX.Y.Z tag)
 # GitHub's "latest" flag can point at a maintenance branch, so releases are sorted by version instead.

@@ -1,4 +1,3 @@
-{{! THIS WAS WRITTEN BY A CLANKER }}
 { mkShellNoCC, callPackage, linkFarm, vimPlugins, lua5_4, ... }: mkShellNoCC {
     # lua, tl and cyan come from the package
     inputsFrom = [ (callPackage ./package.nix {}) ];

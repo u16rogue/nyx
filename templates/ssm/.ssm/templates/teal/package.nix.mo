@@ -1,4 +1,3 @@
-{{! THIS WAS WRITTEN BY A CLANKER }}
 { lib, stdenvNoCC, makeWrapper, lua5_4, ... }: let
     # runtime lua and its rocks, add dependencies here (eg. `ps: with ps; [ luafilesystem ]`)
     lua = lua5_4.withPackages (ps: []);

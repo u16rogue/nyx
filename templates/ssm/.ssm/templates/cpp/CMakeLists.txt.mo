@@ -1,4 +1,4 @@
-{{! CLANKER EDITED: the dev-cpp CMakeLists.txt as a cli only, named after the subproject, removed the commented output/link placeholders, spdlog header only from nixpkgs instead of CPM, static mingw link, added install() for package.nix }}
+{{! the dev-cpp CMakeLists.txt as a cli only, named after the subproject, removed the commented output/link placeholders, spdlog header only from nixpkgs instead of CPM, static mingw link, added install() for package.nix }}
 cmake_minimum_required(VERSION 3.20)
 project({{subproject_name}} VERSION {{subproject_version}})
 
@@ -8,7 +8,7 @@ if (NOT CMAKE_BUILD_TYPE)
     set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS Debug Release RelWithDebInfo MinSizeRel)
 endif()
 
-# CLANKER ASSISTED: the nix compiler wrapper injects the dependency include paths, cmake takes them as
+# the nix compiler wrapper injects the dependency include paths, cmake takes them as
 # implicit and leaves them out of compile_commands.json. listed explicitly so clangd and clang-tidy find them
 set(CMAKE_CXX_STANDARD_INCLUDE_DIRECTORIES ${CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES})
 
@@ -65,5 +65,5 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
 
 install(TARGETS ${PROJECT_NAME})
 
-# CLANKER ASSISTED: `./do test` runs ctest, add tests with add_test()
+# `./do test` runs ctest, add tests with add_test()
 enable_testing()

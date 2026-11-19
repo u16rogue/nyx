@@ -1,4 +1,3 @@
--- THIS WAS WRITTEN BY A CLANKER
 local record utils
 end
 

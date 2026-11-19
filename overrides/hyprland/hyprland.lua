@@ -45,7 +45,7 @@ hl.on("input.keyboard.key", function(keycode)
     end
 end)
 
--- AI-assisted: Sway-like tab movement without moving the whole Hyprland group.
+-- Sway-like tab movement without moving the whole Hyprland group.
 local function moveWindow(direction)
     local window = hl.get_active_window()
     if not window or window.fullscreen ~= 0 then
@@ -79,7 +79,7 @@ for i = 1, 10 do
         if not window or (window.workspace and window.workspace.id == i) then
             return
         end
-        -- Clanker: Workspace moves otherwise carry every tab; detach first and keep this workspace visible.
+        -- Workspace moves otherwise carry every tab; detach first and keep this workspace visible.
         if window.group then
             local result = hl.dispatch(hl.dsp.window.move({ out_of_group = true, window = window }))
             if not result.ok then return result end
@@ -91,7 +91,7 @@ end
 local function fullscreenSafeMouse(dispatcher)
     local started = false
     return function()
-        -- Clanker: Always finish a started drag, even if fullscreen/focus changed before release.
+        -- Always finish a started drag, even if fullscreen/focus changed before release.
         if started then
             started = false
             return hl.dispatch(dispatcher)

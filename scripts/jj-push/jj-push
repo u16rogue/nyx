@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# THIS WAS WRITTEN BY A CLANKER
 # jj-push [jj git push args]: signs and pushes a jj repo that's worked on inside an sbx-shell sandbox,
 # run on the host where the signing keys are. the identity and signing key are read as plain values
 # from the sandbox's jj config (<context>/fs-root/$HOME/.config/jj, user and repo config) since the

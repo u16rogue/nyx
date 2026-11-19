@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-{{! THIS WAS WRITTEN BY A CLANKER: a proxy to bun, every command is one native call with the args passed through }}
+{{! a proxy to bun, every command is one native call with the args passed through }}
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")" || exit 1
 name="{{subproject_name}}"
 entry="index.ts"

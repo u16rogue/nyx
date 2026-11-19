@@ -1,4 +1,3 @@
-# THIS WAS WRITTEN BY A CLANKER
 {
     # Publish this host as `<hostname>.local`; querying others is `mdns-query`.
     flake.modules.nixos.mdns-publish = { config, lib, ... }: {

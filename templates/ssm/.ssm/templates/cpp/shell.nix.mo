@@ -1,4 +1,4 @@
-{{! CLANKER EDITED: the dev-cpp devshell packages on top of the package's inputs, plus the editor grammars (clangd is in clang-tools) }}
+{{! the dev-cpp devshell packages on top of the package's inputs, plus the editor grammars (clangd is in clang-tools) }}
 { mkShellNoCC, callPackage, clang, clang-tools, pkgsCross, linkFarm, vimPlugins, ... }: mkShellNoCC {
     inputsFrom = [ (callPackage ./package.nix {}) ];
     packages = [

@@ -1,4 +1,3 @@
-{{! THIS WAS WRITTEN BY A CLANKER }}
 { lib, clangStdenv, cmake, ninja, spdlog, ... }: clangStdenv.mkDerivation {
     pname = "{{subproject_name}}";
     version = "{{subproject_version}}";

@@ -1,6 +1,5 @@
 
 def commits [count: int, skip: int, revision: string] {
-    # everything else outside this function was written by a clanker
     git -c color.ui=false log $revision -z --no-show-signature --max-count $count --skip $skip --format='%h%x00%an%x00%G?%x00%ad%x00%s' --date=format:'%H:%M %Y/%m/%d'
   | split row (char nul)
   | drop 1

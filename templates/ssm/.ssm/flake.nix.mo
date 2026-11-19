@@ -1,4 +1,4 @@
-{{! CLANKER EDITED: inputs, nixConfig and overlays are filled in by the subproject templates (_ssm.sh), outputs use an overlayed nixpkgs, the devshell frags carry the nix/bash/lua language servers }}
+{{! inputs, nixConfig and overlays are filled in by the subproject templates (_ssm.sh), outputs use an overlayed nixpkgs, the devshell frags carry the nix/bash/lua language servers }}
 {
     # `ssm add` appends to the inputs, subprojects, overlays and nixConfig lists,
     # keep their `<name> = {` / `<name> = [` openers on their own line

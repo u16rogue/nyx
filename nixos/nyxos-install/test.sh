@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# THIS WAS WRITTEN BY A CLANKER
 # Non-destructive regression checks; no host private keys or disks are needed.
 # Child-shell programs below deliberately use single quotes.
 # shellcheck disable=SC2016

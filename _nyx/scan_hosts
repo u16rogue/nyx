@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
 
-# THIS WAS WRITTEN BY A CLANKER
-
 set -euo pipefail
 
 # Scans every host's runtime closure for known CVEs (NVD via vulnix) and

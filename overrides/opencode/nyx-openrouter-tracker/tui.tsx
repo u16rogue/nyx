@@ -1,5 +1,4 @@
 /** @jsxImportSource @opentui/solid */
-// THIS WAS WRITTEN BY A CLANKER
 import { Plugin } from "@opencode/plugin/tui"
 import type { Context } from "@opencode/plugin/tui/context"
 import { For, Show, createEffect, createMemo, createSignal, on, onCleanup, untrack } from "solid-js"

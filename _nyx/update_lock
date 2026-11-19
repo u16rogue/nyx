@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
 
-# THIS WAS WRITTEN BY A CLANKER
-
 set -euo pipefail
 
 # Updates flake.lock and keeps the template locks on the same shared inputs, so the

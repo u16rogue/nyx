@@ -1,4 +1,3 @@
-{{! THIS WAS WRITTEN BY A CLANKER }}
 { mkShellNoCC, callPackage, linkFarm, vimPlugins, ... }: mkShellNoCC {
     # the language server is `roc experimental-lsp`, roc comes from the package
     inputsFrom = [ (callPackage ./package.nix {}) ];

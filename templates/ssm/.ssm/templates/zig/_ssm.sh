@@ -1,5 +1,4 @@
 # shellcheck shell=bash disable=SC2034 # read by ssm
-# THIS WAS WRITTEN BY A CLANKER
 # zig cli, dependencies locked with nixpkgs' zon2nix
 
 # prefixes, cache, fetched packages

@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# clanker generated
 set -euo pipefail
 
 log() {

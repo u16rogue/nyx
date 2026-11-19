@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
 
-# THIS WAS WRITTEN BY A CLANKER
-
 set -euo pipefail
 
 # Adopts the `bot/flake-lock` proposal as your own signed commit on main, so

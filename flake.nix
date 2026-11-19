@@ -54,7 +54,7 @@
                     jujutsu git # version control
                     rage        # secrets
                     gum         # used by ssm
-                    nil lua-language-server bash-language-server shellcheck # AI-assisted: editor, the servers are enabled in .nvim.lua
+                    nil lua-language-server bash-language-server shellcheck # editor, the servers are enabled in .nvim.lua
                     # tree-sitter grammars, <pkg>/share/nvim/site/parser reaches neovim's runtimepath through XDG_DATA_DIRS
                     (pkgs.linkFarm "nvim-grammars" (map (lang: {
                         name = "share/nvim/site/parser/${lang}.so";
@@ -62,7 +62,7 @@
                     }) [ "fish" "kdl" "nu" ]))
                 ];
                 shellHook = let
-                    # AI-assisted: lua-language-server definitions, one per Lua config so they're separate workspaces
+                    # lua-language-server definitions, one per Lua config so they're separate workspaces
                     hyprland-luarc = pkgs.writeText "hyprland-luarc.json" (builtins.toJSON {
                         runtime.version = "Lua 5.5";
                         workspace = { checkThirdParty = false; library = [ "${pkgs.hyprland}/share/hypr/stubs" ]; };

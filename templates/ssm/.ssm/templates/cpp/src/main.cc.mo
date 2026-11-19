@@ -1,4 +1,4 @@
-{{! CLANKER EDITED: `arg` is [[maybe_unused]], release builds compile logdbg away and -Werror failed on it }}
+{{! `arg` is [[maybe_unused]], release builds compile logdbg away and -Werror failed on it }}
 #include "utils.hh"
 #include <span>
 

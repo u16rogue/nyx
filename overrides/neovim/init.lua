@@ -36,7 +36,7 @@ vim.o.updatetime     = 250
 vim.o.pumheight      = 10
 vim.o.list           = true
 vim.opt.listchars    = { space = '⋅', eol = '↴' }
-vim.o.exrc           = true -- trusted project-local .nvim.lua (see README.md)
+vim.o.exrc           = true -- trusted project-local .nvim.lua
 
 vim.diagnostic.config({
     virtual_text  = true,
@@ -173,7 +173,7 @@ do
             layout_config        = { width = 0.8, height = 0.8, preview_cutoff = 120, horizontal = { prompt_position = 'top', preview_width = 0.55 } },
             path_display         = { 'absolute' },
             file_ignore_patterns = { 'node_modules', '%.git/', 'dist/', 'build/', 'target/', 'result/' },
-            -- CLANKER EDITED: --no-ignore -> --no-ignore-vcs, grep still skips .gitignore but honors the project's .ignore/.rgignore
+            -- --no-ignore-vcs rather than --no-ignore: grep still skips .gitignore but honors the project's .ignore/.rgignore
             vimgrep_arguments    = { 'rg', '--color=never', '--no-heading', '--with-filename', '--line-number', '--column', '--smart-case', '--hidden', '--no-ignore-vcs' },
             mappings = { i = {
                 ['<C-d>'] = 'move_selection_next',

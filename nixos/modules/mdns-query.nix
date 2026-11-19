@@ -1,4 +1,3 @@
-# THIS WAS WRITTEN BY A CLANKER
 {
     # Query `<hostname>.local` names without publishing this host.
     flake.modules.nixos.mdns-query = { config, lib, pkgs, ... }: {

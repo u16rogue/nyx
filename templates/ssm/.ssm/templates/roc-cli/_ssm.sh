@@ -1,5 +1,4 @@
 # shellcheck shell=bash disable=SC2034 # read by ssm
-# THIS WAS WRITTEN BY A CLANKER
 # roc cli on basic-cli, nightly zig compiler
 
 ssm_tpl_covers=(.build)

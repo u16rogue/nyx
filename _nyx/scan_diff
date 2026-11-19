@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
 
-# THIS WAS WRITTEN BY A CLANKER
-
 set -euo pipefail
 
 # Compares two `scan_hosts` reports (before and after a change, usually a lock

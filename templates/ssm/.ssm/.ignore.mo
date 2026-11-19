@@ -1,4 +1,4 @@
-{{! THIS WAS WRITTEN BY A CLANKER: ignores for rg/fd (telescope live_grep/find_files), unlike .gitignore this hides generated/vendored files while leaving untracked personal files searchable }}
+{{! ignores for rg/fd (telescope live_grep/find_files), unlike .gitignore this hides generated/vendored files while leaving untracked personal files searchable }}
 .git/
 .jj/
 .ssm/

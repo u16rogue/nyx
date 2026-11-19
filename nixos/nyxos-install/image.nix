@@ -1,4 +1,3 @@
-# THIS WAS WRITTEN BY A CLANKER
 # A live installer containing the selected host's exact prebuilt runtime closure.
 { flake, hostName }:
 let

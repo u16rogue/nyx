@@ -1,5 +1,4 @@
 /** @jsxImportSource @opentui/solid */
-// THIS WAS WRITTEN BY A CLANKER
 // Signs Claude Code in and connects the Claude Agent provider without leaving opencode.
 // /connect-claude runs it on demand, and it offers to sign in when a Claude Agent model is selected while logged out.
 import { spawn } from "node:child_process"

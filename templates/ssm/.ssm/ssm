@@ -7,7 +7,7 @@ set -o pipefail
 
 ssm_dir="$(realpath -- "$(dirname -- "${BASH_SOURCE[0]}")")"
 ssm_root="$(dirname -- "$ssm_dir")"
-# CLANKER ASSISTED: the generated run script replaces the bootstrap `init`, the stage is created per run.
+# the generated run script replaces the bootstrap `init`, the stage is created per run.
 # .ssm may be tracked or read only so everything temporary goes into the (ignored) .ssm-stage in the
 # project root, which also keeps the final moves on the same filesystem
 ssm_run_name="init"
@@ -388,7 +388,7 @@ drawTuiSubprojectType() {
     gum choose --limit 1 --header "$1" --selected "${2:-}" "${subproject_template_types[@]}"
 }
 
-# CLANKER EDITED: the template type is picked before the name
+# the template type is picked before the name
 drawTuiSubprojectsAdd() {
     local type=
     if ! type=$(drawTuiSubprojectType "new subproject template type"); then
@@ -505,7 +505,7 @@ drawTuiSubprojects() {
     done
 }
 
-# CLANKER EDITED: renders into "$render_root" (the stage) instead of "$ssm_root", returns
+# renders into "$render_root" (the stage) instead of "$ssm_root", returns
 # failures and leaves the ignores to the template if it ships its own `.gitignore.mo`
 # renders "$ssm_dir/templates/<type>" into "$render_root/<name>", every directory gets
 # a generated inverse ignore unless the template provides a `.gitignore.mo`
@@ -535,7 +535,7 @@ renderSubproject() {
     done < <(find "$tpl_dir" -type d -print0)
 }
 
-# CLANKER START template_hooks: per template `_ssm.sh` hooks
+# per template `_ssm.sh` hooks
 # sources "$ssm_dir/templates/<type>/_ssm.sh" (if any) once per type and collects
 # its declarations into these variables from the caller's scope:
 #   tpl_loaded[<type>]     set once the type was loaded
@@ -729,7 +729,6 @@ commitStageEntry() {
     done
     return "$rc"
 }
-# CLANKER END template_hooks
 
 # prints the names listed in the `subprojects = [ ./<name> ... ];` block(s) of <flake>
 readProjectSubprojects() {
@@ -745,7 +744,6 @@ readProjectSubprojects() {
     ' "$1"
 }
 
-# CLANKER START flake_list_add: generalized the `subprojects` awk to any list/attrset block
 # adds <line>... to every `<block> = [` / `<block> = {` block of <file> whose opener is on its
 # own line, lines that are already in the block (ignoring the indentation) are left alone.
 # returns 2 if there's no such block
@@ -818,10 +816,8 @@ flakeEnsureNixConfig() {
     fi
     rm -f -- "$tmp"
 }
-# CLANKER END flake_list_add
 
-# CLANKER EDITED: works on the staged flake.nix/.gitignore ("$render_root"), the flake list
-# editing moved into flakeListAdd
+# works on the staged flake.nix/.gitignore ("$render_root"), the flake list editing is flakeListAdd
 # adds <name>... to the `subprojects` block(s) of the root flake.nix and un-ignores them in
 # the root .gitignore, names that are already listed are left alone
 # registerSubprojects <name>...
@@ -874,7 +870,7 @@ writeInverseIgnore() {
         entry="${path##*/}"
         [[ -e "$path" ]] || continue
         [[ "$entry" == . || "$entry" == .. || "$entry" == .gitignore ]] && continue
-        # CLANKER ASSISTED: the template hooks aren't rendered
+        # the template hooks aren't rendered
         [[ "$entry" == _ssm.sh && "$(dirname -- "$tpl_dir")" == "$ssm_dir/templates" ]] && continue
         if [[ -d "$path" ]]; then
             dirs+=("!/$entry/")
@@ -895,7 +891,7 @@ writeInverseIgnore() {
     fi
 }
 
-# CLANKER EDITED: renders into "$render_root" (the stage), skips the template root's `_ssm.sh`
+# renders into "$render_root" (the stage), skips the template root's `_ssm.sh`
 # hooks, warns about plain `.gitignore` files instead of silently skipping them and returns 1
 # if anything failed instead of only logging it
 # renders <template dir> into "$render_root/<dst>", `.mo` files are rendered with the variables
@@ -927,10 +923,10 @@ renderTree() {
 
         if [[ "$src" == *.mo ]]; then
             mo "$src" > "$dst" || { printErr "failed to create $rel"; rc=1; }
-            # CLANKER ASSISTED: rendered scripts stay executable
+            # rendered scripts stay executable
             if [[ -x "$src" ]]; then chmod +x -- "$dst" || { printErr "failed to make $rel executable"; rc=1; }; fi
         else
-            # CLANKER ASSISTED: the template may be read only (store, try-ssm), the copies have to be editable
+            # the template may be read only (store, try-ssm), the copies have to be editable
             { cp -- "$src" "$dst" && chmod u+w -- "$dst"; } || { printErr "failed to create $rel"; rc=1; }
         fi
     done < <(find "$tpl_dir" -type f -print0)
@@ -1054,7 +1050,7 @@ modeOf_init() {
 
     [[ "${d["nixpkgs_pin"]}" == "<nil>" ]] && d["nixpkgs_pin"]="";
 
-    # CLANKER EDITED: everything is rendered into a stage that is only moved into place once it all
+    # everything is rendered into a stage that is only moved into place once it all
     # succeeded, and the commands are written into the ./init run script (replacing the bootstrap
     # one) instead of being run. templates add their own flake inputs, sbx-shell covers and sandbox
     # steps through their `_ssm.sh` hooks, removed confirmRunCommands
@@ -1087,7 +1083,7 @@ modeOf_init() {
     [[ "${d["git_mail"]}" != "<nil>" ]] && addStep host_steps git-mail "git config user.email ${d["git_mail"]@Q}"
     [[ "${d["git_signkey"]}" != "<nil>" ]] && addStep host_steps git-signkey "git config user.signingKey ${d["git_signkey"]@Q}"
     [[ "${d["git_ssh_id"]}" != "<nil>" ]] && addStep host_steps git-ssh "git config core.sshCommand ${ssh_command@Q}"
-    # CLANKER ASSISTED: jj's identity and signing key, set inside the sandbox where jj is used
+    # jj's identity and signing key, set inside the sandbox where jj is used
     addJjConfigStep
 
     local has_sbx=0
@@ -1101,7 +1097,7 @@ modeOf_init() {
         addStep host_steps sbx-madd "sbx-shell madd . rw ."
     fi
     addSubprojectSteps "$has_sbx" "${subprojects[@]}"
-    # CLANKER ASSISTED: trust the rendered .nvim.lua where neovim runs
+    # trust the rendered .nvim.lua where neovim runs
     addEditorTrustStep
 
     # `<latest>` only affects the lock command below, it must not end up as a revision in the flake
@@ -1124,14 +1120,14 @@ modeOf_init() {
     printLog "creating root .gitignore"
     mo "$ssm_dir/.gitignore.mo" > "$ssm_stage/.gitignore" || die "failed to create root .gitignore"
 
-    # CLANKER ASSISTED: the agent instructions live in .ssm and are copied as is, an existing one is kept
+    # the agent instructions live in .ssm and are copied as is, an existing one is kept
     if [[ -f "$ssm_dir/AGENTS.md" ]]; then
         printLog "creating AGENTS.md"
         { cp -- "$ssm_dir/AGENTS.md" "$ssm_stage/AGENTS.md" && chmod u+w -- "$ssm_stage/AGENTS.md"; } \
             || die "failed to create AGENTS.md"
     fi
 
-    # CLANKER ASSISTED: the project jj config is copied as is, the devshell loads it through JJ_CONFIG
+    # the project jj config is copied as is, the devshell loads it through JJ_CONFIG
     if [[ -f "$ssm_dir/.jj.toml" ]]; then
         printLog "creating jj config .jj.toml"
         { cp -- "$ssm_dir/.jj.toml" "$ssm_stage/.jj.toml" && chmod u+w -- "$ssm_stage/.jj.toml"; } \
@@ -1141,18 +1137,18 @@ modeOf_init() {
     printLog "creating sandbox config .nyx-sbx"
     renderTree "$ssm_dir/.nyx-sbx" ".nyx-sbx" || die "failed to create .nyx-sbx"
 
-    # CLANKER ASSISTED: the neovim project config (.nvim.lua, .nvim/snippets) goes into the project root
+    # the neovim project config (.nvim.lua, .nvim/snippets) goes into the project root
     printLog "creating editor config .nvim.lua, .nvim"
     mo "$ssm_dir/.nvim.lua.mo" > "$ssm_stage/.nvim.lua" || die "failed to create .nvim.lua"
     renderTree "$ssm_dir/.nvim" ".nvim" || die "failed to create .nvim"
 
-    # CLANKER ASSISTED: helper scripts (eg. rclone-serve) go into the project's scripts/, the ignores come from scripts/.gitignore.mo
+    # helper scripts (eg. rclone-serve) go into the project's scripts/, the ignores come from scripts/.gitignore.mo
     if [[ -d "$ssm_dir/scripts" ]]; then
         printLog "creating helper scripts scripts/"
         renderTree "$ssm_dir/scripts" "scripts" || die "failed to create scripts"
     fi
 
-    # CLANKER ASSISTED: rg/fd ignores for generated dirs, shipped as .mo so it doesn't apply to the template's own repo
+    # rg/fd ignores for generated dirs, shipped as .mo so it doesn't apply to the template's own repo
     printLog "creating .ignore"
     mo "$ssm_dir/.ignore.mo" > "$ssm_stage/.ignore" || die "failed to create .ignore"
 
@@ -1161,13 +1157,13 @@ modeOf_init() {
     done
 
     # flakes only see files tracked by git
-    # CLANKER EDITED: also tracks the editor config and .ignore
+    # also tracks the editor config and .ignore
     local -a tracked=(".gitignore" ".ignore" "flake.nix" ".nyx-sbx" ".nvim.lua" ".nvim" "${subprojects[@]}")
-    # CLANKER ASSISTED: track the copied agent instructions
+    # track the copied agent instructions
     [[ -f "$ssm_stage/AGENTS.md" || -f "$ssm_root/AGENTS.md" ]] && tracked+=("AGENTS.md")
-    # CLANKER ASSISTED: track the project jj config
+    # track the project jj config
     [[ -f "$ssm_stage/.jj.toml" || -f "$ssm_root/.jj.toml" ]] && tracked+=(".jj.toml")
-    # CLANKER ASSISTED: track the helper scripts
+    # track the helper scripts
     [[ -d "$ssm_stage/scripts" || -d "$ssm_root/scripts" ]] && tracked+=("scripts")
     addStep host_steps git-add "git add -- ${tracked[*]@Q}"
     if [[ "${d["nixpkgs_pin"]}" == "<latest>" ]]; then
@@ -1190,7 +1186,7 @@ modeOf_init() {
     exit 0
 }
 
-# CLANKER START jj_config: sandbox step that sets jj's identity and signing key from the git answers.
+# sandbox step that sets jj's identity and signing key from the git answers.
 # jj doesn't read git's config, they go into the sandbox's repo config (`jj config set --repo`, stored
 # in the sandbox home) so the tracked .jj.toml stays free of personal info. the working copy was
 # created before the identity existed so its author is updated. the key is a gpg fingerprint, nothing
@@ -1211,9 +1207,8 @@ addJjConfigStep() {
     addStep sandbox_steps "sandbox:jj:config" \
         "if command -v jj &> /dev/null; then ${joined% && }; else printWarn 'jj is unavailable, set its identity and signing key yourself (jj config set --repo)'; fi"
 }
-# CLANKER END jj_config
 
-# CLANKER START nvim_trust: sandbox step that adds the project's .nvim.lua to neovim's trust list
+# sandbox step that adds the project's .nvim.lua to neovim's trust list
 # ('exrc'), so it runs without the prompt. the trust list is per environment, so it's done inside
 # the sandbox (or the plain `nix develop` without one). editing .nvim.lua asks again, as it should
 addEditorTrustStep() {
@@ -1221,9 +1216,8 @@ addEditorTrustStep() {
     addStep sandbox_steps "sandbox:nvim:trust" \
         "if command -v nvim &> /dev/null; then nvim --headless --clean -c ${lua@Q} -c 'qa!'; else printWarn 'nvim is unavailable, run :trust on .nvim.lua yourself'; fi"
 }
-# CLANKER END nvim_trust
 
-# CLANKER START sandbox_entry: host step that runs the sandbox steps inside the sandbox
+# host step that runs the sandbox steps inside the sandbox
 # addSandboxEntryStep <has sbx> <devshell fragment>
 addSandboxEntryStep() {
     (( ${#sandbox_steps[@]} )) || return 0
@@ -1236,7 +1230,6 @@ addSandboxEntryStep() {
         addStep host_steps sandbox "nix develop .#$2 --command $inner"
     fi
 }
-# CLANKER END sandbox_entry
 
 # replaces .ssm with the template of <flake ref> and hands over to its `sync`.
 # everything after the options is passed on to `sync`
@@ -1328,7 +1321,7 @@ modeOf_sync() {
 modeOf_add() {
     # shellcheck disable=SC2016
     [[ -f "$ssm_root/flake.nix" ]] || die "no flake.nix in $ssm_root, run \`ssm init\` first"
-    # CLANKER ASSISTED: the run script replaces the commands, so a pending one must be done first
+    # the run script replaces the commands, so a pending one must be done first
     assertNoPendingRunScript
 
     local -a subproject_template_types=()
@@ -1356,7 +1349,7 @@ modeOf_add() {
         exit 0
     fi
 
-    # CLANKER EDITED: rendered and registered in a stage that is only moved into place once it all
+    # rendered and registered in a stage that is only moved into place once it all
     # succeeded, the template's flake inputs/overlays/nixConfig are added to the flake and the
     # commands are written into the ./init run script instead of being run
     local -a flake_inputs=() flake_overlays=() flake_substituters=() flake_trusted_keys=() run_functions=()

@@ -1,4 +1,3 @@
-{{! THIS WAS WRITTEN BY A CLANKER }}
 local utils = require("utils")
 
 local function main(args: {string}): integer

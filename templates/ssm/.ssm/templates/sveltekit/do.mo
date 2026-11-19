@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-{{! THIS WAS WRITTEN BY A CLANKER: a proxy to the vite scripts in package.json, every command is one native call with the args passed through }}
+{{! a proxy to the vite scripts in package.json, every command is one native call with the args passed through }}
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")" || exit 1
 # adapter-bun's buildOptions for `build-compile`, package.nix overrides them through ADAPTER_BUILD_OPTIONS
 compile_options='{"compile":true,"bytecode":true}'

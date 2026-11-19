@@ -1,4 +1,4 @@
-{{! CLANKER EDITED: the output of `sv create` with adapter-bun instead of adapter-auto, ./do sets its output and build options }}
+{{! the output of `sv create` with adapter-bun instead of adapter-auto, ./do sets its output and build options }}
 import adapter from '@sveltejs/adapter-bun';
 import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig } from 'vite';

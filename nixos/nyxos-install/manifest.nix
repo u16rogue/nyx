@@ -1,4 +1,3 @@
-# THIS WAS WRITTEN BY A CLANKER
 # Evaluate only the selected host; unfinished sibling hosts are allowed.
 { flake, hostName }:
 let

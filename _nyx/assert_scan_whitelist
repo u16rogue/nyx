@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
 
-# THIS WAS WRITTEN BY A CLANKER
-
 set -euo pipefail
 
 # Every vulnix whitelist entry must say why it exists and when it expires, so

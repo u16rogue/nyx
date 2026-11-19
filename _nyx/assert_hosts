@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
 
-# THIS WAS WRITTEN BY A CLANKER
-
 set -o pipefail
 
 # Asserts that every nixos host has valid `nyx.nixos.hosts.<hostname>`

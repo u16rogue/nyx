@@ -1,4 +1,3 @@
-{{! THIS WAS WRITTEN BY A CLANKER }}
 { mkShellNoCC, callPackage, linkFarm, vimPlugins, zon2nix, zls_0_17, ... }: mkShellNoCC {
     inputsFrom = [ (callPackage ./package.nix {}) ];
     packages = [

@@ -1,4 +1,3 @@
-# THIS WAS WRITTEN BY A CLANKER
 # Polls the latest `hosts.json` published by `_nyx/release_hosts` and rebuilds
 # from that exact commit only when this host's released system differs from the
 # running one.

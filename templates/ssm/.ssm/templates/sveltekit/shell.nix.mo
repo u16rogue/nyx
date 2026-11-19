@@ -1,4 +1,3 @@
-{{! CLANKER EDITED: added the editor's language servers and grammars }}
 { mkShellNoCC, callPackage, linkFarm, vimPlugins,
   svelte-language-server, typescript-language-server, vscode-langservers-extracted, ... }: mkShellNoCC {
     inputsFrom = [ (callPackage ./package.nix {}) ];

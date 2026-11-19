@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# THIS WAS WRITTEN BY A CLANKER
 # serves one or more directories from the dev env so a windows machine can mount them as a drive
 # with rclone + winfsp and always see the latest build, no system service on linux needed.
 # every directory shows up as <drive>:\<name>, the credentials are generated once and persisted so

@@ -24,7 +24,7 @@ pub fn build(b: *std.Build) void {
     const test_step = b.step("test", "Run tests");
     test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = exe.root_module })).step);
 
-    // CLANKER ASSISTED: compiles without installing, zls runs it on save for the build errors
+    // compiles without installing, zls runs it on save for the build errors
     const check_step = b.step("check", "Check if it compiles");
     check_step.dependOn(&b.addExecutable(.{ .name = "{{subproject_name}}", .root_module = exe.root_module }).step);
 }

@@ -1,4 +1,4 @@
--- AI-assisted: native status line, plain catppuccin blocks without separator glyphs:
+-- native status line, plain catppuccin blocks without separator glyphs:
 -- [ mode ][ icon path ] diff ........ lsp diagnostics [ search branch ][ progress line:col format ]
 -- Sets 'statusline' when required; the option calls back into render().
 local C = require('catppuccin.palettes').get_palette('mocha')

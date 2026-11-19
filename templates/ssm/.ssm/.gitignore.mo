@@ -6,6 +6,10 @@
 !/AGENTS.md
 !/.jj.toml
 
+!/clanker-ref/
+!/clanker-ref/**/
+!/clanker-ref/**/*.md
+
 !/.nyx-sbx/
 !/.nyx-sbx/dev-hook.sh
 !/.nyx-sbx/share/

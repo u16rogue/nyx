@@ -18,7 +18,7 @@
         else # otherwise it can just directly import the file
             ./hyprland.lua
     ;
-    # AI-assisted: private session payload; the public launcher always enters UWSM.
+    # private session payload; the public launcher always enters UWSM.
     # Keep this basename so UWSM loads its start-hyprland environment plugin.
     session = writeShellApplication {
         name = "start-hyprland";

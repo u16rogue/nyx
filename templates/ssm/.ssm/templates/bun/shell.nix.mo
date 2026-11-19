@@ -1,4 +1,4 @@
-{{! CLANKER EDITED: added the editor's grammars, removed typescript-language-server as bun init's typescript 7 is its own language server (`tsc --lsp`, see .nvim.lua) }}
+{{! the editor's grammars, no typescript-language-server as bun init's typescript 7 is its own language server (`tsc --lsp`, see .nvim.lua) }}
 { mkShellNoCC, callPackage, linkFarm, vimPlugins, ... }: mkShellNoCC {
     inputsFrom = [ (callPackage ./package.nix {}) ];
     packages = [

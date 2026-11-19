@@ -1,5 +1,4 @@
 # shellcheck shell=bash disable=SC2034 # read by ssm
-# THIS WAS WRITTEN BY A CLANKER
 # plain bun + ts. the template files are overlaid on top of a fresh `bun init`
 # inside the sandbox, so only the nix wiring lives here
 

@@ -1,4 +1,3 @@
-{{! THIS WAS WRITTEN BY A CLANKER }}
 { lib, stdenvNoCC, rocpkgs, ... }: stdenvNoCC.mkDerivation {
     pname = "{{subproject_name}}";
     version = "{{subproject_version}}";

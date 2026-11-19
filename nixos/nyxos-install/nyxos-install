@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# THIS WAS WRITTEN BY A CLANKER
 set -euo pipefail
 umask 077
 

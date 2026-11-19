@@ -55,7 +55,7 @@ else
                     pulse = true;
                 };
 
-                # CLANKER: nixpak's GPU module mounts /dev/dri but not NVIDIA's decoder nodes.
+                # nixpak's GPU module mounts /dev/dri but not NVIDIA's decoder nodes.
                 bind.dev = [
                     "/dev/nvidia0"
                     "/dev/nvidiactl"
@@ -80,7 +80,6 @@ else
                     PULSE_RUNTIME_PATH = sloth.envOr "PULSE_RUNTIME_PATH" sloth.runtimeDir;
                     WAYLAND_DISPLAY = sloth.envOr "WAYLAND_DISPLAY" "wayland-0";
 
-                    # -- CLANKER --
                     # VA-API's NVIDIA driver fails to export surfaces in this sandbox;
                     # Moonlight successfully test-decodes with Vulkan, so prefer that path.
                     LIBVA_DRIVER_NAME = "disabled";

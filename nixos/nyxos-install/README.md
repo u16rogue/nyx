@@ -1,8 +1,5 @@
 # nyxos-install
 
-**THIS WAS WRITTEN BY A CLANKER**, including the script, Nix helpers, tests, and
-this documentation.
-
 An ordinary executable script wrapping `nixos-install`, with a second mode for
 building a host-specific offline installer ISO. No package or flake output is
 registered. Run `nixos/nyxos-install/nyxos-install` directly from the checkout.
