@@ -16,8 +16,10 @@ ssm_stage_dir="$ssm_root/.ssm-stage"
 ssm_stage=
 # where `update` gets the template from, NYX_SSM_FLAKE or its argument override it
 ssm_default_flake="github:u16rogue/nyx"
-# the files `init` copies as is, `sync` keeps the project's copies up to date with .ssm
-ssm_sync_files=("AGENTS.md" ".jj.toml")
+# the root files `init` creates from .ssm that `sync` keeps up to date, as paths in .ssm. a directory
+# stands for every file below it, `.mo` files are rendered and lose the extension. flake.nix and the
+# subprojects aren't here: they're rendered from answers that aren't kept and are the project's own
+ssm_sync_entries=("AGENTS.md" ".jj.toml" ".gitignore.mo" ".ignore.mo" ".nvim.lua.mo" ".nvim" ".nyx-sbx" "scripts")
 
 printErr() {
     printf '\033[37m[\033[91merr\033[37m]\033[0m %s\n' "$1" >&2
@@ -52,9 +54,12 @@ ssm <mode>
         the <type> template (default: base). the remaining setup is
         written into ./init like \`init\` does.
     sync [-y]
-        bring the files that are copied as is (AGENTS.md, .jj.toml) up to
-        date with the ones in .ssm. a file that differs is shown as a diff
-        and replaced once confirmed, -y replaces without asking.
+        bring the project's copies of the template's root files (AGENTS.md,
+        .jj.toml, .gitignore, .ignore, .nvim.lua, .nvim, .nyx-sbx, scripts)
+        up to date with .ssm. a file that differs is shown as a diff and
+        replaced once confirmed, -y replaces without asking. .gitignore and
+        .ignore only get the template's missing lines added. flake.nix and
+        the subprojects are left alone.
         ! todo !
         re-render missing _meta files, re-pick the zellij panes and re-apply
         the sandbox mounts/covers.
@@ -1269,8 +1274,20 @@ modeOf_update() {
     exec bash "$ssm_dir/ssm" sync "$@"
 }
 
-# brings the project's copies of the files that `init` copies as is (`ssm_sync_files`) up to date
-# with the ones in .ssm. rendered files aren't touched, the answers they were rendered with aren't kept
+# prints <project file> followed by the non blank lines of <template file> it doesn't have yet.
+# ignore files are sets of lines the project adds its own to, so they're only ever added to
+# syncIgnoreMerge <project file> <template file>
+syncIgnoreMerge() {
+    awk '
+        FILENAME == ARGV[1] { seen[$0] = 1; print; next }
+        $0 != "" && !($0 in seen) { if (!added++) print ""; print }
+    ' "$1" "$2"
+}
+
+# brings the project's copies of the template's root files (`ssm_sync_entries`) up to date with the
+# ones in .ssm. `.mo` files are rendered again, the only answer they use is the subproject list
+# which is read back from the flake. a file that differs is shown as a diff and only replaced
+# once confirmed, .gitignore and .ignore only get the template's missing lines added
 # modeOf_sync [-y]
 modeOf_sync() {
     local yes=0
@@ -1282,36 +1299,82 @@ modeOf_sync() {
     # shellcheck disable=SC2016
     [[ -f "$ssm_root/flake.nix" ]] || die "no flake.nix in $ssm_root, run \`ssm init\` first"
 
-    local file src dst
+    # shellcheck disable=SC2034 # used by the mo templates
+    local -a subprojects=()
+    mapfile -t subprojects < <(readProjectSubprojects "$ssm_root/flake.nix")
+
+    local -a sources=()
+    local entry src
+    for entry in "${ssm_sync_entries[@]}"; do
+        if [[ -d "$ssm_dir/$entry" ]]; then
+            while IFS= read -r -d '' src; do
+                sources+=("${src#"$ssm_dir/"}")
+            done < <(find "$ssm_dir/$entry" -type f -print0 | sort -z)
+        elif [[ -f "$ssm_dir/$entry" ]]; then
+            sources+=("$entry")
+        else
+            printWarn ".ssm has no $entry, skipping"
+        fi
+    done
+
+    createStage
+    local new="$ssm_stage/sync"
+    local rel file dst
     local -a changed=()
-    for file in "${ssm_sync_files[@]}"; do
-        src="$ssm_dir/$file"
+    for rel in "${sources[@]}"; do
+        # a plain .gitignore is the template repo's own, see renderTree
+        [[ "${rel##*/}" == .gitignore ]] && continue
+        src="$ssm_dir/$rel"
+        file="${rel%.mo}"
         dst="$ssm_root/$file"
-        [[ -f "$src" ]] || { printWarn ".ssm has no $file, skipping"; continue; }
         if [[ -L "$dst" ]]; then
             printWarn "$file is a symlink, skipping"
             continue
         fi
-        if [[ -e "$dst" ]]; then
-            if cmp -s -- "$src" "$dst"; then
+        if [[ -e "$dst" && ! -f "$dst" ]]; then
+            printWarn "$file isn't a file, skipping"
+            continue
+        fi
+
+        if [[ "$rel" == *.mo ]]; then
+            mo "$src" > "$new" || die "failed to render $file"
+        else
+            cp -- "$src" "$new" || die "failed to copy $file"
+        fi
+        if [[ -f "$dst" && ( "${file##*/}" == .gitignore || "${file##*/}" == .ignore ) ]]; then
+            { syncIgnoreMerge "$dst" "$new" > "$new.merged" && mv -f -- "$new.merged" "$new"; } \
+                || die "failed to merge $file"
+        fi
+
+        if [[ -f "$dst" ]]; then
+            if cmp -s -- "$new" "$dst"; then
                 printLog "$file is up to date"
                 continue
             fi
             # from the project's file to the template's, `-` lines are what gets lost
-            diff -u --color=auto --label "$file" --label "$file (template)" -- "$dst" "$src"
+            diff -u --color=auto --label "$file" --label "$file (template)" -- "$dst" "$new"
             if (( ! yes )) && ! gum confirm "replace $file with the template's?"; then
                 printLog "kept $file"
                 continue
             fi
+            chmod --reference="$dst" -- "$new" || die "failed to update $file"
+        else
+            if (( ! yes )) && ! gum confirm "$file is missing, create it from the template?"; then
+                printLog "skipped $file"
+                continue
+            fi
+            # the template may be read only (store, try-ssm), the copies have to be editable
+            { mkdir -p -- "$(dirname -- "$dst")" && chmod u+w -- "$new"; } || die "failed to create $file"
         fi
-        { cp -- "$src" "$dst.ssm-sync" && chmod u+w -- "$dst.ssm-sync" && mv -f -- "$dst.ssm-sync" "$dst"; } \
-            || { rm -f -- "$dst.ssm-sync"; die "failed to update $file"; }
+        if [[ -x "$src" ]]; then chmod +x -- "$new" || die "failed to make $file executable"; fi
+        mv -f -- "$new" "$dst" || die "failed to update $file"
         printLog "updated $file"
         changed+=("$file")
     done
+    cleanupStage
 
     if (( ${#changed[@]} )); then
-        printLog "review and commit: ${changed[*]}"
+        printLog "review and commit (new files have to be tracked for the flake to see them): ${changed[*]}"
     else
         printLog "nothing to sync"
     fi
