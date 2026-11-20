@@ -27,7 +27,6 @@
 
                 ".nyx/sbx-shell"
 
-                ".local/share/flatpak/db"
                 ".nyx/app-fake-root/firefox"
                 ".nyx/app-fake-root/monero-gui"
                 ".nyx/app-fake-root/moonlight-stream"
@@ -37,6 +36,9 @@
                 ".nyx/app-fake-root/vesktop"
             ];
             partial.directories = [
+                ".cache"
+                ".config/nushell"
+                ".local/share/flatpak/db"
                 ".nyx/app-fake-root/keepassxc" # keepass has nothing important to save
             ];
         };
