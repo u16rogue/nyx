@@ -2,7 +2,12 @@
     pname = "{{subproject_name}}";
     version = "{{subproject_version}}";
 
-    src = ./.;
+    # everything the build reads, anything else doesn't exist for it
+    src = lib.fileset.toSource {
+        root = ./.;
+        fileset = lib.fileset.unions [
+        ];
+    };
 
     nativeBuildInputs = [
     ];

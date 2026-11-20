@@ -15,7 +15,20 @@ in
         bunNix = ./bun.lock.nix;
     };
 
-    src = ./.;
+    # everything the build reads, anything else doesn't exist for it
+    src = lib.fileset.toSource {
+        root = ./.;
+        fileset = lib.fileset.unions [
+            ./.npmrc
+            ./bun.lock
+            ./do
+            ./package.json
+            ./tsconfig.json
+            ./vite.config.ts
+            ./src
+            ./static
+        ];
+    };
 
     # postinstall regenerates bun.lock.nix, which is pointless inside the sandbox
     dontRunLifecycleScripts = true;

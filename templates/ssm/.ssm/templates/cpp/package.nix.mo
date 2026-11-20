@@ -2,10 +2,14 @@
     pname = "{{subproject_name}}";
     version = "{{subproject_version}}";
 
-    # a local build tree would clash with the sandbox's
-    src = lib.cleanSourceWith {
-        src = ./.;
-        filter = path: _: !(lib.elem (baseNameOf path) [ ".build" ".cache" ]);
+    # everything the build reads, anything else doesn't exist for it
+    src = lib.fileset.toSource {
+        root = ./.;
+        fileset = lib.fileset.unions [
+            ./CMakeLists.txt
+            ./do
+            ./src
+        ];
     };
 
     nativeBuildInputs = [

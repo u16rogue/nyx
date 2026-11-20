@@ -6,10 +6,15 @@ in stdenvNoCC.mkDerivation {
     pname = "{{subproject_name}}";
     version = "{{subproject_version}}";
 
-    # local builds would clash
-    src = lib.cleanSourceWith {
-        src = ./.;
-        filter = path: _: !(lib.elem (baseNameOf path) [ ".build" ".zig-cache" "zig-pkg" ]);
+    # everything the build reads, anything else doesn't exist for it
+    src = lib.fileset.toSource {
+        root = ./.;
+        fileset = lib.fileset.unions [
+            ./build.zig
+            ./build.zig.zon
+            ./do
+            ./src
+        ];
     };
 
     nativeBuildInputs = [

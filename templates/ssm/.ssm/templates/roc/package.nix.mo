@@ -2,10 +2,13 @@
     pname = "{{subproject_name}}";
     version = "{{subproject_version}}";
 
-    # local builds would clash
-    src = lib.cleanSourceWith {
-        src = ./.;
-        filter = path: _: baseNameOf path != ".build";
+    # everything the build reads, anything else doesn't exist for it
+    src = lib.fileset.toSource {
+        root = ./.;
+        fileset = lib.fileset.unions [
+            ./do
+            ./main.roc
+        ];
     };
 
     nativeBuildInputs = [
