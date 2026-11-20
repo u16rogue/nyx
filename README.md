@@ -43,6 +43,7 @@ my nix slop
     * `nyx` related options are defined in [nixos/default.nix](./nixos/default.nix)
     * Host configurations must provide the disks for the paths `/boot` and `/persist`. Hosts should follow the common `fileSystems` provided by `nyx`.
     * Systems/NixOS/Hosts are expected to use an ephemeral filesystem where each host and user are required to explicitly state which files and directories are to be preserved.
+        * `ephemeralfs.preserve.partial.directories` (hosts and users) are for state that doesn't need saving but shouldn't sit on the tmpfs root, like caches. They are kept in a generation at `/persist/.partial/generation/<timestamp>` that survives reboots until `sudo nyx-efsp new` asks for an empty one for the next boot. `nyx-efsp gc` (also run by `nyx-gc`) removes the generations no longer in use. Part of the preservation builder in [nixos/default.nix](./nixos/default.nix), with [nyx-efsp](./scripts/nyx-efsp/nyx-efsp) managing the generations.
     * [modules](./nixos/modules) - Set of flake-parts `nixos` modules. All `*.nix` are aggregated and imported to be available.
         * service modules...
             * `svc-*` should be in its base preconfigured state and should not modify anything external such as opening ports. that should be something the host should decide.

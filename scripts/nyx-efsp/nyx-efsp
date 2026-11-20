@@ -1,0 +1,199 @@
+#!/usr/bin/env bash
+
+# Generations of the partially preserved directories (`ephemeralfs.preserve.partial`).
+#
+#   <partial>/generation/<timestamp>/   one generation, laid out like the filesystem root
+#   <partial>/current -> generation/..  the generation this boot's mounts are backed by
+#   <partial>/next    -> generation/..  the generation the next boot will use
+#
+# A generation is kept across reboots until `new` is asked for, so the directories behave
+# like preserved ones that can be reset on demand.
+
+partial_dir="${NYX_EFSP_DIR:-/persist/.partial}"
+prog_name="${0##*/}"
+
+printErr() {
+    printf '\033[37m[\033[91merr\033[37m]\033[0m %s\n' "$1" >&2
+}
+
+printWarn() {
+    printf '\033[37m[\033[93mwarn\033[37m]\033[0m %s\n' "$1" >&2
+}
+
+printLog() {
+    printf '\033[37m[log]\033[0m %s\n' "$1" >&2
+}
+
+die() {
+    printErr "$1"
+    exit 1
+}
+
+for cmd in date ln mkdir mv readlink rm; do
+    if ! command -v "$cmd" &> /dev/null; then die "$cmd is required"; fi
+done
+
+helpPrint() {
+    echo "usage: $prog_name <command>
+    status
+        list the generations and which ones current and next point to.
+    new
+        create an empty generation and point next to it, so the partially
+        preserved directories start out empty on the next boot.
+    gc
+        remove every generation that neither current nor next points to.
+    boot
+        make next the current generation, creating the first one if needed.
+        run by nyx-efsp.service before the mounts, once per boot.
+    help
+        print this.
+
+    generations live in $partial_dir (NYX_EFSP_DIR). new, gc and boot need write
+    access to it, which normally means root." >&2
+}
+
+generationNameAssert() {
+    [[ "$1" =~ ^[0-9]{8}T[0-9]{6}Z$ ]]
+}
+
+# Print the generation a state link points to, nothing when the link is missing.
+# Fails on a link that doesn't point to an existing generation.
+linkRead() {
+    local link="$partial_dir/$1" target name
+    [[ -e "$link" || -L "$link" ]] || return 0
+    if [[ ! -L "$link" ]]; then
+        printErr "expected a symlink: $link"
+        return 1
+    fi
+    target="$(readlink -- "$link")" || return 1
+    name="${target#generation/}"
+    if [[ "$target" != "generation/$name" ]] || ! generationNameAssert "$name" || [[ -L "$partial_dir/$target" || ! -d "$partial_dir/$target" ]]; then
+        printErr "$link does not point to a generation: $target"
+        return 1
+    fi
+    printf '%s\n' "$name"
+}
+
+# Replace a state link in one rename, so it never goes missing in between.
+linkSet() {
+    local link="$partial_dir/$1"
+    ln -sfnT -- "generation/$2" "$link.tmp" && mv -fT -- "$link.tmp" "$link"
+}
+
+# Create an empty generation and print its name.
+generationCreate() {
+    local name
+    name="$(date -u +%Y%m%dT%H%M%SZ)" || return 1
+    mkdir -p -- "$partial_dir/generation" || return 1
+    if ! mkdir -m 0755 -- "$partial_dir/generation/$name"; then
+        printErr "couldn't create generation $name (one per second at most, try again)"
+        return 1
+    fi
+    printf '%s\n' "$name"
+}
+
+writeAccessAssert() {
+    # The nearest existing ancestor decides, the partial directory may not exist yet.
+    local probe="$partial_dir"
+    while [[ ! -e "$probe" && "$probe" == */* ]]; do probe="${probe%/*}"; done
+    [[ -w "${probe:-/}" ]] || die "no write access to $partial_dir, rerun with: sudo $prog_name $1"
+}
+
+modeOf_status() {
+    if [[ ! -d "$partial_dir/generation" ]]; then
+        printLog "no generations in $partial_dir"
+        return 0
+    fi
+    local current next path name marks
+    current="$(linkRead current)" || exit 1
+    next="$(linkRead next)" || exit 1
+    for path in "$partial_dir"/generation/*/; do
+        [[ -d "$path" ]] || continue
+        path="${path%/}"
+        name="${path##*/}"
+        marks=""
+        [[ "$name" == "$current" ]] && marks+=" current"
+        [[ "$name" == "$next" ]] && marks+=" next"
+        printf '%s%s\n' "$name" "$marks"
+    done
+}
+
+modeOf_new() {
+    writeAccessAssert new
+    mkdir -p -- "$partial_dir" || exit 1
+    local name
+    name="$(generationCreate)" || exit 1
+    linkSet next "$name" || die "couldn't point next to $name"
+    printLog "created generation $name, in use from the next boot"
+}
+
+modeOf_gc() {
+    if [[ ! -d "$partial_dir/generation" ]]; then
+        printLog "no generations in $partial_dir"
+        return 0
+    fi
+    writeAccessAssert gc
+    # Without knowing what is in use nothing is safe to remove.
+    local current next
+    current="$(linkRead current)" || die "can't tell which generation is current, removing nothing"
+    next="$(linkRead next)" || die "can't tell which generation is next, removing nothing"
+    [[ -n "$current" ]] || die "no current generation (has the system booted with nyx-efsp.service?), removing nothing"
+
+    local path name gc_status=0
+    for path in "$partial_dir"/generation/*; do
+        [[ -e "$path" || -L "$path" ]] || continue
+        name="${path##*/}"
+        if [[ -L "$path" || ! -d "$path" ]] || ! generationNameAssert "$name"; then
+            printWarn "not a generation, preserving: $path"
+            continue
+        fi
+        [[ "$name" == "$current" || "$name" == "$next" ]] && continue
+        printLog "removing generation $name"
+        if ! rm -rf --one-file-system -- "$path"; then
+            printErr "couldn't remove $path"
+            gc_status=1
+        fi
+    done
+    return "$gc_status"
+}
+
+modeOf_boot() {
+    writeAccessAssert boot
+    mkdir -p -- "$partial_dir" || exit 1
+
+    # The mounts of this boot stay backed by the generation they were started with, so
+    # current must not move again before the next boot (eg. when a rebuild restarts the unit).
+    local boot_id
+    boot_id="$(< /proc/sys/kernel/random/boot_id)" || die "couldn't read the boot id"
+    if [[ -f "$partial_dir/boot-id" && "$(< "$partial_dir/boot-id")" == "$boot_id" ]]; then
+        printLog "already selected a generation for this boot"
+        return 0
+    fi
+
+    local current next
+    next="$(linkRead next)" || next=""
+    if [[ -z "$next" ]]; then
+        # A lost next link must not cost the data of the generation in use.
+        current="$(linkRead current)" || current=""
+        if [[ -n "$current" ]]; then
+            printWarn "no usable next generation, staying on $current"
+            next="$current"
+        else
+            next="$(generationCreate)" || exit 1
+            printLog "created the first generation $next"
+        fi
+        linkSet next "$next" || die "couldn't point next to $next"
+    fi
+    linkSet current "$next" || die "couldn't point current to $next"
+    printf '%s\n' "$boot_id" > "$partial_dir/boot-id" || die "couldn't record the boot id"
+    printLog "current generation is $next"
+}
+
+case "${1:-help}" in
+    status) modeOf_status ;;
+    new) modeOf_new ;;
+    gc) modeOf_gc ;;
+    boot) modeOf_boot ;;
+    help|-h|--help) helpPrint ;;
+    *) printErr "unknown command: $1. see \`$prog_name help\`."; exit 1 ;;
+esac

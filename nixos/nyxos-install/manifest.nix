@@ -49,7 +49,9 @@ assert lib.assertMsg (failures == []) (lib.concatStringsSep "\n" failures);
     });
     users = map (u: { inherit (u) name password; }) host.users;
     secrets = lib.mapAttrsToList (name: s: { inherit name; file = toString s.file; }) config.age.secrets;
-    tmpfiles = render "" (config.systemd.tmpfiles.settings.preservation or {})
+    # Partial preservation lives behind `/persist/.partial/current`, a symlink `nyx-efsp boot` creates on the
+    # first boot; applying its rules here would leave a real directory in its place.
+    tmpfiles = render "" (lib.filterAttrs (path: _: !lib.hasPrefix "/persist/.partial/" path) (config.systemd.tmpfiles.settings.preservation or {}))
         + render "/sysroot" (config.boot.initrd.systemd.tmpfiles.settings.preservation or {});
     efi = config.boot.loader.efi.canTouchEfiVariables;
     # Forcing this also checks NixOS's toplevel assertions before disk writes.

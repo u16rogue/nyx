@@ -9,6 +9,7 @@
 !/nix-pkgvercmp/
 !/nix-sync-lock-from-nixos/
 !/nyx/
+!/nyx-efsp/
 !/nyx-gc/
 !/nyx-tty-display/
 !/sbx-shell/

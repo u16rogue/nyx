@@ -14,6 +14,7 @@ nyx is a NixOS flake: host and user configurations (`nixos/`), wrapped packages 
 
 ## File Index
 
+- [nixos/efsp.md](nixos/efsp.md): partial preservation, how it rides on the preservation module, the generation links, installer interaction
 - [scripts/sbx-shell.md](scripts/sbx-shell.md): the sandbox's terms, mount and cover semantics, what is exposed inside, nix-develop, hazards
 - [overrides/hyprland.md](overrides/hyprland.md): host versus user split for desktops, the uwsm launch chain, NYX_HYPR_PATH, config generation
 - [overrides/neovim.md](overrides/neovim.md): what the editor override carries versus what a project provides, lua-language-server setup

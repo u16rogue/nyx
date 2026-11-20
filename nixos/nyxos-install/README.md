@@ -118,8 +118,8 @@ successful activation. It applies both boot stages' evaluated preservation
 tmpfiles rules with target user ownership, including generated home parents,
 then checks installed password hashes, host-key identity/permissions, and the
 system profile. Normal preservation bind mounts are established at boot.
-`partial.directories` is not used by Nyx's preservation builder and is not
-treated as persistent state here.
+`partial.directories` are skipped here: they are backed by a generation that
+`nyx-efsp` selects on the first boot, not by installed state.
 
 Temporary plaintext is held in a private `/run` directory and removed on exit.
 It is never included in an image or Nix store output. Target mounts and persistent

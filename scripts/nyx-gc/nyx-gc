@@ -27,19 +27,28 @@ done
 
 gc_status=0
 
-# The per-user collectors run before the store is collected: they release the GC roots
-# (eg. sbx-shell's devshell pins) that would otherwise keep their store paths alive.
-for collector in sbx-shell nyx-efsp; do
-    if ! command -v "$collector" &> /dev/null; then
-        printLog "$collector is not installed, skipping"
-        continue
-    fi
-    printLog "collecting $collector"
-    if ! "$collector" gc; then
-        printWarn "$collector gc was incomplete"
+# The collectors run before the store is collected: they release the GC roots (eg. sbx-shell's
+# devshell pins) that would otherwise keep their store paths alive.
+if command -v sbx-shell &> /dev/null; then
+    printLog "collecting sbx-shell"
+    if ! sbx-shell gc; then
+        printWarn "sbx-shell gc was incomplete"
         gc_status=1
     fi
-done
+else
+    printLog "sbx-shell is not installed, skipping"
+fi
+
+# Generations hold files of every user, so removing them needs root.
+if nyx_efsp="$(command -v nyx-efsp)"; then
+    printLog "collecting nyx-efsp (sudo)"
+    if ! sudo "$nyx_efsp" gc; then
+        printWarn "nyx-efsp gc was incomplete"
+        gc_status=1
+    fi
+else
+    printLog "nyx-efsp is not installed, skipping"
+fi
 
 printLog "keeping the last $system_generations_kept system generations (sudo)"
 if ! sudo nix-env --profile "$system_profile" --delete-generations "+$system_generations_kept"; then

@@ -1,0 +1,5 @@
+**
+.*
+!/.gitignore
+!/nyx-efsp
+!/package.nix

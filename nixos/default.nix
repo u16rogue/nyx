@@ -113,7 +113,15 @@
                 users.users = lib.flip lib.mapAttrs nyxhost_users (username: _: { hashedPasswordFile = config.age.secrets."${deriveAgeAttr username}".path; });
             })
             # Ephemeral file system preservation builder
-            (/*{ ... }:*/{
+            ({ config, utils, nyx, ... }: let
+                # Partial preservation (efsp): directories kept off the tmpfs root in a generation on disk, which
+                # survives reboots until `nyx-efsp new` asks for an empty one. The mounts are plain preservation
+                # ones backed by `<partial>/current`, a symlink `nyx-efsp boot` points to this boot's generation.
+                partial_dir = "/persist/.partial"; # also the default of the `nyx-efsp` script
+                partial_current = "${partial_dir}/current";
+                partial_users = lib.flip lib.mapAttrs nyxhost_users (_: nyxuser: nyxuser.ephemeralfs.preserve.partial.directories);
+                has_partial = nyxhost.ephemeralfs.preserve.partial.directories != [] || builtins.any (directories: directories != []) (builtins.attrValues partial_users);
+            in {
                 preservation = {
                     enable = true;
                     preserveAt."/persist" = {
@@ -124,7 +132,38 @@
                             directories = nyxuser.ephemeralfs.preserve.directories;
                         });
                     };
+                    preserveAt.${partial_current} = lib.mkIf has_partial {
+                        directories = nyxhost.ephemeralfs.preserve.partial.directories;
+                        users = lib.mapAttrs (_: directories: { inherit directories; }) partial_users;
+                    };
                 };
+
+                environment.systemPackages = lib.mkIf has_partial [ nyx.pkgs.nyx-efsp ];
+
+                systemd.services.nyx-efsp = lib.mkIf has_partial (let
+                    state = config.preservation.preserveAt.${partial_current};
+                    mount_units = lib.pipe (state.directories ++ lib.concatMap (user: user.directories) (builtins.attrValues state.users)) [
+                        (builtins.filter (directory: directory.how == "bindmount"))
+                        (map (directory: "${utils.escapeSystemdPath directory.directory}.mount"))
+                    ];
+                in {
+                    description = "Select the partial preservation generation";
+                    unitConfig = {
+                        DefaultDependencies = false;
+                        RequiresMountsFor = [ partial_dir ];
+                    };
+                    requiredBy = mount_units;
+                    after = [ "systemd-remount-fs.service" ];
+                    before = mount_units ++ [ "preservation.target" ];
+                    # A restart must not move `current` under the live mounts; the script also guards this by boot id
+                    restartIfChanged = false;
+                    serviceConfig = {
+                        Type = "oneshot";
+                        RemainAfterExit = true;
+                        Environment = "NYX_EFSP_DIR=${partial_dir}";
+                        ExecStart = "${lib.getExe nyx.pkgs.nyx-efsp} boot";
+                    };
+                });
             })
         ];
     });
@@ -263,8 +302,9 @@
                         };
 
                         options.partial.directories = lib.mkOption {
-                            description = "Absolute path to directories for partial preservation.";
+                            description = "Absolute path to directories kept in a generation on disk instead of the tmpfs root, until `nyx-efsp new` resets them.";
                             type = lib.types.listOf lib.types.str;
+                            default = [];
                         };
                     };
                 };
@@ -316,8 +356,9 @@
                         };
 
                         options.partial.directories = lib.mkOption {
-                            description = "Absolute path to directories for partial preservation.";
+                            description = "Directories relative to the home kept in a generation on disk instead of the tmpfs root, until `nyx-efsp new` resets them.";
                             type = lib.types.listOf lib.types.str;
+                            default = [];
                         };
                     };
                 };
