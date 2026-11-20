@@ -154,7 +154,8 @@
                     };
                     requiredBy = mount_units;
                     after = [ "systemd-remount-fs.service" ];
-                    before = mount_units ++ [ "preservation.target" ];
+                    # tmpfiles would otherwise create `current` as a real directory through its rules for the paths below it
+                    before = mount_units ++ [ "preservation.target" "systemd-tmpfiles-setup.service" "systemd-tmpfiles-resetup.service" ];
                     # A restart must not move `current` under the live mounts; the script also guards this by boot id
                     restartIfChanged = false;
                     serviceConfig = {

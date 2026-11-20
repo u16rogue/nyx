@@ -9,6 +9,8 @@
 - A generation is kept across reboots. Only `nyx-efsp new` makes the next boot start empty. This is a reading of the draft spec, not something the user confirmed in detail.
 - `current` must never move while the mounts of this boot are up, otherwise `gc` would delete the generation that is mounted. Two guards: `restartIfChanged = false` on the unit, and the script records the kernel boot id in `<partial>/boot-id` and does nothing when it matches.
 - `gc` refuses to remove anything when it can't resolve `current`.
+- `current` as a real directory is the failure mode to expect. It appears when someone creates `<partial>/current/...` by hand before the first boot (this happened on mistylake while moving data in), and also after any failed start of the unit, because the mounts fail with it and tmpfiles then creates its rules' paths through the missing link. Left alone it fails every later boot. `nyx-efsp boot` therefore adopts such a directory as a new generation (`currentAdopt`). It becomes `next` only when the pending generation is empty, otherwise the pending one holds the real data and the adopted one is left for gc.
+- When the unit fails, the directories silently stay on the tmpfs root. `systemctl --failed` shows `nyx-efsp.service`, the mount units only show as inactive.
 - The partial root is fixed at `/persist/.partial` in both the builder and the script default. The CLI runs under sudo, which drops the environment, so a configurable path would have to be baked into the package.
 
 ## Gotchas

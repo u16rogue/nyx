@@ -29,7 +29,7 @@ die() {
     exit 1
 }
 
-for cmd in date ln mkdir mv readlink rm; do
+for cmd in date ln mkdir mv readlink rm rmdir; do
     if ! command -v "$cmd" &> /dev/null; then die "$cmd is required"; fi
 done
 
@@ -157,6 +157,29 @@ modeOf_gc() {
     return "$gc_status"
 }
 
+# Whenever the mounts come up without this unit having succeeded, systemd and tmpfiles create
+# `current` and the directories below it as real ones, which then fails every later boot.
+# Turn such a directory into a generation so whatever was written or moved into it is kept.
+currentAdopt() {
+    local path="$partial_dir/current" name next
+    [[ -d "$path" && ! -L "$path" ]] || return 0
+    name="$(date -u +%Y%m%dT%H%M%SZ)" || return 1
+    mkdir -p -- "$partial_dir/generation" || return 1
+    if [[ -e "$partial_dir/generation/$name" ]] || ! mv -T -- "$path" "$partial_dir/generation/$name"; then
+        printErr "couldn't adopt the directory $path as generation $name"
+        return 1
+    fi
+    printWarn "current was a directory instead of a link, adopted it as generation $name"
+
+    # It replaces the pending generation unless that one already holds something.
+    next="$(linkRead next)" || next=""
+    if [[ -n "$next" ]] && ! rmdir -- "$partial_dir/generation/$next" 2> /dev/null; then
+        printWarn "keeping the pending generation $next, which isn't empty; $name is unused and gc will remove it"
+        return 0
+    fi
+    linkSet next "$name"
+}
+
 modeOf_boot() {
     writeAccessAssert boot
     mkdir -p -- "$partial_dir" || exit 1
@@ -169,6 +192,8 @@ modeOf_boot() {
         printLog "already selected a generation for this boot"
         return 0
     fi
+
+    currentAdopt || die "couldn't repair $partial_dir/current"
 
     local current next
     next="$(linkRead next)" || next=""
