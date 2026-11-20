@@ -32,6 +32,9 @@
                 imports = [(modulesPath + "/installer/scan/not-detected.nix")];
                 # Defaults
                 time.timeZone = lib.mkDefault "Asia/Taipei";
+                documentation.nixos.enable = lib.mkDefault false;
+                documentation.doc.enable = lib.mkDefault false;
+                documentation.info.enable = lib.mkDefault false;
                 # Enforced
                 nix.settings.experimental-features = [ "nix-command" "flakes" "pipe-operators" ];
                 networking.hostName = "${hostname}";

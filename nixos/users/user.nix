@@ -71,9 +71,9 @@
                 nyx.pkgs.jj-push
                 nyx.pkgs.mkignore
                 nyx.pkgs.nix-develop
-                nyx.pkgs.nix-gc
                 nyx.pkgs.nix-pkgvercmp
                 nyx.pkgs.nix-sync-lock-from-nixos
+                nyx.pkgs.nyx-gc
                 # Nyx packages
                 nyx.pkgs.firefox
                 nyx.pkgs.keepassxc

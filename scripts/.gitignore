@@ -6,10 +6,10 @@
 !/jj-push/
 !/mkignore/
 !/nix-develop/
-!/nix-gc/
 !/nix-pkgvercmp/
 !/nix-sync-lock-from-nixos/
 !/nyx/
+!/nyx-gc/
 !/nyx-tty-display/
 !/sbx-shell/
 !/tmuxss/

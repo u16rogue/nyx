@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+
+system_profile="/nix/var/nix/profiles/system"
+system_generations_kept=3
+
+printErr() {
+    printf '\033[37m[\033[91merr\033[37m]\033[0m %s\n' "$1" >&2
+}
+
+printWarn() {
+    printf '\033[37m[\033[93mwarn\033[37m]\033[0m %s\n' "$1" >&2
+}
+
+printLog() {
+    printf '\033[37m[log]\033[0m %s\n' "$1" >&2
+}
+
+die() {
+    printErr "$1"
+    exit 1
+}
+
+if [[ $EUID -eq 0 ]]; then die "run nyx-gc as your own user, it asks for sudo where it's needed"; fi
+for cmd in nix-env nix-collect-garbage sudo; do
+    if ! command -v "$cmd" &> /dev/null; then die "$cmd is required"; fi
+done
+
+gc_status=0
+
+# The per-user collectors run before the store is collected: they release the GC roots
+# (eg. sbx-shell's devshell pins) that would otherwise keep their store paths alive.
+for collector in sbx-shell nyx-efsp; do
+    if ! command -v "$collector" &> /dev/null; then
+        printLog "$collector is not installed, skipping"
+        continue
+    fi
+    printLog "collecting $collector"
+    if ! "$collector" gc; then
+        printWarn "$collector gc was incomplete"
+        gc_status=1
+    fi
+done
+
+printLog "keeping the last $system_generations_kept system generations (sudo)"
+if ! sudo nix-env --profile "$system_profile" --delete-generations "+$system_generations_kept"; then
+    die "failed to delete old system generations"
+fi
+
+printLog "collecting the nix store"
+if ! nix-collect-garbage; then die "nix store garbage collection failed"; fi
+
+exit "$gc_status"

@@ -65,9 +65,9 @@
                 mdns-query
             ];
 
-            environment.systemPackages = [
-                pkgs.asusctl
-            ];
+            services.asusd.enable = true;
+            services.power-profiles-daemon.enable = true;
+            hardware.nvidia.powerManagement.enable = true;
 
             system.stateVersion = "25.11";
             boot.initrd.availableKernelModules = [ "nvme" "xhci_pci" "thunderbolt" "usbhid" "rtsx_pci_sdmmc" ];
