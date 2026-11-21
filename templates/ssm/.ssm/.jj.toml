@@ -11,6 +11,9 @@
 [git]
 private-commits = "unfinished()"
 
+[ui]
+default-command = ["util", "exec", "--", "bash", "-c", "jj status && jj log", ""] # a bare `jj` shows the status and then the log
+
 [colors]
 who_clanker = "yellow" # the name column of `jj who` on lines a clanker wrote
 
