@@ -1,0 +1,251 @@
+#!/usr/bin/env bash
+# repo-init [options] <name>: creates a repo on forgejo, the same one on github and a push mirror
+# from forgejo to github. the default branch requires signed commits on both. run on the host,
+# forgejo is the origin (its ssh url is the only thing printed to stdout), github is only pushed
+# to by the mirror
+#
+# every step looks for what already exists first, a run that failed halfway can simply be rerun
+#
+# the mirror authenticates with an ssh key forgejo generates for it, its public half is added to
+# the github repo as a write deploy key. no github token is stored in forgejo and the key can only
+# reach that one repo
+#
+#   FORGEJO_TOKEN  scopes: write:repository, read:user
+#   GITHUB_TOKEN   fine-grained, all repositories, administration: write (creates the repo, the
+#                  ruleset and the deploy key). falls back to `gh auth token`
+#   FORGEJO_URL    defaults to http://mistypuddle.local/git
+#   GITHUB_API_URL defaults to https://api.github.com
+
+set -euo pipefail
+
+printErr() {
+    printf '\033[37m[\033[91merr\033[37m]\033[0m %s\n' "$1" >&2
+}
+
+printWarn() {
+    printf '\033[37m[\033[93mwarn\033[37m]\033[0m %s\n' "$1" >&2
+}
+
+printLog() {
+    printf '\033[37m[log]\033[0m %s\n' "$1" >&2
+}
+
+die() {
+    printErr "$1"
+    exit 1
+}
+
+printUsage() {
+    cat >&2 << 'EOF'
+usage: repo-init [options] <name>
+    --public                  public on both sides (default: private)
+    --description <text>      repo description
+    --default-branch <name>   branch that requires signed commits on forgejo (default: main)
+    --no-github               only the forgejo repo, no github repo and no mirror
+EOF
+}
+
+for dep in curl jq; do
+    if ! command -v "$dep" &> /dev/null; then die "$dep is required"; fi
+done
+
+name=""
+description=""
+default_branch="main"
+private=true
+with_github=1
+while (( $# )); do
+    case "$1" in
+        --public) private=false ;;
+        --no-github) with_github=0 ;;
+        --description|--default-branch)
+            (( $# >= 2 )) || die "$1 needs a value"
+            if [[ "$1" == --description ]]; then description="$2"; else default_branch="$2"; fi
+            shift
+            ;;
+        -h|--help) printUsage; exit 0 ;;
+        -*) printUsage; die "unknown option: $1" ;;
+        *)
+            [[ -z "$name" ]] || die "only one repo name is taken"
+            name="$1"
+            ;;
+    esac
+    shift
+done
+[[ -n "$name" ]] || { printUsage; die "no repo name given"; }
+# what both forgejo and github accept, it also ends up in urls
+[[ "$name" =~ ^[A-Za-z0-9_.-]+$ && "$name" != *.git && "$name" != .* ]] || die "invalid repo name: $name"
+[[ "$default_branch" =~ ^[A-Za-z0-9_][A-Za-z0-9_./-]*$ ]] || die "invalid branch name: $default_branch"
+
+forgejo_url="${FORGEJO_URL:-"http://mistypuddle.local/git"}"
+forgejo_url="${forgejo_url%/}"
+[[ -n "${FORGEJO_TOKEN:-}" ]] || die "FORGEJO_TOKEN isn't set (scopes: write:repository, read:user)"
+github_token="${GITHUB_TOKEN:-}"
+if (( with_github )) && [[ -z "$github_token" ]]; then
+    if command -v gh &> /dev/null; then github_token="$(gh auth token 2> /dev/null || true)"; fi
+    [[ -n "$github_token" ]] || die "GITHUB_TOKEN isn't set and \`gh auth token\` has none (fine-grained, all repositories, administration: write)"
+fi
+
+# apiCall <forgejo|github> <method> <path> [json body]: the result is left in api_status and api_body
+api_status=""
+api_body=""
+apiCall() {
+    local service="$1" method="$2" path="$3" body="${4:-}"
+    local url auth
+    local -a args=()
+    case "$service" in
+        forgejo)
+            url="$forgejo_url/api/v1$path"
+            auth="Authorization: token $FORGEJO_TOKEN"
+            args+=(-H "Accept: application/json")
+            ;;
+        github)
+            url="${GITHUB_API_URL:-"https://api.github.com"}$path"
+            auth="Authorization: Bearer $github_token"
+            args+=(-H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28")
+            ;;
+        *) die "unknown service: $service" ;;
+    esac
+    [[ -n "$body" ]] && args+=(-H "Content-Type: application/json" --data-binary "$body")
+    local out
+    # the token is passed through a file descriptor, argv is readable by every process
+    out="$(curl -sS --max-time 30 -X "$method" -H @<(printf '%s\n' "$auth") "${args[@]}" -w '\n%{http_code}' -- "$url")" \
+        || die "$service: $method $path didn't get through, is $url reachable?"
+    api_status="${out##*$'\n'}"
+    api_body="${out%$'\n'*}"
+}
+
+apiMessage() {
+    jq -r '.message // .' <<< "$api_body" 2> /dev/null || printf '%s' "$api_body"
+}
+
+# apiExpect <what was attempted> <status>...: dies unless the last call returned one of them
+apiExpect() {
+    local what="$1" status
+    shift
+    for status in "$@"; do
+        [[ "$api_status" == "$status" ]] && return 0
+    done
+    die "$what failed ($api_status): $(apiMessage)"
+}
+
+# apiUserGet <forgejo|github>: prints the login the token belongs to
+apiUserGet() {
+    apiCall "$1" GET /user
+    apiExpect "$1: reading the token's user" 200
+    jq -re '.login' <<< "$api_body" || die "$1: the token's user has no login"
+}
+
+# apiRepoEnsure <forgejo|github> <owner> <create body>: the repo is left in api_body
+apiRepoEnsure() {
+    local service="$1" owner="$2" body="$3"
+    apiCall "$service" GET "/repos/$owner/$name"
+    if [[ "$api_status" == 200 ]]; then
+        printLog "$service: $owner/$name already exists"
+        return 0
+    fi
+    apiExpect "$service: looking up $owner/$name" 404
+    apiCall "$service" POST /user/repos "$body"
+    apiExpect "$service: creating $owner/$name" 201
+    printLog "$service: created $owner/$name"
+}
+
+# signatures only verify against keys the account has, without one every push is rejected.
+# apiSigningKeysCheck <forgejo|github> <path>...: warns when all of them list nothing, a list the
+# token can't read is skipped
+apiSigningKeysCheck() {
+    local service="$1" path count=0
+    shift
+    for path in "$@"; do
+        apiCall "$service" GET "$path"
+        [[ "$api_status" == 200 ]] || return 0
+        (( count += $(jq 'length' <<< "$api_body") )) || true
+    done
+    (( count )) || printWarn "$service: the account has no signing key, signed commits can't be verified and pushes will be rejected"
+}
+
+forgejo_owner="$(apiUserGet forgejo)"
+apiRepoEnsure forgejo "$forgejo_owner" "$(jq -nc --arg name "$name" --arg description "$description" \
+    --arg default_branch "$default_branch" --argjson private "$private" '$ARGS.named')"
+origin_url="$(jq -re '.ssh_url' <<< "$api_body")" || die "forgejo: $forgejo_owner/$name has no ssh url"
+# an existing repo keeps its own default branch
+forgejo_branch="$(jq -re '.default_branch' <<< "$api_body")" || die "forgejo: $forgejo_owner/$name has no default branch"
+
+apiCall forgejo GET "/repos/$forgejo_owner/$name/branch_protections"
+apiExpect "forgejo: listing the branch protections" 200
+case "$(jq -r --arg branch "$forgejo_branch" 'map(select(.rule_name == $branch)) | first | .require_signed_commits' <<< "$api_body")" in
+    true) printLog "forgejo: $forgejo_branch already requires signed commits" ;;
+    false) printWarn "forgejo: $forgejo_branch has a protection rule that doesn't require signed commits, left as it is" ;;
+    *)
+        # without enable_push nobody can push to the branch at all
+        apiCall forgejo POST "/repos/$forgejo_owner/$name/branch_protections" "$(jq -nc --arg rule_name "$forgejo_branch" \
+            '{ rule_name: $rule_name, enable_push: true, require_signed_commits: true, apply_to_admins: true }')"
+        apiExpect "forgejo: protecting $forgejo_branch" 201
+        printLog "forgejo: $forgejo_branch requires signed commits"
+        ;;
+esac
+# ssh keys sign too
+apiSigningKeysCheck forgejo /user/gpg_keys /user/keys
+
+if (( with_github )); then
+    github_owner="$(apiUserGet github)"
+    apiRepoEnsure github "$github_owner" "$(jq -nc --arg name "$name" --arg description "$description" \
+        --argjson private "$private" '$ARGS.named')"
+    github_ssh_url="$(jq -re '.ssh_url' <<< "$api_body")" || die "github: $github_owner/$name has no ssh url"
+
+    ruleset_name="repo-init: signed commits"
+    apiCall github GET "/repos/$github_owner/$name/rulesets?includes_parents=false&per_page=100"
+    if [[ "$api_status" == 200 ]] && jq -e --arg name "$ruleset_name" 'any(.[]; .name == $name)' <<< "$api_body" > /dev/null; then
+        printLog "github: the ruleset '$ruleset_name' already exists"
+    else
+        # the mirror's pushes carry the same signed commits, it needs no bypass
+        apiCall github POST "/repos/$github_owner/$name/rulesets" "$(jq -nc --arg name "$ruleset_name" '{
+            name: $name, target: "branch", enforcement: "active",
+            conditions: { ref_name: { include: ["~DEFAULT_BRANCH"], exclude: [] } },
+            rules: [{ type: "required_signatures" }]
+        }')"
+        if [[ "$api_status" == 403 ]]; then
+            # rulesets on private repos need a paid plan
+            printWarn "github: the ruleset was refused ($(apiMessage)), $github_owner/$name does NOT require signed commits"
+        else
+            apiExpect "github: creating the ruleset" 201
+            printLog "github: the default branch requires signed commits"
+        fi
+    fi
+    apiSigningKeysCheck github /user/gpg_keys /user/ssh_signing_keys
+
+    apiCall forgejo GET "/repos/$forgejo_owner/$name/push_mirrors"
+    apiExpect "forgejo: listing the push mirrors" 200
+    # forgejo may hand the address back in another form than it was given
+    mirror_key="$(jq -r --arg path "$github_owner/$name.git" '
+        ($path | ascii_downcase) as $path
+        | map(select(.remote_address | ascii_downcase | (endswith("github.com:" + $path) or endswith("github.com/" + $path))))
+        | first | if . == null then "" else (.public_key // "" | if . == "" then "none" else . end) end
+    ' <<< "$api_body")"
+    if [[ -n "$mirror_key" ]]; then
+        [[ "$mirror_key" != none ]] || die "forgejo: the push mirror to $github_owner/$name exists but isn't an ssh one, remove it and rerun"
+        printLog "forgejo: the push mirror to $github_owner/$name already exists"
+    else
+        apiCall forgejo POST "/repos/$forgejo_owner/$name/push_mirrors" "$(jq -nc --arg remote_address "$github_ssh_url" \
+            '{ remote_address: $remote_address, use_ssh: true, sync_on_commit: true, interval: "8h0m0s" }')"
+        apiExpect "forgejo: creating the push mirror" 200 201
+        mirror_key="$(jq -r '.public_key // ""' <<< "$api_body")"
+        [[ -n "$mirror_key" ]] || die "forgejo: the push mirror came without an ssh key, does forgejo have ssh in its PATH?"
+        printLog "forgejo: created the push mirror to $github_ssh_url"
+    fi
+
+    apiCall github GET "/repos/$github_owner/$name/keys?per_page=100"
+    apiExpect "github: listing the deploy keys" 200
+    # compared without the comment
+    if jq -e --arg key "$mirror_key" '($key | split(" ")[1]) as $blob | any(.[]; (.key | split(" ")[1]) == $blob)' <<< "$api_body" > /dev/null; then
+        printLog "github: the mirror's deploy key is already there"
+    else
+        apiCall github POST "/repos/$github_owner/$name/keys" "$(jq -nc --arg key "$mirror_key" --arg title "forgejo push mirror ($forgejo_url)" \
+            '{ title: $title, key: $key, read_only: false }')"
+        apiExpect "github: adding the mirror's deploy key" 201
+        printLog "github: added the mirror's deploy key"
+    fi
+fi
+
+printLog "done, origin is $origin_url"
+printf '%s\n' "$origin_url"

@@ -1,0 +1,5 @@
+**
+.*
+!/.gitignore
+!/repo-init
+!/package.nix

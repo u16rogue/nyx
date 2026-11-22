@@ -1096,6 +1096,22 @@ modeOf_init() {
     local origin_url="${d["git_origin"]}"
     [[ "$origin_url" == "<nil>" ]] && origin_url="origin-is-not-set://run/git-remote-set-url-origin/url"
     addStep host_steps git-origin "git remote get-url origin &> /dev/null || git remote add origin ${origin_url@Q}"
+    # without an url the repos can be created instead (forgejo, mirrored to github), the placeholder
+    # stays until that step passed. it reads its tokens from the environment of the run script and
+    # protects the branch `git init` would create, never offered over an origin that's already there
+    local repo_init=0
+    if [[ "${d["git_origin"]}" == "<nil>" ]] && command -v repo-init &> /dev/null \
+        && ! git -C "$ssm_root" remote get-url origin &> /dev/null \
+        && gum confirm --default=false "create the forgejo and github repos with repo-init?";
+    then
+        repo_init=1
+        local repo_init_cmd="repo-init --description ${d["project_description"]@Q}"
+        gum confirm --default=false "make them public?" && repo_init_cmd+=" --public"
+        # shellcheck disable=SC2016 # expanded by the run script
+        repo_init_cmd+=' --default-branch "$(git config --get init.defaultBranch || echo master)"'
+        # shellcheck disable=SC2016
+        addStep host_steps repo-init 'origin_url="$('"$repo_init_cmd ${d["project_name"]@Q}"')" && git remote set-url origin "$origin_url"'
+    fi
     # jj's identity and signing key, set inside the sandbox where jj is used
     addJjConfigStep
 
@@ -1192,7 +1208,7 @@ modeOf_init() {
     (( has_sbx )) && run_done_hints+=("${hint@Q}")
     # shellcheck disable=SC2016
     hint='origin is a placeholder, set it with `git remote set-url origin <url>` before the first push'
-    [[ "${d["git_origin"]}" == "<nil>" ]] && run_done_hints+=("${hint@Q}")
+    [[ "${d["git_origin"]}" == "<nil>" ]] && (( ! repo_init )) && run_done_hints+=("${hint@Q}")
 
     commitStage flake.nix .gitignore || die "failed to move the rendered project into place"
     cleanupStage

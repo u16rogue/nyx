@@ -10,6 +10,7 @@ nyx is a NixOS flake: host and user configurations (`nixos/`), wrapped packages 
 - The root `AGENTS.md` and `.jj.toml` are symlinks into `templates/ssm/.ssm/`. Editing them edits the template that `ssm init` copies into new projects.
 - `{{! ... }}` in the `.mo` templates is a mustache comment, it doesn't reach the rendered file.
 - Disclosure used to be comment markers (`THIS WAS WRITTEN BY A CLANKER`, `CLANKER START/END/ASSISTED/EDITED`, `AI-assisted:`). They were removed in one clanker change, its diff is the record of what was marked. Don't add new ones. Ssm projects generated before that still carry them.
+- `ssm` runs on the host, not in the sandbox. Its run script has `host_steps` and `sandbox_steps` (`templates/ssm/.ssm/ssm`, `run.sh.mo`). Only the critical parts go into the sandbox: project inits and anything else that runs other programs or scripts while obtaining a project. Things that need host access (tokens, signing keys, the LAN) can be real host steps.
 - There is no python in the sandbox. `nix run --inputs-from . nixpkgs#python3` works.
 
 ## File Index
@@ -17,6 +18,7 @@ nyx is a NixOS flake: host and user configurations (`nixos/`), wrapped packages 
 - [nixos/efsp.md](nixos/efsp.md): partial preservation, how it rides on the preservation module, the generation links, installer interaction
 - [scripts/sbx-shell.md](scripts/sbx-shell.md): the sandbox's terms, mount and cover semantics, what is exposed inside, nix-develop, hazards
 - [scripts/jj-push.md](scripts/jj-push.md): first push of a new project, how the bookmark and its tracking come to exist, rejected alternatives, testing outside a sandbox
+- [scripts/repo-init.md](scripts/repo-init.md): forgejo repo plus github push mirror, why an ssh mirror with a deploy key, forgejo gotchas (ssh in PATH, LTS api), testing against a mock
 - [templates/ssm-subproject-templates.md](templates/ssm-subproject-templates.md): what a subproject template type ships, lockfiles and the devshell, testing one without the tui
 - [overrides/hyprland.md](overrides/hyprland.md): host versus user split for desktops, the uwsm launch chain, NYX_HYPR_PATH, config generation
 - [overrides/neovim.md](overrides/neovim.md): what the editor override carries versus what a project provides, lua-language-server setup

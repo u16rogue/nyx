@@ -76,6 +76,7 @@
                 nyx.pkgs.nix-pkgvercmp
                 nyx.pkgs.nix-sync-lock-from-nixos
                 nyx.pkgs.nyx-gc
+                nyx.pkgs.repo-init
                 # Nyx packages
                 nyx.pkgs.firefox
                 nyx.pkgs.keepassxc
