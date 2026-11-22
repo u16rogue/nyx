@@ -4,6 +4,8 @@
 
 ## Decisions
 
+- Github only gets public repos, the user's rule: forgejo is where private things live. Without `--public` the script stops after forgejo and needs no github token.
+
 - The mirror is an ssh one (`use_ssh: true`). Forgejo generates an ed25519 key per mirror and returns `public_key`, the script adds it to the github repo as a write deploy key. Rejected: a github token stored in forgejo, a fine-grained one can't cover a repo that doesn't exist yet and a broad one would sit on the server.
 - Signed commits are the only rule, the user's choice. The mirror pushes the same signed commits so the github ruleset needs no bypass actor. Adding `non_fast_forward` or `deletion` rules later would need a `DeployKey` bypass, the mirror force pushes and prunes.
 - A refused github ruleset (403, private repo on a free plan) is a warning, not a failure. A failing step would block the ssm run script for good.

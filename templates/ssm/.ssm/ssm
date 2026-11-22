@@ -1096,17 +1096,17 @@ modeOf_init() {
     local origin_url="${d["git_origin"]}"
     [[ "$origin_url" == "<nil>" ]] && origin_url="origin-is-not-set://run/git-remote-set-url-origin/url"
     addStep host_steps git-origin "git remote get-url origin &> /dev/null || git remote add origin ${origin_url@Q}"
-    # without an url the repos can be created instead (forgejo, mirrored to github), the placeholder
+    # without an url the repo can be created instead (forgejo, a public one is mirrored to github), the placeholder
     # stays until that step passed. it reads its tokens from the environment of the run script and
     # protects the branch `git init` would create, never offered over an origin that's already there
     local repo_init=0
     if [[ "${d["git_origin"]}" == "<nil>" ]] && command -v repo-init &> /dev/null \
         && ! git -C "$ssm_root" remote get-url origin &> /dev/null \
-        && gum confirm --default=false "create the forgejo and github repos with repo-init?";
+        && gum confirm --default=false "create the forgejo repo with repo-init?";
     then
         repo_init=1
         local repo_init_cmd="repo-init --description ${d["project_description"]@Q}"
-        gum confirm --default=false "make them public?" && repo_init_cmd+=" --public"
+        gum confirm --default=false "make it public and mirror it to github?" && repo_init_cmd+=" --public"
         # shellcheck disable=SC2016 # expanded by the run script
         repo_init_cmd+=' --default-branch "$(git config --get init.defaultBranch || echo master)"'
         # shellcheck disable=SC2016

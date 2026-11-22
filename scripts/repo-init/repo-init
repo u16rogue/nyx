@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# repo-init [options] <name>: creates a repo on forgejo, the same one on github and a push mirror
-# from forgejo to github. the default branch requires signed commits on both. run on the host,
-# forgejo is the origin (its ssh url is the only thing printed to stdout), github is only pushed
-# to by the mirror
+# repo-init [options] <name>: creates a repo on forgejo and, when it's public, the same one on
+# github with a push mirror from forgejo to github. private repos stay on forgejo only. the
+# default branch requires signed commits on both. run on the host, forgejo is the origin (its ssh
+# url is the only thing printed to stdout), github is only pushed to by the mirror
 #
 # every step looks for what already exists first, a run that failed halfway can simply be rerun
 #
@@ -38,10 +38,11 @@ die() {
 printUsage() {
     cat >&2 << 'EOF'
 usage: repo-init [options] <name>
-    --public                  public on both sides (default: private)
+    --public                  public, and mirrored to a public github repo (default: private,
+                              forgejo only)
     --description <text>      repo description
     --default-branch <name>   branch that requires signed commits on forgejo (default: main)
-    --no-github               only the forgejo repo, no github repo and no mirror
+    --no-github               with --public: only the forgejo repo, no github repo and no mirror
 EOF
 }
 
@@ -76,6 +77,8 @@ done
 # what both forgejo and github accept, it also ends up in urls
 [[ "$name" =~ ^[A-Za-z0-9_.-]+$ && "$name" != *.git && "$name" != .* ]] || die "invalid repo name: $name"
 [[ "$default_branch" =~ ^[A-Za-z0-9_][A-Za-z0-9_./-]*$ ]] || die "invalid branch name: $default_branch"
+# github is only for what's public, private repos never leave forgejo
+[[ "$private" == true ]] && with_github=0
 
 forgejo_url="${FORGEJO_URL:-"http://mistypuddle.local/git"}"
 forgejo_url="${forgejo_url%/}"
@@ -245,6 +248,8 @@ if (( with_github )); then
         apiExpect "github: adding the mirror's deploy key" 201
         printLog "github: added the mirror's deploy key"
     fi
+elif [[ "$private" == true ]]; then
+    printLog "private, it stays on forgejo only (--public also mirrors it to github)"
 fi
 
 printLog "done, origin is $origin_url"
