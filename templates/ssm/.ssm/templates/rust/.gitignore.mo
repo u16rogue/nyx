@@ -1,0 +1,13 @@
+**
+.*
+!/.gitignore
+!/Cargo.lock
+!/Cargo.toml
+!/do
+!/package.nix
+!/shell.nix
+!/.cargo/
+!/.cargo/config.toml
+!/src/
+!/src/**/
+!/src/**/*.rs

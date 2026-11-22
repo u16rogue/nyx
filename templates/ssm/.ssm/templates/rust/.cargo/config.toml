@@ -1,0 +1,3 @@
+# one target dir for ./do, plain cargo and rust-analyzer, relative to this subproject
+[build]
+target-dir = ".build"

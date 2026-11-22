@@ -17,6 +17,7 @@ nyx is a NixOS flake: host and user configurations (`nixos/`), wrapped packages 
 - [nixos/efsp.md](nixos/efsp.md): partial preservation, how it rides on the preservation module, the generation links, installer interaction
 - [scripts/sbx-shell.md](scripts/sbx-shell.md): the sandbox's terms, mount and cover semantics, what is exposed inside, nix-develop, hazards
 - [scripts/jj-push.md](scripts/jj-push.md): first push of a new project, how the bookmark and its tracking come to exist, rejected alternatives, testing outside a sandbox
+- [templates/ssm-subproject-templates.md](templates/ssm-subproject-templates.md): what a subproject template type ships, lockfiles and the devshell, testing one without the tui
 - [overrides/hyprland.md](overrides/hyprland.md): host versus user split for desktops, the uwsm launch chain, NYX_HYPR_PATH, config generation
 - [overrides/neovim.md](overrides/neovim.md): what the editor override carries versus what a project provides, lua-language-server setup
 - [overrides/nixpak.md](overrides/nixpak.md): conventions of the nixpak sandboxed overrides, the document portal ordering, obs-studio and moonlight-stream notes
