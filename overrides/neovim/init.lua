@@ -72,6 +72,8 @@ end
 -- [[ Theme ]]
 require('catppuccin').setup({
     flavour = 'mocha',
+    -- no Normal background, the terminal's background opacity shows through
+    transparent_background = true,
     custom_highlights = function(c)
         -- rainbow colours faded toward the background: 0 = invisible, 1 = full colour
         local rainbow_dim = { indent = 0.35, delimiter = 0.9 }

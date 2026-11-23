@@ -1,6 +1,6 @@
 {
     inputs, lib, pkgs, stdenv, fetchurl,
-    opencode, claude-code, ripgrep, wayland, libnotify,
+    opencode, claude-code, ripgrep, wayland, libnotify, coreutils,
     patchelf, makeBinaryWrapper, installShellFiles,
     overridesOpts ? {}, ...
 }: let
@@ -68,6 +68,12 @@ in inputs.wrappers.lib.wrapPackage {
     preHook = lib.concatStrings [
         ''
             if [ -z "''${OPENCODE_CLAUDE_PATH+x}" ]; then export OPENCODE_CLAUDE_PATH=${lib.escapeShellArg claude}; fi
+            # opencode only finds themes in the themes directory of its config dir, the built-in catppuccin
+            # paints the main background which covers the terminal's background opacity
+            themes_dir="''${XDG_CONFIG_HOME:-$HOME/.config}/opencode/themes"
+            ${coreutils}/bin/mkdir -p "$themes_dir" 2> /dev/null \
+                && ${coreutils}/bin/ln -sfnT ${./nyx-catppuccin.json} "$themes_dir/nyx-catppuccin.json" 2> /dev/null \
+                || true
         ''
         (setDefault "OPENCODE_CONFIG_CONTENT" {
             permissions = [
@@ -77,7 +83,7 @@ in inputs.wrappers.lib.wrapPackage {
             ];
         })
         (setDefault "OPENCODE_CLI_CONFIG_CONTENT" {
-            theme.name = "catppuccin";
+            theme.name = "nyx-catppuccin";
             attention.notifications = false;
             plugins = [
                 "${./nyx-connect-claude}"
