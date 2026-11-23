@@ -17,6 +17,7 @@ A template type is a directory in `templates/ssm/.ssm/templates/`, picked up by 
 - `inputsFrom` carries the inputs and the `shellHook`, not environment variables and not the stdenv's compiler. A `mkShellNoCC` shell that needs a linker lists `stdenv.cc` in `packages` (rust). Variables go into a `shellHook`.
 - Build output goes into `.build` and is declared as a cover. Rust gets there with `target-dir` in the subproject's `.cargo/config.toml`, so plain cargo and rust-analyzer agree with `./do`. `cargoSetupHook` writes its vendoring config one directory above the source, the two merge.
 - The editor side is shared: `.nvim.lua.mo` enables every language server, `.ignore.mo` lists every type's generated directories. A new type adds to those if it isn't there yet, plus the grammar in its own `shell.nix.mo`.
+- Rust's `[lints.rust] warnings = "deny"` is what `-Werror` is for cpp. It applies whatever the order or priority, and under `cargo clippy` it turns the clippy lints into errors too. A lint that a newer toolchain renamed or removed warns, so it fails the build: after a nixpkgs bump, render the template and run `cargo build` and `./do check` against it.
 
 ## Testing a type without the tui
 
