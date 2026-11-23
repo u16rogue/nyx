@@ -5,6 +5,8 @@ vim.lsp.config('lua_ls', { settings = { Lua = {
     runtime = { version = 'LuaJIT' },
     workspace = { checkThirdParty = false, library = { vim.env.VIMRUNTIME .. '/lua' } },
 } } })
+-- the clippy lints of Cargo.toml as diagnostics, the default `cargo check` only has rustc's
+vim.lsp.config('rust_analyzer', { settings = { ['rust-analyzer'] = { check = { command = 'clippy' } } } })
 
 -- typescript 7+ is its own language server (`tsc --lsp`) and has no tsserver for ts_ls, so every js
 -- project gets exactly one of them for the typescript in its node_modules. the native binary is
