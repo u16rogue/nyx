@@ -169,6 +169,17 @@ hl.window_rule({
     suppress_event = "maximize",
 })
 
+-- A border only says where a window ends, drop it when nothing else is tiled next to it.
+-- w[tv1]: one visible tiled window, a group counts as one. f[1]: maximized.
+-- Floating windows keep theirs, they sit on top of something.
+for name, workspace in pairs({ ["no-border-alone"] = "w[tv1]", ["no-border-maximized"] = "f[1]" }) do
+    hl.window_rule({
+        name = name,
+        match = { float = false, workspace = workspace },
+        border_size = 0,
+    })
+end
+
 hl.window_rule({
     name = "satty-overlay",
     match = { class = "^com\\.gabm\\.satty$" },
