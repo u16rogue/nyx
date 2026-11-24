@@ -228,6 +228,13 @@ for name, workspace in pairs({ ["no-border-alone"] = "w[tv1]", ["no-border-maxim
     })
 end
 
+-- Pinned windows follow across workspaces, the yellow tells them apart. Active then inactive.
+hl.window_rule({
+    name = "pinned-border",
+    match = { pin = true },
+    border_color = "rgb(f7d95c) rgb(8a7426)",
+})
+
 hl.window_rule({
     name = "float-picture-in-picture",
     match = { title = "^Picture-in-Picture$" },
