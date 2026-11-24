@@ -6,3 +6,7 @@
 !/lua/
 !/lua/statusline.lua
 !/lua/restore_buffers.lua
+!/lua/draw/
+!/lua/draw/init.lua
+!/lua/draw/model.lua
+!/lua/draw/route.lua

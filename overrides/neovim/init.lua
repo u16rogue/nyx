@@ -227,6 +227,11 @@ map('n', '<leader>as', '<Cmd>TSJToggle<CR>', 'Split/join scope')
 map('x', '<leader>aa', '<Plug>(EasyAlign)', 'Align')
 require('nvim-surround').setup() -- visual `S(` wrap, `ys{motion}(` add, `cs"'` change, `ds(` delete
 
+-- [[ Draw mode ]]
+-- mouse driven box and arrow diagrams drawn straight into the buffer, the winbar lists the tools (lua/draw)
+map('n', '<leader>d', function() require('draw').toggle() end, 'Toggle draw mode')
+vim.api.nvim_create_user_command('Draw', function() require('draw').toggle() end, { desc = 'Toggle draw mode' })
+
 -- [[ Completion + snippets ]]
 require('blink.cmp').setup({
     keymap = {
