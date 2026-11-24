@@ -22,7 +22,7 @@ Files: `overrides/hyprland/package.nix`, `hyprland.lua`, `snippets.nix`, `nixos/
 
 - Both `share/wayland-sessions` desktop files point at the public launcher. The upstream uwsm entry is replaced by a copy of the plain one because it would nest uwsm.
 - The raw `Hyprland` binary is still in the wrapper's `bin/` and bypasses all of this.
-- `Super+X` runs `uwsm stop`. uwsm already reacts to the compositor exiting, an exit watcher would duplicate it.
+- `Super+Shift+X` runs `uwsm stop`. The user moved it off `Super+X` on purpose so it's harder to hit. uwsm already reacts to the compositor exiting, an exit watcher would duplicate it.
 - The start hook launches hyprpaper, waybar and mako with `hl.exec_cmd`. Apps are spawned directly, not as supervised units.
 
 ## NYX_HYPR_PATH
@@ -40,6 +40,7 @@ The helper packages are not on `PATH`. The payload sets `NYX_HYPR_PATH` and only
 The intent is Sway's tabbed workflow on Hyprland groups, not its nested tree.
 
 - `Super+Shift+A/D` reorders the active tab and detaches it at an edge, `W/S` detaches vertically. Workspace moves (`Super+Shift+1..0`) detach the tab first, otherwise the whole group moves. `group_on_movetoworkspace = false` keeps it from joining a group at the destination.
+- Directional focus (`focusDirection`): `window_direction_monitor_fallback = false` keeps it on the monitor, both in the neighbor search and the monitor fallback (`Actions::moveFocus`, `CWindowQuery::inDirection`). With `no_focus_fallback` off Hyprland then wraps to the window at the opposite edge. It only wraps a group's tabs when there is one monitor, and does nothing for a window spanning the monitor, so the Lua wraps the tab when the focus dispatch left the active window unchanged.
 - `fullscreenSafeMouse`: Super+mouse passes the click through when the workspace under the pointer is fullscreen. A drag that started always gets its release. Possible edge from reading the code: a passed-through press followed by fullscreen ending before release may be taken as a drag start.
 - Waybar starts hidden and is toggled with `SIGUSR1` on raw `Super_L` key events.
 

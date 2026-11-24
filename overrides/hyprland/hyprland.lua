@@ -14,7 +14,7 @@ hl.on("hyprland.start", function()
     hl.exec_cmd(resolvePathCommand("mako"))
 end)
 
-hl.bind(mainMod .. " + X", hl.dsp.exec_cmd(resolvePathCommand("uwsm") .. " stop"))
+hl.bind(mainMod .. " + SHIFT + X", hl.dsp.exec_cmd(resolvePathCommand("uwsm") .. " stop"))
 hl.bind(mainMod .. " + TAB", hl.dsp.group.toggle())
 hl.bind(mainMod .. " + SHIFT + Q", hl.dsp.window.kill())
 hl.bind(mainMod .. " + SHIFT + SPACE", hl.dsp.window.float({ action = "toggle" }))
@@ -58,10 +58,27 @@ hl.bind("CTRL + PRINT", function()
     )))
 end)
 
-hl.bind(mainMod .. " + D", hl.dsp.focus({ direction = "r" }))
-hl.bind(mainMod .. " + A", hl.dsp.focus({ direction = "l" }))
-hl.bind(mainMod .. " + W", hl.dsp.focus({ direction = "u" }))
-hl.bind(mainMod .. " + S", hl.dsp.focus({ direction = "d" }))
+-- Sway's focus_wrapping workspace. Hyprland wraps to the window at the opposite edge by itself once
+-- window_direction_monitor_fallback is off, but it only wraps the tabs of a group on a single monitor setup.
+local function focusDirection(direction)
+    local before = hl.get_active_window()
+    local result = hl.dispatch(hl.dsp.focus({ direction = direction }))
+    local after = hl.get_active_window()
+    local stuck = before and after and before.address == after.address
+    if not stuck or not after.group or after.group.size < 2 then
+        return result
+    end
+    if direction == "l" then
+        return hl.dispatch(hl.dsp.group.prev())
+    elseif direction == "r" then
+        return hl.dispatch(hl.dsp.group.next())
+    end
+    return result
+end
+
+for key, direction in pairs({ A = "l", D = "r", W = "u", S = "d" }) do
+    hl.bind(mainMod .. " + " .. key, function() return focusDirection(direction) end)
+end
 
 -- Waybar starts hidden: toggle on modifier press, then toggle back on release.
 -- Uses the raw key event rather than binds: since 0.57 a `SUPER + SUPER_L` release bind
@@ -168,6 +185,7 @@ hl.config({
     },
     input = {
         kb_layout = "us",
+        numlock_by_default = true,
         follow_mouse = 0,
         sensitivity = 0,
         touchpad = {
@@ -176,6 +194,8 @@ hl.config({
     },
     binds = {
         movefocus_cycles_groupfirst = true,
+        -- Directional focus never leaves the monitor, the other one is reached by its workspaces.
+        window_direction_monitor_fallback = false,
     },
 })
 
