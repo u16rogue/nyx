@@ -18,6 +18,34 @@ hl.bind(mainMod .. " + X", hl.dsp.exec_cmd(resolvePathCommand("uwsm") .. " stop"
 hl.bind(mainMod .. " + TAB", hl.dsp.group.toggle())
 hl.bind(mainMod .. " + SHIFT + Q", hl.dsp.window.kill())
 hl.bind(mainMod .. " + SHIFT + SPACE", hl.dsp.window.float({ action = "toggle" }))
+hl.bind(mainMod .. " + F", hl.dsp.window.fullscreen({ action = "toggle", mode = "fullscreen" }))
+-- Sway's sticky: a floating window that stays on screen across workspaces (picture in picture).
+hl.bind(mainMod .. " + ALT + SPACE", hl.dsp.window.pin({ action = "toggle" }))
+-- Sway's focus mode_toggle: jump between the floating and the tiled windows.
+hl.bind(mainMod .. " + SPACE", function()
+    local window = hl.get_active_window()
+    if window and window.floating then
+        return hl.dispatch(hl.dsp.window.cycle_next({ tiled = true }))
+    end
+    return hl.dispatch(hl.dsp.window.cycle_next({ floating = true }))
+end)
+
+hl.bind(mainMod .. " + R", hl.dsp.submap("resize"))
+hl.define_submap("resize", function()
+    local function bindResize(key, x, y)
+        hl.bind(key, hl.dsp.window.resize({ x = x, y = y, relative = true }), { repeating = true })
+    end
+    -- WASD in steps of 10, the arrows for single pixels.
+    for step, keys in pairs({ [10] = { "A", "D", "W", "S" }, [1] = { "left", "right", "up", "down" } }) do
+        bindResize(keys[1], -step, 0)
+        bindResize(keys[2], step, 0)
+        bindResize(keys[3], 0, -step)
+        bindResize(keys[4], 0, step)
+    end
+    hl.bind("Return", hl.dsp.submap("reset"))
+    hl.bind("Escape", hl.dsp.submap("reset"))
+end)
+
 hl.bind(mainMod .. " + SHIFT + GRAVE", hl.dsp.exec_cmd(resolvePathCommand("ghostty")))
 hl.bind(mainMod .. " + GRAVE", hl.dsp.exec_cmd(resolvePathCommand("fuzzel")))
 hl.bind(mainMod .. " + F1", hl.dsp.dpms({ action = "toggle" }))
@@ -179,6 +207,12 @@ for name, workspace in pairs({ ["no-border-alone"] = "w[tv1]", ["no-border-maxim
         border_size = 0,
     })
 end
+
+hl.window_rule({
+    name = "float-picture-in-picture",
+    match = { title = "^Picture-in-Picture$" },
+    float = true,
+})
 
 hl.window_rule({
     name = "satty-overlay",

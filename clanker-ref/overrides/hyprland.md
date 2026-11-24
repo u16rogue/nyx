@@ -45,4 +45,6 @@ The intent is Sway's tabbed workflow on Hyprland groups, not its nested tree.
 
 ## Validating
 
+`XDG_RUNTIME_DIR=<some dir> <hyprland>/bin/Hyprland --verify-config --config overrides/hyprland/hyprland.lua` runs in the sandbox. It runs the Lua, so it catches unknown key names and invalid arguments of dispatchers constructed at load. Dispatchers constructed inside a bind's function only run on the keypress and aren't checked. Dispatcher arguments aren't in the stubs (`share/hypr/stubs`), they are in the wiki's `content/configuring/core/dispatchers.md` (hyprwm/hyprland-wiki, wiki.hypr.land URLs moved under `configuring/core/`).
+
 A build and config parse don't prove any of this. It needs a fresh login session, an old activation environment hides missing startup setup. Check `hyprctl configerrors`, `systemctl --user status graphical-session.target`, file access from a freshly started nixpak app and real screen sharing. None of that can run in the sandbox.
