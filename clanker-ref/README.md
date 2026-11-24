@@ -22,6 +22,7 @@ nyx is a NixOS flake: host and user configurations (`nixos/`), wrapped packages 
 - [templates/ssm-subproject-templates.md](templates/ssm-subproject-templates.md): what a subproject template type ships, lockfiles and the devshell, testing one without the tui
 - [overrides/hyprland.md](overrides/hyprland.md): host versus user split for desktops, the uwsm launch chain, NYX_HYPR_PATH, config generation
 - [overrides/transparency.md](overrides/transparency.md): what makes nvim and opencode see-through in ghostty, why a rebuild seemed to have no effect, the rejected per program approach
+- [overrides/opencode.md](overrides/opencode.md): how the wrapper carries the configuration, where agents and tui plugins go, testing one without a rebuild
 - [overrides/neovim.md](overrides/neovim.md): what the editor override carries versus what a project provides, lua-language-server setup
 - [overrides/neovim-draw.md](overrides/neovim-draw.md): draw mode, why the text is the only state, how shapes and attachments are parsed, routing, testing mouse input without a screen
 - [overrides/nixpak.md](overrides/nixpak.md): conventions of the nixpak sandboxed overrides, the document portal ordering, obs-studio and moonlight-stream notes

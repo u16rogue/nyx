@@ -16,3 +16,5 @@
 !/nyx-notify/
 !/nyx-notify/package.json
 !/nyx-notify/tui.tsx
+!/agents/
+!/agents/mentor.md

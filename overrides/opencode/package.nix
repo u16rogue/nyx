@@ -5,7 +5,10 @@
     overridesOpts ? {}, ...
 }: let
     setDefault = name: value: /*bash*/ ''
-        if [ -z "''${${name}+x}" ]; then export ${name}=${lib.escapeShellArg (builtins.toJSON value)}; fi
+        if [ -z "''${${name}+x}" ]; then
+            ${name}="$(cat ${pkgs.writeText "${name}.json" (builtins.toJSON value)})"
+            export ${name}
+        fi
     '';
 
     opencode-release = let
@@ -21,8 +24,7 @@
         nativeBuildInputs = [ patchelf makeBinaryWrapper installShellFiles ];
         dontConfigure = true;
         dontBuild = true;
-        # bun single-file executables keep their bundle appended to the ELF, stripping destroys it
-        dontStrip = true;
+        dontStrip = true; # bun single-file executables keep their bundle appended to the ELF, stripping destroys it
 
         # mirrors the wrapper of nixpkgs' opencode
         installPhase = ''
@@ -75,6 +77,13 @@ in inputs.wrappers.lib.wrapPackage {
                 { action = "read"; resource = "/nix/store/*"; effect = "allow"; }
                 { action = "edit"; resource = "/nix/store/*"; effect = "deny"; }
             ];
+            agents.mentor = {
+                description = "Points at what to use instead of solving it, verifies what it says and stays short";
+                mode = "primary";
+                system = builtins.readFile ./agents/mentor.md;
+                # the code is the user's to write, shell stays allowed for throwaway experiments
+                permissions = [ { action = "edit"; resource = "*"; effect = "deny"; } ];
+            };
         })
         (setDefault "OPENCODE_CLI_CONFIG_CONTENT" {
             theme.name = "catppuccin";
