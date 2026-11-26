@@ -1,6 +1,7 @@
 // workaround until zellij-org/zellij#5653 ships: side-by-side bar plugins aren't detected as a bar, so with
 // frames off they reserve a boundary row and a size=1 bar gets drawn over. full frames skip that for
 // borderless panes, so tiled panes here need borderless=true to stay frameless
+default_mode "locked"
 pane_frames true
 pane_frame_style "full"
 
