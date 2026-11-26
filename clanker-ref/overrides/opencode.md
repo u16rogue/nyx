@@ -32,3 +32,20 @@ Both commands work in the sandbox. Setting the variable yourself replaces the wr
 - Does it behave: the same variable with `opencode run --standalone --agent <id> --archived --auto "<prompt>"` from a temporary directory. This spends the user's inference.
 
 The docs for the configuration shape are at https://opencode.ai/docs/agents and https://opencode.ai/docs/config. The schema at `opencode.ai/config.json` also accepts deprecated V1 fields, don't take field names from it.
+
+## Testing a tui plugin without a rebuild
+
+Point `plugins` at the working tree and drive a real tui in tmux, the plugin is loaded as source so no build is involved:
+
+- A launcher script that exports `OPENCODE_CLI_CONFIG_CONTENT='{"plugins":["<abs path>/nyx-<name>"]}'` and runs `opencode --standalone`, started with `tmux -L <sock> -f /dev/null new-session -d -x 150 -y 40 <script>`. Passing the command inline loses the JSON quotes and the session dies at once.
+- `send-keys` to type, `capture-pane -p` to read the screen, about 15 seconds for startup.
+- A slash command of the plugin needs no session. The sidebar only exists inside one: `!echo hi` as the prompt creates a session without spending inference. It needs a wide pane.
+- To see a section that is gated on the provider, test a copy of the plugin with the gate forced on instead of sending a prompt to that provider.
+- `bun build --no-bundle tui.tsx` only proves it parses, there are no types for `@opencode/plugin` to check against.
+
+## Claude usage (nyx-connect-claude)
+
+- There is no `claude` subcommand that prints usage. The numbers come from `GET https://api.anthropic.com/api/oauth/usage` with the access token of `~/.claude/.credentials.json` (`claudeAiOauth.accessToken`, `expiresAt` in ms) and `anthropic-beta: oauth-2025-04-20`. It is what Claude Code's own `/usage` reads, found in its binary, undocumented and free to change.
+- `limits[]` is the part to render: `kind` (`session`, `weekly_all`, `weekly_scoped`), `group`, `percent`, `severity`, `resets_at`, `scope.model.display_name`. The per model limit (Fable) only exists there, its legacy key `seven_day_overage_included` is null in the body. Most other keys are codenamed experiments and null.
+- The plugin never refreshes the token itself, that would race claude's refresh token rotation. On an expired token it runs `claude auth status` and reads the file again. Whether that command renews the token wasn't verified, there was no expired token to test with.
+- Not verified against real data: the `extra_usage` row (it was disabled on the account) and the `severity` values other than `normal`.
