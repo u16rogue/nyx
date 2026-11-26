@@ -20,7 +20,7 @@ nyx is a NixOS flake: host and user configurations (`nixos/`), wrapped packages 
 - [scripts/jj-push.md](scripts/jj-push.md): first push of a new project, how the bookmark and its tracking come to exist, rejected alternatives, testing outside a sandbox
 - [scripts/repo-init.md](scripts/repo-init.md): forgejo repo plus github push mirror, why an ssh mirror with a deploy key, forgejo gotchas (ssh in PATH, LTS api), testing against a mock
 - [templates/ssm-subproject-templates.md](templates/ssm-subproject-templates.md): what a subproject template type ships, lockfiles and the devshell, testing one without the tui
-- [overrides/hyprland.md](overrides/hyprland.md): host versus user split for desktops, the uwsm launch chain, NYX_HYPR_PATH, config generation
+- [overrides/hyprland.md](overrides/hyprland.md): host versus user split for desktops, the uwsm launch chain, NYX_HYPR_PATH, config generation, click-through overlays
 - [overrides/transparency.md](overrides/transparency.md): what makes nvim and opencode see-through in ghostty, why a rebuild seemed to have no effect, the rejected per program approach
 - [overrides/opencode.md](overrides/opencode.md): how the wrapper carries the configuration, where agents and tui plugins go, testing one without a rebuild
 - [overrides/neovim.md](overrides/neovim.md): what the editor override carries versus what a project provides, lua-language-server setup

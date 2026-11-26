@@ -155,6 +155,109 @@ end
 hl.bind(mainMod .. " + mouse:272", fullscreenSafeMouse(hl.dsp.window.drag()))
 hl.bind(mainMod .. " + mouse:273", fullscreenSafeMouse(hl.dsp.window.resize()))
 
+-- Overlays: a floating pinned window (picture in picture) lets the pointer through to what's under it
+-- and fades while the pointer is over it. Holding Super or focusing it makes it a normal window again.
+-- no_focus is what takes it out of the pointer's hit test, so it also can't be focused while it's on.
+do
+    local FADED_OPACITY = "0.15"
+    local POLL_MS = 50
+    local SUPER_KEYCODES = { [133] = true, [134] = true } -- xkb Super_L, Super_R
+
+    local super_held = {}
+    local states = {} -- by window address: { passthrough, faded }, nil until first written
+    local timer
+
+    local function windowPropSet(window, prop, value)
+        hl.dispatch(hl.dsp.window.set_prop({ prop = prop, value = value, window = window }))
+    end
+
+    -- A passthrough overlay is never the active window, so only the inactive opacity is ever seen.
+    local function overlayFade(window, state, faded)
+        if state.faded == faded then return end
+        state.faded = faded
+        windowPropSet(window, "opacity_inactive", faded and FADED_OPACITY or "1")
+    end
+
+    -- There's no pointer event to listen to, so the pointer is polled, and only while it can matter.
+    local function overlayPoll()
+        local cursor = hl.get_cursor_pos()
+        if not cursor then return end
+        for address, state in pairs(states) do
+            local window = state.passthrough and hl.get_window("address:" .. address)
+            if window then
+                local at = window.at
+                local size = window.size
+                overlayFade(window, state,
+                    cursor.x >= at.x and cursor.x < at.x + size.x and cursor.y >= at.y and cursor.y < at.y + size.y)
+            end
+        end
+    end
+
+    local function timerSetEnabled(enabled)
+        if not timer then
+            if not enabled then return end
+            -- Created on first use, a session that never pins a floating window never has one.
+            timer = hl.timer(overlayPoll, { timeout = POLL_MS, type = "repeat" })
+        end
+        if timer:is_enabled() ~= enabled then
+            timer:set_enabled(enabled)
+        end
+    end
+
+    -- closing_address: the window of a close event, it may still be listed while the event runs.
+    local function overlaySync(closing_address)
+        local active = hl.get_active_window()
+        local active_address = active and active.address
+        local interactive = next(super_held) ~= nil
+        local seen = {}
+        local polling = false
+        for _, window in ipairs(hl.get_windows({ floating = true })) do
+            local address = window.address
+            if window.pinned and address ~= closing_address then
+                seen[address] = true
+                local state = states[address]
+                if not state then
+                    state = {}
+                    states[address] = state
+                end
+                local passthrough = not interactive and address ~= active_address
+                if state.passthrough ~= passthrough then
+                    state.passthrough = passthrough
+                    windowPropSet(window, "no_focus", passthrough and "1" or "0")
+                end
+                if passthrough then
+                    polling = true
+                else
+                    overlayFade(window, state, false)
+                end
+            end
+        end
+        for address in pairs(states) do
+            if not seen[address] then
+                states[address] = nil
+                local window = address ~= closing_address and hl.get_window("address:" .. address)
+                if window then
+                    windowPropSet(window, "no_focus", "unset")
+                    windowPropSet(window, "opacity_inactive", "1")
+                end
+            end
+        end
+        timerSetEnabled(polling)
+    end
+
+    hl.on("input.keyboard.key", function(keycode, _, state)
+        if not SUPER_KEYCODES[keycode] then return end
+        super_held[keycode] = state == 1 or nil
+        overlaySync()
+    end)
+    hl.on("window.open", function() overlaySync() end)
+    hl.on("window.active", function() overlaySync() end)
+    hl.on("window.update_state", function() overlaySync() end)
+    hl.on("window.close", function(window) overlaySync(window and window.address) end)
+    -- The props outlive a reload but `states` doesn't, pick the overlays up again.
+    hl.on("config.reloaded", function() overlaySync() end)
+end
+
 hl.config({
     general = {
         gaps_in = 0,
