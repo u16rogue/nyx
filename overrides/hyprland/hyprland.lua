@@ -219,6 +219,8 @@ do
                 if not state then
                     state = {}
                     states[address] = state
+                    -- Otherwise what shows through the faded window is blurred.
+                    windowPropSet(window, "no_blur", "1")
                 end
                 local passthrough = not interactive and address ~= active_address
                 if state.passthrough ~= passthrough then
@@ -238,6 +240,7 @@ do
                 local window = address ~= closing_address and hl.get_window("address:" .. address)
                 if window then
                     windowPropSet(window, "no_focus", "unset")
+                    windowPropSet(window, "no_blur", "unset")
                     windowPropSet(window, "opacity_inactive", "1")
                 end
             end

@@ -46,13 +46,14 @@ The intent is Sway's tabbed workflow on Hyprland groups, not its nested tree.
 
 ## Overlays (floating pinned windows)
 
-The `do` block after the mouse binds in `hyprland.lua`. A floating pinned window is click-through and fades under the pointer, Super held or focus on it makes it normal again. Never run in a live session as of writing.
+The `do` block after the mouse binds in `hyprland.lua`. A floating pinned window is click-through and fades under the pointer, Super held or focus on it makes it normal again. The user confirmed the click-through and fade in a live session.
 
 - Click-through is the `no_focus` prop: `ViewHitTester.cpp` skips such windows, so pointer events go to what's below. `FocusState` also refuses to focus them, which is why it has to be lifted while Super is held for Super+drag and Super+Space to reach the window.
 - The Lua API has no pointer event. `hl.on` only takes the names in `share/hypr/stubs/hl.meta.lua`, the only input one is `input.keyboard.key` (keycode, time, state). The compositor's `input.mouse.move` is reachable from a C++ plugin only, which could also register a custom event for Lua. Rejected for now in favor of a polling `hl.timer`, the user accepted the lag.
 - The timer only runs while some overlay is in passthrough. It's off while Super is held or the overlay is focused.
 - `set_prop` recalculates the layout of every active workspace on each call. Only call it on a change, that's what the cached `states` table is for.
 - The fade is `opacity_inactive`, not `opacity`: `WindowPresentation::refreshValues` picks the active, inactive or fullscreen alpha by focus, and a passthrough overlay is never focused. The opacity props don't take `unset` (they go through `stof`), reset them with `1`.
+- Blur is on by default in Hyprland and the config doesn't turn it off, so a see-through window blurs what's behind it. Overlays get the `no_blur` prop for as long as they are overlays.
 - `window.update_state` (float and pin changes) is emitted deferred, the window's state is already final in the handler. Whether a closing window is still listed during `window.close` wasn't checked, the code excludes it by address either way.
 - Props set with `set_prop` survive a config reload, the Lua state and its timers don't.
 
